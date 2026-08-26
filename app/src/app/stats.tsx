@@ -88,9 +88,10 @@ function Bars({ data }: { data: { label: string; cost: number; revenue: number }
 
 export default function Stats() {
   const [period, setPeriod] = useState<Period>('3months');
-  // konkrét év / hónap szűrés — ha év van választva, az felülírja a gyors gombokat
+  // konkrét év / hónapok szűrés — ha év van választva, az felülírja a gyors gombokat;
+  // több hónap is kijelölhető (nem-összefüggő is, pl. jan + márc)
   const [selYear, setSelYear] = useState<number | null>(null);
-  const [selMonth, setSelMonth] = useState<number | null>(null);
+  const [selMonths, setSelMonths] = useState<Set<number>>(new Set());
 
   const allExpenses = useTable<Expense>('expenses');
   const allAttendance = useTable<Attendance>('attendance');
@@ -110,29 +111,29 @@ export default function Stats() {
     return [...ys].sort((a, b) => b - a);
   }, [allExpenses, allAttendance, invoices]);
 
-  let start: string; let end = '9999-12-31';
-  if (selYear && selMonth) {
-    start = `${selYear}-${String(selMonth).padStart(2, '0')}-01`;
-    end = selMonth === 12 ? `${selYear + 1}-01-01` : `${selYear}-${String(selMonth + 1).padStart(2, '0')}-01`;
-  } else if (selYear) {
-    start = `${selYear}-01-01`;
-    end = `${selYear + 1}-01-01`;
-  } else {
-    start = periodStart(period);
-  }
+  const presetStart = periodStart(period);
+  const inRange = (dateISO: string): boolean => {
+    if (selYear) {
+      if (Number(dateISO.slice(0, 4)) !== selYear) return false;
+      return selMonths.size === 0 || selMonths.has(Number(dateISO.slice(5, 7)));
+    }
+    return dateISO >= presetStart;
+  };
 
-  const pickPreset = (p: Period) => { setPeriod(p); setSelYear(null); setSelMonth(null); };
+  const pickPreset = (p: Period) => { setPeriod(p); setSelYear(null); setSelMonths(new Set()); };
   const pickYear = (y: number) => {
-    if (selYear === y) { setSelYear(null); setSelMonth(null); } else setSelYear(y);
+    if (selYear === y) { setSelYear(null); setSelMonths(new Set()); } else setSelYear(y);
   };
   const pickMonth = (m: number) => {
-    if (selMonth === m) setSelMonth(null);
-    else { setSelMonth(m); if (!selYear) setSelYear(Number(todayISO().slice(0, 4))); }
+    const next = new Set(selMonths);
+    if (next.has(m)) next.delete(m); else next.add(m);
+    setSelMonths(next);
+    if (!selYear) setSelYear(Number(todayISO().slice(0, 4)));
   };
 
-  const expenses = allExpenses.filter((e) => e.expense_date >= start && e.expense_date < end);
-  const attendance = allAttendance.filter((a) => a.work_date >= start && a.work_date < end);
-  const paidInvoices = invoices.filter((i) => i.paid_at && i.paid_at >= start && i.paid_at < end);
+  const expenses = allExpenses.filter((e) => inRange(e.expense_date));
+  const attendance = allAttendance.filter((a) => inRange(a.work_date));
+  const paidInvoices = invoices.filter((i) => i.paid_at && inRange(i.paid_at));
 
   const byCategory = useMemo(() => {
     const m = new Map<string, number>();
@@ -224,7 +225,7 @@ export default function Stats() {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600' }}>Hónap:</Text>
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
-            const on = selMonth === m;
+            const on = selMonths.has(m);
             return (
               <Pressable
                 key={m}
