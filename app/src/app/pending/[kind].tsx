@@ -11,6 +11,22 @@ import { markAttendancePaid, markCommissionPaid } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { Attendance, Worker, Site, ExternalPerson } from '../../lib/types';
 
+function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        backgroundColor: on ? C.primary : C.chipBg,
+        paddingHorizontal: S.md, paddingVertical: 7, borderRadius: 999,
+      }}
+    >
+      <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>
+        {on ? '✓ ' : ''}{label}
+      </Text>
+    </Pressable>
+  );
+}
+
 interface Item {
   id: string;
   date: string;
@@ -57,7 +73,6 @@ export default function PendingScreen() {
         detail = a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
           : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
           : 'projektdíj';
-        if (Number(a.commission_amount) > 0) detail += ` (bérrész, közvetítői nélkül)`;
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
         const ep = externals.find((x) => x.id === a.referrer_external_id);
@@ -93,60 +108,89 @@ export default function PendingScreen() {
 
   // terület-szűrő: üres kiválasztás = minden építkezés látszik
   const [siteFilter, setSiteFilter] = useState<Set<string>>(new Set());
-  const toggleSite = (id: string) => {
-    const next = new Set(siteFilter);
+  // ember-szűrő: üres kiválasztás = mindenki látszik
+  const [personFilter, setPersonFilter] = useState<Set<string>>(new Set());
+  // alapból mindenki összecsukva; lenyitáskor látszik az összeg és a napi bontás
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleIn = (set: Set<string>, setter: (s: Set<string>) => void, id: string) => {
+    const next = new Set(set);
     if (next.has(id)) next.delete(id); else next.add(id);
-    setSiteFilter(next);
+    setter(next);
   };
-  const visibleGroups = siteFilter.size === 0 ? groups : groups.filter((g) => siteFilter.has(g.siteId));
+
+  const siteFiltered = siteFilter.size === 0 ? groups : groups.filter((g) => siteFilter.has(g.siteId));
+
+  // a szűrhető emberek listája (a terület-szűrés után)
+  const personList = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of siteFiltered) for (const p of g.persons) m.set(p.key, p.name);
+    return [...m.entries()].map(([key, name]) => ({ key, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  }, [siteFiltered]);
+
+  const visibleGroups = useMemo(() => {
+    // csak a jelenlegi terület-szűrés alatt létező emberek szűrője él;
+    // a "beragadt" (itt nem dolgozó) kijelölés nem üresíti ki a listát
+    const available = new Set(personList.map((p) => p.key));
+    const effective = new Set([...personFilter].filter((k) => available.has(k)));
+    return siteFiltered
+      .map((g) => {
+        const persons = effective.size === 0 ? g.persons : g.persons.filter((p) => effective.has(p.key));
+        return { ...g, persons, total: persons.reduce((s, p) => s + p.total, 0) };
+      })
+      .filter((g) => g.persons.length > 0);
+  }, [siteFiltered, personFilter, personList]);
 
   const grandTotal = visibleGroups.reduce((s, g) => s + g.total, 0);
+  const isFiltered = siteFilter.size > 0 || personFilter.size > 0;
   const payItems = (ids: string[]) => isWages ? markAttendancePaid(ids, true) : markCommissionPaid(ids, true);
 
   return (
     <Screen>
       <Stack.Screen options={{ title: isWages ? 'Kifizetetlen bérek' : 'Kifizetetlen közvetítői díjak' }} />
 
-      {groups.length > 1 ? (
+      {groups.length > 0 ? (
         <Card>
-          <Sub>Terület — pipáld ki, amelyikre szűrni akarsz:</Sub>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-            <Pressable
-              onPress={() => setSiteFilter(new Set())}
-              style={{
-                backgroundColor: siteFilter.size === 0 ? C.primary : C.chipBg,
-                paddingHorizontal: S.md, paddingVertical: 7, borderRadius: 999,
-              }}
-            >
-              <Text style={{ color: siteFilter.size === 0 ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>
-                Mind
-              </Text>
-            </Pressable>
-            {groups.map((g) => {
-              const on = siteFilter.has(g.siteId);
-              return (
-                <Pressable
-                  key={g.siteId}
-                  onPress={() => toggleSite(g.siteId)}
-                  style={{
-                    backgroundColor: on ? C.primary : C.chipBg,
-                    paddingHorizontal: S.md, paddingVertical: 7, borderRadius: 999,
-                  }}
-                >
-                  <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>
-                    {on ? '✓ ' : ''}{g.siteName} · {ft(g.total)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {groups.length > 1 ? (
+            <>
+              <Sub>Terület:</Sub>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                <Chip label="Mind" on={siteFilter.size === 0} onPress={() => setSiteFilter(new Set())} />
+                {groups.map((g) => (
+                  <Chip
+                    key={g.siteId}
+                    label={`${g.siteName} · ${ft(g.total)}`}
+                    on={siteFilter.has(g.siteId)}
+                    onPress={() => toggleIn(siteFilter, setSiteFilter, g.siteId)}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
+          {personList.length > 1 ? (
+            <>
+              <Sub>{isWages ? 'Munkavállaló:' : 'Közvetítő:'}</Sub>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                <Chip label="Mindenki" on={personFilter.size === 0} onPress={() => setPersonFilter(new Set())} />
+                {personList.map((p) => (
+                  <Chip
+                    key={p.key}
+                    label={p.name}
+                    on={personFilter.has(p.key)}
+                    onPress={() => toggleIn(personFilter, setPersonFilter, p.key)}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
         </Card>
       ) : null}
 
       <Card style={{ borderColor: grandTotal > 0 ? C.accent : C.border }}>
         <KV
           k={(isWages ? 'Kifizetetlen bér' : 'Kifizetetlen közvetítői díj')
-            + (siteFilter.size > 0 ? ' (szűrt)' : ' összesen')}
+            + (isFiltered ? ' (szűrt)' : ' összesen')}
           v={ft(grandTotal)}
           strong
         />
@@ -162,37 +206,52 @@ export default function PendingScreen() {
             <Text style={{ fontWeight: '800', fontSize: 16 }}>{ft(g.total)}</Text>
           </View>
           <Divider />
-          {g.persons.map((p) => (
-            <View key={p.key} style={{ gap: 4, paddingVertical: 6 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-                <Text style={{ fontWeight: '700', fontSize: 15, color: C.text, flex: 1 }}>
-                  {isWages ? '👷' : '🤝'} {p.name}
-                </Text>
-                <Badge text={`${p.items.length} nap`} />
-                <Text style={{ fontWeight: '700' }}>{ft(p.total)}</Text>
+          {g.persons.map((p) => {
+            const expKey = `${g.siteId}:${p.key}`;
+            const isOpen = expanded.has(expKey);
+            return (
+              <View key={p.key} style={{ gap: 4, paddingVertical: 6 }}>
+                <Pressable
+                  onPress={() => toggleIn(expanded, setExpanded, expKey)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: S.sm,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Text style={{ fontSize: 13, color: C.sub, width: 14 }}>{isOpen ? '▾' : '▸'}</Text>
+                  <Text style={{ fontWeight: '700', fontSize: 15, color: C.text, flex: 1 }}>
+                    {isWages ? '👷' : '🤝'} {p.name}
+                  </Text>
+                  <Badge text={`${p.items.length} nap`} />
+                  {isOpen ? <Text style={{ fontWeight: '700' }}>{ft(p.total)}</Text> : null}
+                </Pressable>
+                {isOpen ? (
+                  <>
+                    {p.items.map((it) => (
+                      <View key={it.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingLeft: S.lg }}>
+                        <View style={{ flex: 1 }}>
+                          <Check
+                            checked={false}
+                            onToggle={() => payItems([it.id])}
+                            label={`${hd(it.date)} — ${ft(it.amount)}`}
+                            sub={it.detail}
+                          />
+                        </View>
+                      </View>
+                    ))}
+                    <View style={{ paddingLeft: S.lg }}>
+                      <Btn
+                        title={`${p.name}: mind kifizetve (${ft(p.total)})`}
+                        kind="secondary"
+                        small
+                        onPress={() => payItems(p.items.map((i) => i.id))}
+                      />
+                    </View>
+                  </>
+                ) : null}
               </View>
-              {p.items.map((it) => (
-                <View key={it.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingLeft: S.md }}>
-                  <View style={{ flex: 1 }}>
-                    <Check
-                      checked={false}
-                      onToggle={() => payItems([it.id])}
-                      label={`${hd(it.date)} — ${ft(it.amount)}`}
-                      sub={it.detail}
-                    />
-                  </View>
-                </View>
-              ))}
-              <View style={{ paddingLeft: S.md }}>
-                <Btn
-                  title={`${p.name}: mind kifizetve (${ft(p.total)})`}
-                  kind="secondary"
-                  small
-                  onPress={() => payItems(p.items.map((i) => i.id))}
-                />
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </Card>
       ))}
     </Screen>
