@@ -5,7 +5,7 @@ import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Se
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { insertRow, softDeleteRow, getCurrentUserId } from '../../lib/repo';
-import { ft, hd, parseAmount } from '../../lib/format';
+import { ft, hd, todayISO, parseAmount } from '../../lib/format';
 import { attendanceAmount, commissionAmount } from '../../lib/calc';
 import { Attendance, Worker, Site, AppSettings, AttendanceBasis } from '../../lib/types';
 import { notify, confirmDialog } from '../../lib/dialogs';
@@ -21,6 +21,22 @@ export default function DayView() {
 
   const [site, setSite] = useState<string | null>(siteId ?? null);
   const [adding, setAdding] = useState(false);
+  // nem mai napnál a hozzáadó rész zárva indul, kinyitása megerősítést kér
+  const isToday = date === todayISO();
+  const [editOpen, setEditOpen] = useState(false);
+  const showAdd = isToday || editOpen;
+
+  const openEdit = async () => {
+    const past = date < todayISO();
+    const ok = await confirmDialog(
+      'Nem a mai napot szerkeszted',
+      past
+        ? `Ez a nap már elmúlt (${hd(date)}). Biztosan visszamenőleg rögzítesz jelenlétet?`
+        : `Ez a nap még nem jött el (${hd(date)}). Biztosan előre rögzítesz jelenlétet?`,
+      'Szerkesztés',
+    );
+    if (ok) setEditOpen(true);
+  };
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [basis, setBasis] = useState<AttendanceBasis>('daily');
   const [hours, setHours] = useState('8');
@@ -175,7 +191,13 @@ export default function DayView() {
         </View>
       )}
 
-      {site ? (
+      {site && !showAdd ? (
+        <Card>
+          <Btn title="✏️ Jelenlét hozzáadása ehhez a naphoz…" kind="secondary" onPress={() => void openEdit()} />
+        </Card>
+      ) : null}
+
+      {site && showAdd ? (
         <Card>
           <H2>Munkavállalók — koppints a hozzáadáshoz</H2>
           {remainingCount === 0 ? <Sub>Mindenki fel van véve mára. ✅</Sub> : null}
