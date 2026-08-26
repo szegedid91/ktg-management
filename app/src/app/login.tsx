@@ -25,6 +25,21 @@ export default function Login() {
     else router.replace('/');
   };
 
+  /** Fejlesztői gyors-belépés: ha a tesztfiók még nincs, létrehozza. */
+  const quickLogin = async (qEmail: string, qName: string) => {
+    setBusy(true);
+    setError(null);
+    const pw = 'teszt1234';
+    let err = await signIn(qEmail, pw);
+    if (err) {
+      err = await signUp(qEmail, pw, qName);
+      if (!err) err = await signIn(qEmail, pw);
+    }
+    setBusy(false);
+    if (err) setError(err);
+    else router.replace('/');
+  };
+
   return (
     <Screen>
       <View style={{ paddingTop: 80, gap: S.lg }}>
@@ -51,6 +66,22 @@ export default function Login() {
             onPress={() => setMode(mode === 'login' ? 'register' : 'login')}
           />
         </Card>
+
+        {__DEV__ ? (
+          <Card style={{ borderColor: C.accent }}>
+            <Sub>🧪 Teszt-belépés (csak fejlesztői módban látszik)</Sub>
+            <View style={{ flexDirection: 'row', gap: S.md }}>
+              <View style={{ flex: 1 }}>
+                <Btn title="👤 Dani" kind="secondary" disabled={busy}
+                  onPress={() => void quickLogin('dani@teszt.hu', 'Dani')} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Btn title="👤 Anna" kind="secondary" disabled={busy}
+                  onPress={() => void quickLogin('anna@teszt.hu', 'Anna')} />
+              </View>
+            </View>
+          </Card>
+        ) : null}
       </View>
     </Screen>
   );
