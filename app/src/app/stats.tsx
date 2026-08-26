@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
-import { Screen, Card, H2, Sub, KV, Segmented, Divider, Empty } from '../ui/kit';
+import { Screen, Card, H2, Sub, KV, Divider, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { ft, todayISO, monthName } from '../lib/format';
@@ -88,10 +88,12 @@ function Bars({ data }: { data: { label: string; cost: number; revenue: number }
 
 export default function Stats() {
   const [period, setPeriod] = useState<Period>('3months');
-  const start = periodStart(period);
+  // konkrét év / hónap szűrés — ha év van választva, az felülírja a gyors gombokat
+  const [selYear, setSelYear] = useState<number | null>(null);
+  const [selMonth, setSelMonth] = useState<number | null>(null);
 
-  const expenses = useTable<Expense>('expenses').filter((e) => e.expense_date >= start);
-  const attendance = useTable<Attendance>('attendance').filter((a) => a.work_date >= start);
+  const allExpenses = useTable<Expense>('expenses');
+  const allAttendance = useTable<Attendance>('attendance');
   const invoices = useTable<Invoice>('invoices');
   const sites = useTable<Site>('sites');
   const workers = useTable<Worker>('workers');
@@ -99,7 +101,38 @@ export default function Stats() {
   const profiles = useTable<Profile>('profiles');
   const externals = useTable<ExternalPerson>('external_people');
 
-  const paidInvoices = invoices.filter((i) => i.paid_at && i.paid_at >= start);
+  const years = useMemo(() => {
+    const ys = new Set<number>();
+    for (const e of allExpenses) ys.add(Number(e.expense_date.slice(0, 4)));
+    for (const a of allAttendance) ys.add(Number(a.work_date.slice(0, 4)));
+    for (const i of invoices) ys.add(Number(i.invoice_date.slice(0, 4)));
+    ys.add(Number(todayISO().slice(0, 4)));
+    return [...ys].sort((a, b) => b - a);
+  }, [allExpenses, allAttendance, invoices]);
+
+  let start: string; let end = '9999-12-31';
+  if (selYear && selMonth) {
+    start = `${selYear}-${String(selMonth).padStart(2, '0')}-01`;
+    end = selMonth === 12 ? `${selYear + 1}-01-01` : `${selYear}-${String(selMonth + 1).padStart(2, '0')}-01`;
+  } else if (selYear) {
+    start = `${selYear}-01-01`;
+    end = `${selYear + 1}-01-01`;
+  } else {
+    start = periodStart(period);
+  }
+
+  const pickPreset = (p: Period) => { setPeriod(p); setSelYear(null); setSelMonth(null); };
+  const pickYear = (y: number) => {
+    if (selYear === y) { setSelYear(null); setSelMonth(null); } else setSelYear(y);
+  };
+  const pickMonth = (m: number) => {
+    if (selMonth === m) setSelMonth(null);
+    else { setSelMonth(m); if (!selYear) setSelYear(Number(todayISO().slice(0, 4))); }
+  };
+
+  const expenses = allExpenses.filter((e) => e.expense_date >= start && e.expense_date < end);
+  const attendance = allAttendance.filter((a) => a.work_date >= start && a.work_date < end);
+  const paidInvoices = invoices.filter((i) => i.paid_at && i.paid_at >= start && i.paid_at < end);
 
   const byCategory = useMemo(() => {
     const m = new Map<string, number>();
@@ -154,16 +187,58 @@ export default function Stats() {
 
   return (
     <Screen>
-      <Segmented
-        options={[
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {([
           { value: 'month', label: 'Ez a hónap' },
           { value: '3months', label: '3 hónap' },
           { value: 'year', label: 'Idén' },
           { value: 'all', label: 'Összes' },
-        ]}
-        value={period}
-        onChange={setPeriod}
-      />
+        ] as { value: Period; label: string }[]).map((o) => {
+          const on = !selYear && period === o.value;
+          return (
+            <Pressable
+              key={o.value}
+              onPress={() => pickPreset(o.value)}
+              style={{ backgroundColor: on ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+            >
+              <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>{o.label}</Text>
+            </Pressable>
+          );
+        })}
+        <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600', marginLeft: 4 }}>Év:</Text>
+        {years.map((y) => {
+          const on = selYear === y;
+          return (
+            <Pressable
+              key={y}
+              onPress={() => pickYear(y)}
+              style={{ backgroundColor: on ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+            >
+              <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>{on ? '✓ ' : ''}{y}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {selYear ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600' }}>Hónap:</Text>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+            const on = selMonth === m;
+            return (
+              <Pressable
+                key={m}
+                onPress={() => pickMonth(m)}
+                style={{ backgroundColor: on ? C.primary : C.chipBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}
+              >
+                <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>
+                  {monthName(m - 1).slice(0, 3)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
       <Card>
         <H2>Költségek megoszlása</H2>
