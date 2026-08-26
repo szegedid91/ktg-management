@@ -1,7 +1,7 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge, Input } from '../../ui/kit';
@@ -32,6 +32,15 @@ interface Item {
   date: string;
   amount: number;
   detail: string;
+}
+
+// a kijelölés 5 percig megmarad akkor is, ha a felhasználó elnavigál,
+// majd visszatér erre a képernyőre
+const SELECTION_TTL_MS = 5 * 60 * 1000;
+const selectionCache = new Map<string, { ids: string[]; note: string; savedAt: number }>();
+function restoreSelection(key: string) {
+  const c = selectionCache.get(key);
+  return c && Date.now() - c.savedAt < SELECTION_TTL_MS ? c : null;
 }
 
 interface PersonGroup {
@@ -110,11 +119,16 @@ export default function PendingScreen() {
   const [siteFilter, setSiteFilter] = useState<Set<string>>(new Set());
   // ember-szűrő: üres kiválasztás = mindenki látszik
   const [personFilter, setPersonFilter] = useState<Set<string>>(new Set());
-  // alapból mindenki összecsukva; lenyitáskor látszik az összeg és a napi bontás
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // a pipa csak kijelöl — a kifizetés a "Kijelöltek kifizetése" gombbal történik
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [payNote, setPayNote] = useState('');
+  // egyszerre csak egy ember napjai vannak nyitva; másik kinyitása bezárja az előzőt
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // a pipa csak kijelöl — a kifizetés a "Kijelöltek kifizetése" gombbal történik;
+  // a kijelölés 5 percig visszatölthető (lásd selectionCache)
+  const cacheKey = isWages ? 'wages' : 'commissions';
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(restoreSelection(cacheKey)?.ids ?? []));
+  const [payNote, setPayNote] = useState(() => restoreSelection(cacheKey)?.note ?? '');
+  useEffect(() => {
+    selectionCache.set(cacheKey, { ids: [...selected], note: payNote, savedAt: Date.now() });
+  }, [selected, payNote, cacheKey]);
 
   const toggleIn = (set: Set<string>, setter: (s: Set<string>) => void, id: string) => {
     const next = new Set(set);
@@ -163,6 +177,7 @@ export default function PendingScreen() {
     else markCommissionPaid(selectedIds, true, payNote);
     setSelected(new Set());
     setPayNote('');
+    selectionCache.delete(cacheKey);
   };
 
   // kompakt kifizető sáv az alsó menüsor felett, két sorban
@@ -250,11 +265,11 @@ export default function PendingScreen() {
           <Divider />
           {g.persons.map((p) => {
             const expKey = `${g.siteId}:${p.key}`;
-            const isOpen = expanded.has(expKey);
+            const isOpen = expandedKey === expKey;
             return (
               <View key={p.key} style={{ gap: 4, paddingVertical: 6 }}>
                 <Pressable
-                  onPress={() => toggleIn(expanded, setExpanded, expKey)}
+                  onPress={() => setExpandedKey(isOpen ? null : expKey)}
                   style={({ pressed }) => ({
                     flexDirection: 'row', alignItems: 'center', gap: S.sm,
                     opacity: pressed ? 0.7 : 1,
