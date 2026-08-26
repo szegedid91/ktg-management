@@ -1,8 +1,8 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
-import React, { useMemo } from 'react';
-import { View, Text } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -91,21 +91,71 @@ export default function PendingScreen() {
       .sort((a, b) => b.total - a.total);
   }, [attendance, workers, sites, externals, isWages]);
 
-  const grandTotal = groups.reduce((s, g) => s + g.total, 0);
+  // terület-szűrő: üres kiválasztás = minden építkezés látszik
+  const [siteFilter, setSiteFilter] = useState<Set<string>>(new Set());
+  const toggleSite = (id: string) => {
+    const next = new Set(siteFilter);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSiteFilter(next);
+  };
+  const visibleGroups = siteFilter.size === 0 ? groups : groups.filter((g) => siteFilter.has(g.siteId));
+
+  const grandTotal = visibleGroups.reduce((s, g) => s + g.total, 0);
   const payItems = (ids: string[]) => isWages ? markAttendancePaid(ids, true) : markCommissionPaid(ids, true);
 
   return (
     <Screen>
       <Stack.Screen options={{ title: isWages ? 'Kifizetetlen bérek' : 'Kifizetetlen közvetítői díjak' }} />
 
+      {groups.length > 1 ? (
+        <Card>
+          <Sub>Terület — pipáld ki, amelyikre szűrni akarsz:</Sub>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+            <Pressable
+              onPress={() => setSiteFilter(new Set())}
+              style={{
+                backgroundColor: siteFilter.size === 0 ? C.primary : C.chipBg,
+                paddingHorizontal: S.md, paddingVertical: 7, borderRadius: 999,
+              }}
+            >
+              <Text style={{ color: siteFilter.size === 0 ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>
+                Mind
+              </Text>
+            </Pressable>
+            {groups.map((g) => {
+              const on = siteFilter.has(g.siteId);
+              return (
+                <Pressable
+                  key={g.siteId}
+                  onPress={() => toggleSite(g.siteId)}
+                  style={{
+                    backgroundColor: on ? C.primary : C.chipBg,
+                    paddingHorizontal: S.md, paddingVertical: 7, borderRadius: 999,
+                  }}
+                >
+                  <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>
+                    {on ? '✓ ' : ''}{g.siteName} · {ft(g.total)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+      ) : null}
+
       <Card style={{ borderColor: grandTotal > 0 ? C.accent : C.border }}>
-        <KV k={isWages ? 'Összes kifizetetlen bér (nettó)' : 'Összes kifizetetlen közvetítői díj'} v={ft(grandTotal)} strong />
+        <KV
+          k={(isWages ? 'Kifizetetlen bér' : 'Kifizetetlen közvetítői díj')
+            + (siteFilter.size > 0 ? ' (szűrt)' : ' összesen')}
+          v={ft(grandTotal)}
+          strong
+        />
         <Sub>A pipa rögzíti, hogy ki és mikor fizette — ez a te egyenlegedet terheli.</Sub>
       </Card>
 
-      {groups.length === 0 ? <Empty text="Nincs függő tétel. ✅" /> : null}
+      {visibleGroups.length === 0 ? <Empty text="Nincs függő tétel. ✅" /> : null}
 
-      {groups.map((g) => (
+      {visibleGroups.map((g) => (
         <Card key={g.siteId}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <H2>🏗️ {g.siteName}</H2>
