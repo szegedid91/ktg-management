@@ -126,7 +126,14 @@ export default function NewExpense() {
   const save = async () => {
     if (!hasAmount || saving) return;
     setSaving(true);
+    try {
+      await doSave();
+    } finally {
+      setSaving(false);
+    }
+  };
 
+  const doSave = async () => {
     const catName = categories.find((c) => c.id === category)?.name ?? '';
     // Szerszám/eszköz vásárlásnál felajánljuk az eszköz-nyilvántartásba vételt
     if (/szerszám|eszköz/i.test(catName)) {
@@ -144,8 +151,13 @@ export default function NewExpense() {
     }
 
     const amounts = vatStateToAmounts(vat);
-    // 0 terület → közös költség; 1 → sima; több → soronként megosztva a %-ok szerint
-    const targets: (string | null)[] = siteIds.length ? siteIds : [null];
+    // 0 terület → közös költség; 1 → sima; több → soronként megosztva a %-ok
+    // szerint. A 0%-ra állított területek kiesnek, MIELŐTT a kerekítési
+    // maradékot az utolsó sorra terhelnénk (különben -1 Ft-os sor keletkezhet).
+    const chosen = siteIds.filter((s) => (splits[s] ?? 0) >= 0.5);
+    const targets: (string | null)[] = siteIds.length
+      ? (chosen.length ? chosen : [siteIds[0]])
+      : [null];
     let remNet = amounts.net; let remVat = amounts.vat; let remGross = amounts.gross;
     let expenseId: string | null = null;
     targets.forEach((sid, i) => {
@@ -171,6 +183,7 @@ export default function NewExpense() {
       if (!expenseId) expenseId = id;
     });
 
+    let photoFails = 0;
     for (const photo of photos) {
       if (!expenseId) break;
       try {
@@ -178,10 +191,15 @@ export default function NewExpense() {
         const bin = photo.base64 ? Uint8Array.from(atob(photo.base64), (c) => c.charCodeAt(0)) : null;
         if (!bin) continue;
         const { error } = await supabase.storage.from('receipts').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
-        if (!error) insertRow('expense_photos', { expense_id: expenseId, storage_path: path });
+        if (error) photoFails++;
+        else insertRow('expense_photos', { expense_id: expenseId, storage_path: path });
       } catch {
-        // offline — a költség fotó nélkül mentődött
+        photoFails++; // offline — a költség fotó nélkül mentődött
       }
+    }
+    if (photoFails > 0) {
+      notify('Fotó nem került fel',
+        `A költség elmentve, de ${photoFails} fotót nem sikerült feltölteni (valószínűleg nincs internet). Később a költség adatlapján újra hozzáadhatod.`);
     }
     smartBack();
   };

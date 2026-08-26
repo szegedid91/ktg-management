@@ -46,4 +46,12 @@ describe('Magyar formázás', () => {
   it('negatív összeg', () => expect(ft(-94000)).toBe('-94 000 Ft'));
   it('dátum', () => expect(hd('2026-08-26')).toBe('2026.08.26.'));
   it('összeg-parse szóközökkel', () => expect(parseAmount('1 250 000 Ft')).toBe(1250000));
+  it('összeg-parse pontozott ezres tagolással', () => expect(parseAmount('1.250.000')).toBe(1250000));
+  it('összeg-parse vesszős ezres tagolással', () => expect(parseAmount('1,250,000')).toBe(1250000));
+  it('összeg-parse rövid ezres tagolással', () => expect(parseAmount('1.250')).toBe(1250));
+  it('összeg-parse tizedesvesszővel', () => expect(parseAmount('27,5')).toBe(27.5));
+  it('összeg-parse tizedesponttal', () => expect(parseAmount('27.5')).toBe(27.5));
+  it('összeg-parse vegyes tagolás+tizedes', () => expect(parseAmount('1.250.000,50')).toBe(1250000.5));
+  it('összeg-parse negatív', () => expect(parseAmount('-500')).toBe(-500));
+  it('összeg-parse üres', () => expect(parseAmount('')).toBe(0));
 });

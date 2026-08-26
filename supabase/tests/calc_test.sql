@@ -5,7 +5,34 @@
 -- =============================================================
 begin;
 
+-- ---------- Tiszta lap ----------
+-- A teszt üres adatbázist feltételez; élő fejlesztői DB-n is futtatható,
+-- mert a tranzakció végi ROLLBACK miatt semmilyen törlés nem marad meg.
+update public.app_settings set updated_by = null;
+update public.sites set status = 'active', closed_at = null, closed_by = null where status = 'closed';
+delete from public.notification_queue;
+delete from public.equipment_moves;
+delete from public.equipment;
+delete from public.expense_photos;
+delete from public.comments;
+delete from public.settlements;
+delete from public.invoices;
+delete from public.attendance;
+delete from public.expenses;
+delete from public.workers;
+delete from public.external_people;
+delete from public.sites;
+delete from public.expense_categories where is_builtin = false;
+delete from public.allowed_emails;
+delete from public.profiles;
+delete from auth.users;
+
 -- ---------- Tesztfelhasználók ----------
+-- a zárt regisztráció miatt előbb engedélyezzük a teszt-e-maileket
+insert into public.allowed_emails (email, added_by)
+values ('anna@test.hu', null), ('bela@test.hu', null)
+on conflict (email) do nothing;
+
 insert into auth.users (id, email, raw_user_meta_data)
 values ('00000000-0000-0000-0000-00000000000a', 'anna@test.hu', '{"display_name":"Anna"}'::jsonb);
 insert into auth.users (id, email, raw_user_meta_data)
@@ -13,11 +40,16 @@ values ('00000000-0000-0000-0000-00000000000b', 'bela@test.hu', '{"display_name"
 
 do $$
 begin
-  -- automatikus profil + egyenlő elosztás
+  -- automatikus profil; az új felhasználó NEM borítja a részesedéseket:
+  -- első user 100%, a többi 0% (a felosztást a set_profit_shares állítja)
   assert (select count(*) from public.profiles) = 2, 'Profilok létrejötte';
   assert (select sum(profit_share_percent) from public.profiles) = 100, 'Részesedés összege 100';
-  assert (select profit_share_percent from public.profiles where id = '00000000-0000-0000-0000-00000000000a') = 50, '50-50 elosztás';
+  assert (select profit_share_percent from public.profiles where id = '00000000-0000-0000-0000-00000000000a') = 100, 'Első felhasználó 100%';
+  assert (select profit_share_percent from public.profiles where id = '00000000-0000-0000-0000-00000000000b') = 0, 'Új felhasználó 0%';
 end $$;
+
+-- a további tesztek 50-50-es felosztást feltételeznek
+update public.profiles set profit_share_percent = 50;
 
 -- ---------- Alapadatok ----------
 update public.app_settings set individual_project_rate = 100000, default_vat_rate = 27 where id = 1;

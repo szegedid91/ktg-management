@@ -10,13 +10,23 @@ type Row = Record<string, any> & { id: string; updated_at?: string };
 
 export interface OutboxOp {
   opId: string;
-  kind: 'upsert' | 'rpc';
+  /** upsert: teljes sor (insert); update: mezőszintű patch; rpc: függvényhívás */
+  kind: 'upsert' | 'update' | 'rpc';
   table?: SyncTable;
   row?: Row;
+  id?: string;
+  patch?: Record<string, any>;
   fn?: string;
   args?: Record<string, any>;
   queuedAt: string;
   lastError?: string;
+}
+
+/** Az op melyik sor(oka)t érinti — pending-védelemhez és rollbackhez */
+export function opRowIds(op: OutboxOp, table: SyncTable): string[] {
+  if (op.kind === 'upsert' && op.table === table && op.row) return [String(op.row.id)];
+  if (op.kind === 'update' && op.table === table && op.id) return [String(op.id)];
+  return [];
 }
 
 const PREFIX = 'ktg:';
@@ -28,10 +38,25 @@ class Store {
   private cursors: Record<string, string> = {};
   private listeners = new Set<() => void>();
   private loaded = false;
+  private loadPromise: Promise<void> | null = null;
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
   version = 0;
 
+  /** Betöltés-váró: a sync és az írások megvárhatják a diszk-állapotot */
+  whenLoaded(): Promise<void> {
+    if (this.loaded) return Promise.resolve();
+    if (!this.loadPromise) this.loadPromise = this.load();
+    return this.loadPromise;
+  }
+
   async load(): Promise<void> {
+    if (this.loaded) return;
+    if (this.loadPromise) return this.loadPromise;
+    this.loadPromise = this.doLoad();
+    return this.loadPromise;
+  }
+
+  private async doLoad(): Promise<void> {
     if (this.loaded) return;
     const keys = [
       ...SYNC_TABLES.map((t) => PREFIX + 't:' + t),
@@ -44,12 +69,23 @@ class Store {
       if (!value) continue;
       try {
         const parsed = JSON.parse(value);
-        if (key === PREFIX + 'outbox') this.outbox = parsed;
-        else if (key === PREFIX + 'failed') this.failed = parsed;
-        else if (key === PREFIX + 'cursors') this.cursors = parsed;
-        else {
+        // MERGE, nem felülírás: ha a betöltés alatt már történt írás
+        // (korai sync vagy felhasználói művelet), a memória a frissebb
+        if (key === PREFIX + 'outbox') {
+          const memIds = new Set(this.outbox.map((o) => o.opId));
+          this.outbox = [...(parsed as OutboxOp[]).filter((o) => !memIds.has(o.opId)), ...this.outbox];
+        } else if (key === PREFIX + 'failed') {
+          const memIds = new Set(this.failed.map((o) => o.opId));
+          this.failed = [...(parsed as OutboxOp[]).filter((o) => !memIds.has(o.opId)), ...this.failed];
+        } else if (key === PREFIX + 'cursors') {
+          this.cursors = { ...parsed, ...this.cursors };
+        } else {
           const table = key.slice((PREFIX + 't:').length) as SyncTable;
-          this.tables.set(table, new Map(parsed.map((r: Row) => [String(r.id), r])));
+          const map = this.tables.get(table) ?? new Map<string, Row>();
+          for (const r of parsed as Row[]) {
+            if (!map.has(String(r.id))) map.set(String(r.id), r);
+          }
+          this.tables.set(table, map);
         }
       } catch {
         // sérült cache — kihagyjuk, a következő sync újratölti
@@ -96,9 +132,7 @@ class Store {
     if (!map) { map = new Map(); this.tables.set(table, map); }
     if (fromServer) {
       // ha van függő lokális írás erre a sorra, a lokális marad, amíg fel nem megy
-      const pending = this.outbox.some(
-        (op) => op.kind === 'upsert' && op.table === table && String(op.row?.id) === String(row.id),
-      );
+      const pending = this.outbox.some((op) => opRowIds(op, table).includes(String(row.id)));
       if (pending) return;
     }
     map.set(String(row.id), row);
@@ -106,12 +140,30 @@ class Store {
     this.emit();
   }
 
+  /** Szerver-állapot kényszerített visszaírása (elutasított művelet rollbackje) */
+  putServer(table: SyncTable, row: Row) {
+    let map = this.tables.get(table);
+    if (!map) { map = new Map(); this.tables.set(table, map); }
+    map.set(String(row.id), row);
+    this.persistTable(table);
+    this.emit();
+  }
+
+  /** Lokális sor eltávolítása (pl. a szerver által elutasított beszúrásé) */
+  removeLocal(table: SyncTable, id: string) {
+    const map = this.tables.get(table);
+    if (map?.delete(String(id))) {
+      this.persistTable(table);
+      this.emit();
+    }
+  }
+
   putManyLocal(table: SyncTable, rows: Row[], fromServer = false) {
     if (rows.length === 0) return;
     let map = this.tables.get(table);
     if (!map) { map = new Map(); this.tables.set(table, map); }
     const pendingIds = fromServer
-      ? new Set(this.outbox.filter((op) => op.kind === 'upsert' && op.table === table).map((op) => String(op.row!.id)))
+      ? new Set(this.outbox.flatMap((op) => opRowIds(op, table)))
       : new Set<string>();
     for (const row of rows) {
       if (pendingIds.has(String(row.id))) continue;

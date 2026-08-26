@@ -55,9 +55,24 @@ export function dayShort(dow: number): string {
   return DAYS_SHORT[dow] ?? '';
 }
 
-/** Szám-input értelmezése: szóközök, Ft, vessző kezelése */
+/** Szám-input értelmezése: szóköz, Ft, ezres tagolás (1.250.000 / 1,250,000)
+ *  és tizedesvessző kezelése. A pontozott ezres tagolást NEM szabad
+ *  tizedesnek nézni (különben 1.250.000-ből 1,25 Ft lenne). */
 export function parseAmount(input: string): number {
-  const cleaned = input.replace(/[^\d,.-]/g, '').replace(',', '.');
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? 0 : n;
+  if (!input) return 0;
+  let s = String(input).replace(/\s+/g, '').replace(/[^\d.,-]/g, '');
+  if (/^-?\d{1,3}([.,]\d{3})+$/.test(s)) {
+    // tiszta ezres tagolás: minden elválasztó törlendő
+    s = s.replace(/[.,]/g, '');
+  } else {
+    // az utolsó , vagy . a tizedesjel, a korábbiak ezres elválasztók
+    const lastSep = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'));
+    if (lastSep >= 0) {
+      const intPart = s.slice(0, lastSep).replace(/[.,]/g, '');
+      const frac = s.slice(lastSep + 1).replace(/[.,]/g, '');
+      s = `${intPart}.${frac}`;
+    }
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
 }

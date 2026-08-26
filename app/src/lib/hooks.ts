@@ -29,7 +29,7 @@ export function useRow<T = any>(table: SyncTable, id: string | undefined): T | u
 }
 
 export function useSyncStatus(): SyncStatus {
-  const [status, setStatus] = useState<SyncStatus>({ syncing: false, lastSyncAt: null, lastError: null, pendingOps: 0 });
+  const [status, setStatus] = useState<SyncStatus>({ syncing: false, lastSyncAt: null, lastError: null, pendingOps: 0, failedOps: 0 });
   useEffect(() => subscribeSyncStatus(setStatus), []);
   return status;
 }

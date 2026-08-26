@@ -15,11 +15,19 @@ Deno.serve(async (req) => {
   }
   try {
     const { image_base64, media_type } = await req.json();
-    if (!image_base64) {
+    if (!image_base64 || typeof image_base64 !== 'string') {
       return new Response(JSON.stringify({ error: 'image_base64 hiányzik' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    // méretkorlát: ~8 MB base64 (≈6 MB kép) — költség-visszaélés ellen
+    if (image_base64.length > 8_000_000) {
+      return new Response(JSON.stringify({ error: 'A kép túl nagy (max ~6 MB). Készíts kisebb felbontású fotót.' }), {
+        status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const ALLOWED_MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic']);
+    const mt = ALLOWED_MEDIA.has(media_type) ? media_type : 'image/jpeg';
 
     const client = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 
@@ -31,7 +39,7 @@ Deno.serve(async (req) => {
         content: [
           {
             type: 'image',
-            source: { type: 'base64', media_type: media_type ?? 'image/jpeg', data: image_base64 },
+            source: { type: 'base64', media_type: mt, data: image_base64 },
           },
           {
             type: 'text',

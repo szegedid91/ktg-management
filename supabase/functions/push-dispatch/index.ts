@@ -33,6 +33,18 @@ Deno.serve(async (req) => {
   );
   const { job = 'drain' } = await req.json().catch(() => ({}));
 
+  // a digest/overdue csak cronból (service kulccsal) futhat — app-hívás
+  // csak a saját sorát üríttetheti (drain)
+  if (job !== 'drain') {
+    const auth = req.headers.get('Authorization') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!serviceKey || auth !== `Bearer ${serviceKey}`) {
+      return new Response(JSON.stringify({ error: 'Ez a feladat csak ütemezett (service) hívásból futtatható.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
   const { data: profiles } = await supabase.from('profiles').select('*');
   const tokenOf = (id: string) => profiles?.find((p) => p.id === id)?.push_token as string | null;
 

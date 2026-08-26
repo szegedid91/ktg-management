@@ -124,8 +124,11 @@ export default function Audit() {
       let x = q.order('changed_at', { ascending: false }).limit(limit);
       if (userFilter) x = x.eq('changed_by', userFilter);
       if (tableFilter) x = x.eq('table_name', tableFilter);
-      if (dateFrom) x = x.gte('changed_at', dateFrom);
-      if (dateToExcl) x = x.lt('changed_at', dateToExcl);
+      // a changed_at UTC — a helyi naptári nap éjfélét váltjuk át UTC-re,
+      // hogy a hajnali események is a jó napra essenek
+      const localMidnightUTC = (d: string) => new Date(`${d}T00:00:00`).toISOString();
+      if (dateFrom) x = x.gte('changed_at', localMidnightUTC(dateFrom));
+      if (dateToExcl) x = x.lt('changed_at', localMidnightUTC(dateToExcl));
       if (workerFilter) {
         // minden, ami a munkavállalóhoz köthető: a saját adatlapja,
         // a jelenlétei, és a rá írt kommentek

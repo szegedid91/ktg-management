@@ -69,6 +69,22 @@ export function workerToForm(w: Worker): WorkerFormValues {
   };
 }
 
+/** Mentés előtti ellenőrzés — hibaszöveg vagy null. A DB is kikényszeríti
+ *  (check constraintek), de itt érthető üzenetet kap a felhasználó. */
+export function validateWorkerForm(f: WorkerFormValues): string | null {
+  if (!f.name.trim()) return 'A név megadása kötelező.';
+  if (f.referrer_kind !== 'none' && f.commission_mode) {
+    const v = f.commission_value ? parseAmount(f.commission_value) : null;
+    if (v != null && v < 0) return 'A jutalék nem lehet negatív.';
+    if (f.commission_mode === 'percent' && v != null && v > 100) return 'A százalékos jutalék legfeljebb 100% lehet.';
+    if (f.commission_mode === 'fixed' && !f.commission_unit) return 'Fix összegű jutaléknál add meg az egységet (óra / nap / projekt).';
+  }
+  for (const [label, raw] of [['órabér', f.hourly_rate], ['napi díj', f.daily_rate], ['projektdíj', f.project_rate]] as const) {
+    if (raw && parseAmount(raw) < 0) return `A(z) ${label} nem lehet negatív.`;
+  }
+  return null;
+}
+
 export function formToRow(f: WorkerFormValues): Partial<Worker> {
   return {
     name: f.name.trim(),

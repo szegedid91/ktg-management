@@ -29,7 +29,10 @@ export async function registerPushToken(): Promise<void> {
     const token = (await Notifications.getExpoPushTokenAsync()).data;
     const me = getCurrentUserId();
     if (token && me) {
-      updateRow('profiles', me, { push_token: token });
+      // közvetlen szerver-írás: bejelentkezéskor a lokális profiles-tükör
+      // még üres lehet, az updateRow ilyenkor némán kilépne
+      const { error } = await supabase.from('profiles').update({ push_token: token }).eq('id', me);
+      if (error) updateRow('profiles', me, { push_token: token }); // offline: tükrön át, sync majd feltolja
     }
   } catch {
     // Expo Go / szimulátor — push nélkül megy tovább

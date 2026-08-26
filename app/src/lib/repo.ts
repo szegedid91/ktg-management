@@ -26,29 +26,33 @@ export function getCurrentUserId(): string | null {
   return currentUserId;
 }
 
+// táblák, amelyeknek nincs created_by oszlopa (a comments author_id-t használ)
+const NO_CREATED_BY = new Set<SyncTable>(['comments']);
+
 /** Új rekord: lokálisan azonnal él, outboxon át szinkronizál */
 export function insertRow<T extends Record<string, any>>(table: SyncTable, values: Partial<T>): string {
   const id = (values.id as string) ?? newId();
   const row: Record<string, any> = {
     ...values,
     id,
-    created_by: values.created_by ?? currentUserId,
     created_at: nowISO(),
     updated_at: nowISO(),
     deleted_at: null,
   };
+  if (!NO_CREATED_BY.has(table)) row.created_by = values.created_by ?? currentUserId;
   store.putLocal(table, row as any);
   store.enqueue({ opId: newId(), kind: 'upsert', table, row: row as any, queuedAt: nowISO() });
   void syncNow();
   return id;
 }
 
+/** Mezőszintű módosítás: csak a patch oszlopai mennek fel, így egy elavult
+ *  lokális tükör nem írja felül a másik felhasználó közbeni módosításait. */
 export function updateRow(table: SyncTable, id: string, patch: Record<string, any>): void {
   const existing = store.get(table, id);
   if (!existing) return;
-  const row = { ...existing, ...patch, updated_at: nowISO() };
-  store.putLocal(table, row);
-  store.enqueue({ opId: newId(), kind: 'upsert', table, row, queuedAt: nowISO() });
+  store.putLocal(table, { ...existing, ...patch, updated_at: nowISO() });
+  store.enqueue({ opId: newId(), kind: 'update', table, id: String(id), patch, queuedAt: nowISO() });
   void syncNow();
 }
 

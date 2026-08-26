@@ -10,7 +10,7 @@ import { ft, hd } from '../../lib/format';
 import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings } from '../../lib/types';
 import { Comments } from '../../components/Comments';
 import { CallButton } from '../workers/index';
-import { WorkerForm, workerToForm, formToRow, WorkerFormValues } from '../../components/WorkerForm';
+import { WorkerForm, workerToForm, formToRow, validateWorkerForm, WorkerFormValues } from '../../components/WorkerForm';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function WorkerDetail() {
@@ -75,6 +75,8 @@ export default function WorkerDetail() {
 
   const saveEdit = async () => {
     if (!form) return;
+    const err = validateWorkerForm(form);
+    if (err) { notify('Hiba', err); return; }
     updateRow('workers', worker.id, formToRow(form));
     if (form.bank_account.trim()) {
       try {

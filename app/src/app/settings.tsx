@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check } from '../ui/kit';
 import { S, C } from '../ui/theme';
-import { useTable } from '../lib/hooks';
-import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow } from '../lib/repo';
+import { useTable, useOnlineView } from '../lib/hooks';
+import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow, fetchView } from '../lib/repo';
+import { syncNow } from '../lib/sync';
+import { supabase } from '../lib/supabase';
 import { parseAmount } from '../lib/format';
 import { AppSettings, Profile, ExpenseCategory } from '../lib/types';
-import { notify } from '../lib/dialogs';
+import { notify, confirmDialog } from '../lib/dialogs';
 
 function RateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
@@ -24,6 +26,30 @@ export default function Settings() {
   const [threshold, setThreshold] = useState('');
   const [newCat, setNewCat] = useState('');
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  // zárt regisztráció: csak az itt engedélyezett e-mailek regisztrálhatnak
+  const allowed = useOnlineView<{ email: string }[]>(
+    'allowed-emails',
+    () => fetchView('allowed_emails', (q) => q.order('email')),
+    [],
+  );
+  const [newEmail, setNewEmail] = useState('');
+
+  const addAllowed = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) { notify('Hiba', 'Adj meg érvényes e-mail címet.'); return; }
+    const { error } = await supabase.from('allowed_emails').insert({ email });
+    if (error && !error.message.includes('duplicate')) notify('Hiba', error.message);
+    setNewEmail('');
+    void allowed.refresh();
+  };
+
+  const removeAllowed = async (email: string) => {
+    if (!await confirmDialog('Hozzáférés visszavonása', `${email}\n\nEzzel az e-mail címmel többé nem lehet regisztrálni. A már létező fiókot nem érinti.`, 'Visszavonás', true)) return;
+    const { error } = await supabase.from('allowed_emails').delete().eq('email', email);
+    if (error) notify('Hiba', error.message);
+    void allowed.refresh();
+  };
 
   useEffect(() => {
     if (settings && loadedFor !== 'rates') {
@@ -63,18 +89,18 @@ export default function Settings() {
   };
 
   const saveShares = async () => {
-    const sum = Object.values(shares).reduce((s, v) => s + parseAmount(v), 0);
-    if (Math.abs(sum - 100) > 0.01) {
-      notify('Hiba', `A részesedések összege 100% kell legyen (most: ${sum}%).`);
+    // a DB pontosan 100-at követel — a kliens is
+    const sum = Math.round(Object.values(shares).reduce((s, v) => s + parseAmount(v), 0) * 100) / 100;
+    if (sum !== 100) {
+      notify('Hiba', `A részesedések összege pontosan 100% kell legyen (most: ${sum}%).`);
       return;
     }
     try {
       await callRpc('set_profit_shares', {
         p_shares: profiles.map((p) => ({ user_id: p.id, percent: parseAmount(shares[p.id] ?? '0') })),
       });
-      for (const p of profiles) {
-        updateRow('profiles', p.id, { profit_share_percent: parseAmount(shares[p.id] ?? '0') });
-      }
+      // a friss értékeket a szinkron hozza le — mások profilját nem írjuk felül
+      void syncNow();
       notify('Mentve', 'Profitrészesedések frissítve.');
     } catch (e: any) {
       notify('Hiba', 'A részesedés módosításához internet kell.\n' + String(e?.message ?? e));
@@ -144,6 +170,25 @@ export default function Settings() {
             <Btn title="Értesítések mentése" onPress={saveNotif} />
           </>
         ) : null}
+      </Card>
+
+      <Card>
+        <H2>🔐 Hozzáférés</H2>
+        <Sub>Csak az itt engedélyezett e-mail címekkel lehet regisztrálni. A meglévő fiókokat a lista nem érinti.</Sub>
+        {(allowed.data ?? []).map((a) => (
+          <View key={a.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Body>{a.email}</Body>
+            <Btn title="Visszavon" kind="ghost" small onPress={() => void removeAllowed(a.email)} />
+          </View>
+        ))}
+        {allowed.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — a lista kezeléséhez internet kell.</Sub> : null}
+        <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+          <View style={{ flex: 1 }}>
+            <Input label="Új engedélyezett e-mail" value={newEmail} onChangeText={setNewEmail}
+              placeholder="pl. tars@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
+          </View>
+          <Btn title="Engedélyez" small onPress={() => void addAllowed()} />
+        </View>
       </Card>
 
       <Card>

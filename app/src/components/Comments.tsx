@@ -24,7 +24,14 @@ export function Comments({ entityType, entityId }: { entityType: Comment['entity
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'comments' },
         (payload) => {
-          const row = (payload.new ?? payload.old) as Comment | undefined;
+          // hard DELETE-nél a payload.old csak az id-t hozza — a csonk sorral
+          // nem írjuk felül a kommentet, hanem eltávolítjuk a tükörből
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as any)?.id;
+            if (oldId) store.removeLocal('comments', String(oldId));
+            return;
+          }
+          const row = payload.new as Comment | undefined;
           if (row?.id) store.putLocal('comments', row as any, true);
         })
       .subscribe();

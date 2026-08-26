@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { router } from 'expo-router';
 import { Screen, Btn } from '../../ui/kit';
-import { WorkerForm, emptyWorkerForm, formToRow } from '../../components/WorkerForm';
+import { WorkerForm, emptyWorkerForm, formToRow, validateWorkerForm } from '../../components/WorkerForm';
 import { insertRow, callRpc } from '../../lib/repo';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
@@ -9,7 +9,8 @@ export default function NewWorker() {
   const [form, setForm] = useState(emptyWorkerForm());
 
   const save = async () => {
-    if (!form.name.trim()) return;
+    const err = validateWorkerForm(form);
+    if (err) { notify('Hiba', err); return; }
     const id = insertRow('workers', formToRow(form));
     if (form.bank_account.trim()) {
       try {

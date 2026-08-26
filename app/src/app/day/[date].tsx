@@ -5,6 +5,7 @@ import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Se
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { insertRow, softDeleteRow, getCurrentUserId } from '../../lib/repo';
+import { store } from '../../lib/store';
 import { ft, hd, todayISO, parseAmount } from '../../lib/format';
 import { attendanceAmount, commissionAmount } from '../../lib/calc';
 import { Attendance, Worker, Site, AppSettings, AttendanceBasis } from '../../lib/types';
@@ -50,6 +51,12 @@ export default function DayView() {
   const workerName = (id: string) => workers.find((w) => w.id === id)?.name ?? '?';
   const siteName = (id: string) => allSites.find((s) => s.id === id)?.name ?? '?';
 
+  /** Dupla koppintás elleni védelem: közvetlenül a store-ból nézzük,
+   *  mert a React-állapot két gyors tap között még nem frissül. */
+  const alreadyAdded = (workerId: string) =>
+    store.getAll('attendance').some((a: any) =>
+      a.work_date === date && a.site_id === site && a.worker_id === workerId && !a.deleted_at);
+
   const resolveRate = (w: Worker, b: AttendanceBasis): number => {
     if (!settings) return 0;
     const co = w.worker_type === 'company';
@@ -62,7 +69,7 @@ export default function DayView() {
   };
 
   const addEntry = () => {
-    if (!site || !workerId) return;
+    if (!site || !workerId || alreadyAdded(workerId)) return;
     const w = workers.find((x) => x.id === workerId)!;
     const mult = half ? 0.5 : 1;
     const rate = rateOverride ? parseAmount(rateOverride) : resolveRate(w, basis);
@@ -101,7 +108,7 @@ export default function DayView() {
     const existing = new Set(dayRowsForSite.map((a) => a.worker_id));
     let n = 0;
     for (const a of attendance.filter((x) => x.site_id === site && x.work_date === prev)) {
-      if (existing.has(a.worker_id)) continue;
+      if (existing.has(a.worker_id) || alreadyAdded(a.worker_id)) continue;
       const isProject = a.pay_basis === 'project';
       const w = workers.find((x) => x.id === a.worker_id);
       insertRow('attendance', {
@@ -132,7 +139,7 @@ export default function DayView() {
    *  elszámolásával. Projektdíjasnál díj nélküli jelenlét megy, hogy a
    *  projektdíj véletlenül se terhelődjön újra — az a részletes űrlapról megy. */
   const quickAdd = (w: Worker) => {
-    if (!site) return;
+    if (!site || alreadyAdded(w.id)) return;
     const b: AttendanceBasis = w.default_pay_basis === 'project' ? 'presence' : (w.default_pay_basis ?? 'daily');
     const h = b === 'hourly' ? 8 : null;
     const rate = b === 'presence' ? 0 : resolveRate(w, b);

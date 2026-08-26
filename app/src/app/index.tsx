@@ -6,6 +6,9 @@ import { C, S } from '../ui/theme';
 import { useTable, useSyncStatus, useOnlineView } from '../lib/hooks';
 import { ft, todayISO, hd } from '../lib/format';
 import { fetchView } from '../lib/repo';
+import { store } from '../lib/store';
+import { syncNow } from '../lib/sync';
+import { confirmDialog } from '../lib/dialogs';
 import { Site, Expense, Attendance, Invoice, UserBalance } from '../lib/types';
 import { useAuth } from '../lib/auth';
 
@@ -89,6 +92,36 @@ function DashboardInner() {
           <Sub style={{ color: C.warning }}>
             ⏳ {sync.pendingOps} művelet vár szinkronizálásra{sync.lastError ? ` — ${sync.lastError}` : ''}
           </Sub>
+        </Card>
+      ) : null}
+
+      {sync.failedOps > 0 ? (
+        <Card style={{ backgroundColor: '#FDECEA', borderColor: C.danger }}>
+          <Sub style={{ color: C.danger, fontWeight: '700' }}>
+            ⛔ {sync.failedOps} műveletet elutasított a szerver — ezek nem kerültek mentésre.
+          </Sub>
+          {store.getFailed()[0]?.lastError ? (
+            <Sub style={{ color: C.danger }}>{store.getFailed()[0].lastError}</Sub>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <View style={{ flex: 1 }}>
+              <Btn title="Újrapróbálás" kind="secondary" small onPress={() => {
+                store.getFailed().forEach((o) => store.retryFailed(o.opId));
+                void syncNow();
+              }} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Btn title="Elvetés" kind="ghost" small onPress={() => {
+                void confirmDialog('Elutasított műveletek elvetése',
+                  'A sikertelen műveletek végleg törlődnek a sorból. A szerver állapota marad érvényben.',
+                  'Elvetés', true).then((ok) => {
+                  if (!ok) return;
+                  store.getFailed().forEach((o) => store.discardFailed(o.opId));
+                  void syncNow();
+                });
+              }} />
+            </View>
+          </View>
         </Card>
       ) : null}
 
