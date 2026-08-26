@@ -264,6 +264,7 @@ export default function DayView() {
         </Card>
       ) : null}
 
+      {site ? (
       <Card>
         <H2>Napi bontás</H2>
         {dayRowsForSite.length === 0 ? <Empty text="Nincs jelenléti bejegyzés ezen a napon." /> : null}
@@ -312,6 +313,7 @@ export default function DayView() {
           <KV k="Aznapi számlázott bevétel" v={ft(dayInvoices.reduce((s, i) => s + Number(i.net_amount), 0))} />
         ) : null}
       </Card>
+      ) : null}
     </Screen>
   );
 }
