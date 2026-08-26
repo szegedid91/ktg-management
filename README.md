@@ -54,6 +54,18 @@ npm run web              # vagy: npm run ios / npm run android
 Az `app/.env` alapból a lokális Supabase-re mutat
 (`http://127.0.0.1:54321` + a CLI által kiírt publishable key).
 
+### Demo adatok
+
+A `supabase/seed_demo.sql` négy hónapnyi életszerű adatot tölt be
+(3 építkezés — az egyik lezárva —, 15 munkavállaló, ~400 jelenléti nap,
+vegyes költségek mindkét felhasználótól, havi számlák, rendezés).
+Előbb lépj be egyszer mindkét tesztfiókkal (Dani/Anna gomb), majd:
+
+```bash
+docker exec -i $(docker ps --format '{{.Names}}' | grep supabase_db) \
+  psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seed_demo.sql
+```
+
 ### Tesztek
 
 ```bash
