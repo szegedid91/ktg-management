@@ -111,7 +111,6 @@ export default function Dashboard() {
             </>
           )
         ) : <Sub>Egyenleg betöltése…</Sub>}
-        <Btn title="Elszámolás megnyitása" kind="ghost" small onPress={() => router.push('/settlement')} />
       </Card>
 
       <MenuGrid />
