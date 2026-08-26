@@ -3,10 +3,11 @@ import { View } from 'react-native';
 import { Screen, Card, H2, Sub, Body, Btn, Input, Picker, Empty, Badge } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { insertRow, getCurrentUserId } from '../lib/repo';
+import { insertRow, softDeleteRow, getCurrentUserId } from '../lib/repo';
 import { hdt } from '../lib/format';
 import { Equipment, EquipmentMove, Site, Profile } from '../lib/types';
 import { Comments } from '../components/Comments';
+import { confirmDialog } from '../lib/dialogs';
 
 export default function EquipmentScreen() {
   const equipment = useTable<Equipment>('equipment');
@@ -102,9 +103,16 @@ export default function EquipmentScreen() {
                   </View>
                 </View>
               ) : (
-                <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flexDirection: 'row', gap: S.sm, flexWrap: 'wrap' }}>
                   <Btn title="Áthelyezés" kind="ghost" small onPress={() => { setMovingId(eq.id); setTargetSite(null); }} />
                   <Btn title="Kommentek" kind="ghost" small onPress={() => setOpenComments(openComments === eq.id ? null : eq.id)} />
+                  {eq.created_by === getCurrentUserId() ? (
+                    <Btn title="🗑️ Törlés" kind="ghost" small onPress={() => {
+                      void confirmDialog('Eszköz törlése', `Biztosan törlöd? (${eq.name})`, 'Törlés', true).then((ok) => {
+                        if (ok) softDeleteRow('equipment', eq.id);
+                      });
+                    }} />
+                  ) : null}
                 </View>
               )}
               {openComments === eq.id ? <Comments entityType="equipment" entityId={eq.id} /> : null}
