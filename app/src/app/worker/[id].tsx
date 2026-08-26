@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Alert } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
-import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Badge, Divider } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Badge, Divider, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useRow, useTable } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow, callRpc } from '../../lib/repo';
@@ -23,10 +23,23 @@ export default function WorkerDetail() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<WorkerFormValues | null>(null);
   const [bank, setBank] = useState<string | null>(null);
+  const [payFilter, setPayFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [showCount, setShowCount] = useState(30);
 
   const history = useMemo(
-    () => [...attendance].sort((a, b) => b.work_date.localeCompare(a.work_date)),
-    [attendance],
+    () => [...attendance]
+      .filter((a) => {
+        if (payFilter === 'all') return true;
+        const hasWage = a.pay_basis !== 'presence' && Number(a.amount) - Number(a.commission_amount) > 0;
+        if (payFilter === 'paid') return hasWage && !!a.paid_at;
+        return hasWage && !a.paid_at;
+      })
+      .sort((a, b) => b.work_date.localeCompare(a.work_date)),
+    [attendance, payFilter],
+  );
+  const filteredSum = useMemo(
+    () => history.reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0),
+    [history],
   );
   const totals = useMemo(() => {
     const earned = attendance.reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
@@ -155,18 +168,47 @@ export default function WorkerDetail() {
         <KV k="Ebből kifizetve" v={ft(totals.paid)} />
         {totals.unpaid > 0 ? <KV k="⚠️ Kifizetetlen" v={ft(totals.unpaid)} strong /> : null}
         <Divider />
-        {history.length === 0 ? <Empty text="Még nincs jelenléti bejegyzés." /> : null}
-        {history.slice(0, 30).map((a) => (
-          <View key={a.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-            <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
-              {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
-            </Sub>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: a.paid_at ? C.success : C.text }}>
-              {ft(Number(a.amount) - Number(a.commission_amount))}{a.paid_at ? ' ✓' : ''}
-            </Text>
+        <Segmented
+          options={[
+            { value: 'all', label: 'Mind' },
+            { value: 'paid', label: 'Kifizetve' },
+            { value: 'unpaid', label: 'Kifizetetlen' },
+          ]}
+          value={payFilter}
+          onChange={(v) => { setPayFilter(v); setShowCount(30); }}
+        />
+        {payFilter !== 'all' ? (
+          <KV
+            k={`${payFilter === 'paid' ? 'Kifizetve' : 'Kifizetetlen'} összesen (${history.length} nap)`}
+            v={ft(filteredSum)}
+            strong
+          />
+        ) : null}
+        {history.length === 0 ? (
+          <Empty text={payFilter === 'all' ? 'Még nincs jelenléti bejegyzés.'
+            : payFilter === 'paid' ? 'Még nincs kifizetett tétel.' : 'Nincs kifizetetlen tétel. ✅'} />
+        ) : null}
+        {history.slice(0, showCount).map((a) => (
+          <View key={a.id} style={{ paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
+                {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
+              </Sub>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: a.paid_at ? C.success : C.text }}>
+                {ft(Number(a.amount) - Number(a.commission_amount))}{a.paid_at ? ' ✓' : ''}
+              </Text>
+            </View>
+            {a.paid_at ? (
+              <Sub style={{ fontSize: 11 }}>
+                kifizetve: {hd(a.paid_at)} · {profiles.find((p) => p.id === a.paid_by)?.display_name ?? '?'}
+              </Sub>
+            ) : null}
           </View>
         ))}
-        {history.length > 30 ? <Sub>… és még {history.length - 30} nap</Sub> : null}
+        {history.length > showCount ? (
+          <Btn title={`Továbbiak (még ${history.length - showCount} nap)`} kind="ghost" small
+            onPress={() => setShowCount(showCount + 50)} />
+        ) : null}
       </Card>
 
       <Comments entityType="worker" entityId={worker.id} />
