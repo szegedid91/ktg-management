@@ -140,13 +140,6 @@ export default function DayView() {
     });
   };
 
-  const quickHint = (w: Worker) => {
-    const b = w.default_pay_basis === 'project' ? 'presence' : (w.default_pay_basis ?? 'daily');
-    if (b === 'presence') return 'jelenlét (a projektdíj a részletes űrlapról)';
-    if (b === 'hourly') return 'órabér · 8 ó';
-    return 'napi díj';
-  };
-
   // hátralévő munkások szakipar szerint csoportosítva (általánosok a végén)
   const remainingGroups = (() => {
     const remaining = workers
@@ -201,10 +194,7 @@ export default function DayView() {
               </Text>
               {g.list.map((w) => (
                 <Row key={w.id} onPress={() => quickAdd(w)}>
-                  <View style={{ flex: 1 }}>
-                    <Body style={{ fontWeight: '600' }}>{w.name}</Body>
-                    <Sub>{quickHint(w)}</Sub>
-                  </View>
+                  <Body style={{ fontWeight: '600', flex: 1 }}>{w.name}</Body>
                   <Text style={{ fontSize: 20, color: C.success, fontWeight: '800' }}>＋</Text>
                 </Row>
               ))}
