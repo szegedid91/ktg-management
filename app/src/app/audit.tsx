@@ -2,12 +2,12 @@
 // nevekkel, formázott összegekkel és magyar címkékkel írjuk le, mi történt.
 
 import React, { useState } from 'react';
-import { View, Text } from 'react-native';
-import { Screen, Card, Sub, Body, Btn, Empty, Picker, Loading } from '../ui/kit';
+import { View, Text, Pressable } from 'react-native';
+import { Screen, Card, H2, Sub, Body, Btn, Empty, Picker, Loading } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
-import { hdt, hd, ft } from '../lib/format';
+import { hdt, hd, ft, todayISO, addDaysISO } from '../lib/format';
 import {
   AuditLogRow, Profile, Site, Worker, ExternalPerson, ExpenseCategory, Equipment,
 } from '../lib/types';
@@ -68,6 +68,25 @@ const BASIS_LABELS: Record<string, string> = {
   hourly: 'órabér', daily: 'napi díj', project: 'projektdíj', presence: 'csak jelenlét',
 };
 
+function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{ backgroundColor: on ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+    >
+      <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>{on ? '✓ ' : ''}{label}</Text>
+    </Pressable>
+  );
+}
+
+type DateRange = 'all' | 'today' | '7d' | '30d';
+const DATE_OPTIONS: { value: DateRange; label: string }[] = [
+  { value: 'all', label: 'Mind' },
+  { value: 'today', label: 'Ma' },
+  { value: '7d', label: '7 nap' },
+  { value: '30d', label: '30 nap' },
+];
+
 export default function Audit() {
   const profiles = useTable<Profile>('profiles');
   const sites = useTable<Site>('sites', true);
@@ -78,18 +97,42 @@ export default function Audit() {
 
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string | null>(null);
+  // munkavállaló-szűrő — a törölt munkavállalók is választhatók
+  const [workerFilter, setWorkerFilter] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateRange>('all');
   const [limit, setLimit] = useState(50);
 
+  const dateFrom = dateFilter === 'today' ? todayISO()
+    : dateFilter === '7d' ? addDaysISO(todayISO(), -7)
+      : dateFilter === '30d' ? addDaysISO(todayISO(), -30)
+        : null;
+
   const rows = useOnlineView<AuditLogRow[]>(
-    `audit-${userFilter}-${tableFilter}-${limit}`,
+    `audit-${userFilter}-${tableFilter}-${workerFilter}-${dateFilter}-${limit}`,
     () => fetchView('audit_log', (q) => {
       let x = q.order('changed_at', { ascending: false }).limit(limit);
       if (userFilter) x = x.eq('changed_by', userFilter);
       if (tableFilter) x = x.eq('table_name', tableFilter);
+      if (dateFrom) x = x.gte('changed_at', dateFrom);
+      if (workerFilter) {
+        // minden, ami a munkavállalóhoz köthető: a saját adatlapja,
+        // a jelenlétei, és a rá írt kommentek
+        x = x.or([
+          `record_id.eq.${workerFilter}`,
+          `new_data->>worker_id.eq.${workerFilter}`,
+          `old_data->>worker_id.eq.${workerFilter}`,
+          `new_data->>entity_id.eq.${workerFilter}`,
+        ].join(','));
+      }
       return x;
     }),
-    [userFilter, tableFilter, limit],
+    [userFilter, tableFilter, workerFilter, dateFilter, limit],
   );
+
+  const hasFilter = !!(userFilter || tableFilter || workerFilter || dateFilter !== 'all');
+  const clearFilters = () => {
+    setUserFilter(null); setTableFilter(null); setWorkerFilter(null); setDateFilter('all');
+  };
 
   const userName = (id: unknown) => profiles.find((p) => p.id === id)?.display_name ?? 'rendszer';
   const siteName = (id: unknown) => (id ? sites.find((s) => s.id === id)?.name ?? 'ismeretlen építkezés' : 'közös');
@@ -190,27 +233,57 @@ export default function Audit() {
 
   return (
     <Screen>
-      <Sub>Minden létrehozás, módosítás és törlés naplózva — az adatbázis szintjén, megkerülhetetlenül.</Sub>
-      <Picker
-        label="Felhasználó"
-        items={profiles}
-        selectedId={userFilter}
-        getId={(p) => p.id}
-        getLabel={(p) => p.display_name}
-        onSelect={setUserFilter}
-        allowNull
-        nullLabel="— mindenki —"
-      />
-      <Picker
-        label="Terület"
-        items={Object.entries(TABLE_LABELS).map(([k, v]) => ({ id: k, label: v }))}
-        selectedId={tableFilter}
-        getId={(i) => i.id}
-        getLabel={(i) => i.label}
-        onSelect={setTableFilter}
-        allowNull
-        nullLabel="— minden terület —"
-      />
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <H2>🔎 Szűrés</H2>
+          {hasFilter ? (
+            <Text onPress={clearFilters} style={{ color: C.primary, fontSize: 13, fontWeight: '700' }}>
+              ✕ Szűrők törlése
+            </Text>
+          ) : null}
+        </View>
+
+        <Sub>Időszak:</Sub>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {DATE_OPTIONS.map((o) => (
+            <Chip key={o.value} label={o.label} on={dateFilter === o.value} onPress={() => setDateFilter(o.value)} />
+          ))}
+        </View>
+
+        <Sub>Ki csinálta:</Sub>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <Chip label="Mindenki" on={!userFilter} onPress={() => setUserFilter(null)} />
+          {profiles.map((p) => (
+            <Chip
+              key={p.id}
+              label={p.display_name}
+              on={userFilter === p.id}
+              onPress={() => setUserFilter(userFilter === p.id ? null : p.id)}
+            />
+          ))}
+        </View>
+
+        <Picker
+          label="Munkavállaló (a töröltek is kereshetők)"
+          items={[...workers].sort((a, b) => a.name.localeCompare(b.name, 'hu'))}
+          selectedId={workerFilter}
+          getId={(w) => w.id}
+          getLabel={(w) => `${w.name}${w.deleted_at ? ' (törölt)' : ''}`}
+          onSelect={setWorkerFilter}
+          allowNull
+          nullLabel="— minden munkavállaló —"
+        />
+        <Picker
+          label="Terület"
+          items={Object.entries(TABLE_LABELS).map(([k, v]) => ({ id: k, label: v }))}
+          selectedId={tableFilter}
+          getId={(i) => i.id}
+          getLabel={(i) => i.label}
+          onSelect={setTableFilter}
+          allowNull
+          nullLabel="— minden terület —"
+        />
+      </Card>
 
       {rows.loading ? <Loading /> : null}
       {rows.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — utolsó ismert napló.</Sub> : null}
