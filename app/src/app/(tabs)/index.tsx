@@ -155,7 +155,6 @@ export default function Dashboard() {
         {activeSites.map((s) => (
           <Btn key={s.id} title={s.name} kind="ghost" onPress={() => router.push(`/site/${s.id}`)} />
         ))}
-        <Btn title="+ Új építkezés" kind="secondary" onPress={() => router.push('/site/new')} />
       </Card>
 
       <View style={{ flexDirection: 'row', gap: S.md }}>
