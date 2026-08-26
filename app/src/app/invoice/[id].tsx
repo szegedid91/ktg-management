@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Alert } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Screen, Card, Sub, Btn, KV, Empty, Check, Body } from '../../ui/kit';
 import { S } from '../../ui/theme';
@@ -8,6 +8,7 @@ import { getCurrentUserId, softDeleteRow, markInvoicePaid } from '../../lib/repo
 import { ft, hd } from '../../lib/format';
 import { Invoice, Site, Profile } from '../../lib/types';
 import { Comments } from '../../components/Comments';
+import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function InvoiceDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -46,10 +47,9 @@ export default function InvoiceDetail() {
 
       {mine ? (
         <Btn title="Számla törlése" kind="danger" onPress={() => {
-          Alert.alert('Törlés', 'Biztosan törlöd ezt a számlát?', [
-            { text: 'Mégse', style: 'cancel' },
-            { text: 'Törlés', style: 'destructive', onPress: () => { softDeleteRow('invoices', invoice.id); router.back(); } },
-          ]);
+          void confirmDialog('Törlés', 'Biztosan törlöd ezt a számlát?', 'Törlés', true).then((ok) => {
+            if (ok) { softDeleteRow('invoices', invoice.id); router.back(); }
+          });
         }} />
       ) : null}
 

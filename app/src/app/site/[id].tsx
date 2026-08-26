@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Alert, ScrollView } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Badge, Row, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -9,6 +9,7 @@ import { syncNow } from '../../lib/sync';
 import { ft, hd } from '../../lib/format';
 import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals } from '../../lib/types';
 import { Comments } from '../../components/Comments';
+import { notify, confirmDialog } from '../../lib/dialogs';
 
 type Tab = 'summary' | 'expenses' | 'calendar' | 'invoices' | 'equipment' | 'comments';
 
@@ -42,7 +43,7 @@ export default function SiteDetail() {
     try {
       const res = await callRpc<any>('close_site', { p_site: id, p_force: false });
       if (res.closed) {
-        Alert.alert('Lezárva', 'Az építkezés lezárva. Mostantól csak olvasható.');
+        notify('Lezárva', 'Az építkezés lezárva. Mostantól csak olvasható.');
         void syncNow();
         return;
       }
@@ -50,22 +51,17 @@ export default function SiteDetail() {
       for (const i of res.unpaid_invoices ?? []) issues.push(`🧾 Be nem folyt számla: ${i.title ?? ''} (${ft(Number(i.net_amount))})`);
       for (const w of res.unpaid_wages ?? []) issues.push(`👷 Kifizetetlen bér: ${w.worker_name} ${hd(w.work_date)} (${ft(Number(w.amount))})`);
       for (const cx of res.unpaid_commissions ?? []) issues.push(`🤝 Kifizetetlen közvetítői díj: ${cx.referrer_name} (${ft(Number(cx.amount))})`);
-      Alert.alert(
+      const ok = await confirmDialog(
         'Függő tételek',
         'A lezárási ellenőrzés hiányosságokat talált:\n\n' + issues.join('\n') + '\n\nLezárod ennek ellenére?',
-        [
-          { text: 'Mégse', style: 'cancel' },
-          {
-            text: 'Lezárás mindenképp', style: 'destructive',
-            onPress: async () => {
-              await callRpc('close_site', { p_site: id, p_force: true });
-              void syncNow();
-            },
-          },
-        ],
+        'Lezárás mindenképp', true,
       );
+      if (ok) {
+        await callRpc('close_site', { p_site: id, p_force: true });
+        void syncNow();
+      }
     } catch (e: any) {
-      Alert.alert('Hiba', 'A lezáráshoz internetkapcsolat kell.\n' + String(e?.message ?? e));
+      notify('Hiba', 'A lezáráshoz internetkapcsolat kell.\n' + String(e?.message ?? e));
     }
   };
 
@@ -74,7 +70,7 @@ export default function SiteDetail() {
       await callRpc('reopen_site', { p_site: id });
       void syncNow();
     } catch (e: any) {
-      Alert.alert('Hiba', 'Az újranyitáshoz internetkapcsolat kell.');
+      notify('Hiba', 'Az újranyitáshoz internetkapcsolat kell.');
     }
   };
 
@@ -124,10 +120,9 @@ export default function SiteDetail() {
               : <Btn title="Építkezés lezárása…" kind="danger" onPress={doClose} />}
             {!closed && site.created_by === me ? (
               <Btn title="Építkezés törlése" kind="ghost" onPress={() => {
-                Alert.alert('Törlés', `Biztosan törlöd: ${site.name}?`, [
-                  { text: 'Mégse', style: 'cancel' },
-                  { text: 'Törlés', style: 'destructive', onPress: () => { softDeleteRow('sites', site.id); router.back(); } },
-                ]);
+                void confirmDialog('Törlés', `Biztosan törlöd: ${site.name}?`, 'Törlés', true).then((ok) => {
+                  if (ok) { softDeleteRow('sites', site.id); router.back(); }
+                });
               }} />
             ) : null}
           </Card>

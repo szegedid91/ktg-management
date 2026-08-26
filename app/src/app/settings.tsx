@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Alert } from 'react-native';
+import { View } from 'react-native';
 import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check } from '../ui/kit';
 import { S, C } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow } from '../lib/repo';
 import { parseAmount } from '../lib/format';
 import { AppSettings, Profile, ExpenseCategory } from '../lib/types';
+import { notify } from '../lib/dialogs';
 
 function RateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
@@ -57,13 +58,13 @@ export default function Settings() {
     updateRow('app_settings', '1' as any, Object.fromEntries(
       Object.entries(rates).map(([k, v]) => [k, parseAmount(v)]),
     ));
-    Alert.alert('Mentve', 'Alapértelmezett díjak frissítve.');
+    notify('Mentve', 'Alapértelmezett díjak frissítve.');
   };
 
   const saveShares = async () => {
     const sum = Object.values(shares).reduce((s, v) => s + parseAmount(v), 0);
     if (Math.abs(sum - 100) > 0.01) {
-      Alert.alert('Hiba', `A részesedések összege 100% kell legyen (most: ${sum}%).`);
+      notify('Hiba', `A részesedések összege 100% kell legyen (most: ${sum}%).`);
       return;
     }
     try {
@@ -73,16 +74,16 @@ export default function Settings() {
       for (const p of profiles) {
         updateRow('profiles', p.id, { profit_share_percent: parseAmount(shares[p.id] ?? '0') });
       }
-      Alert.alert('Mentve', 'Profitrészesedések frissítve.');
+      notify('Mentve', 'Profitrészesedések frissítve.');
     } catch (e: any) {
-      Alert.alert('Hiba', 'A részesedés módosításához internet kell.\n' + String(e?.message ?? e));
+      notify('Hiba', 'A részesedés módosításához internet kell.\n' + String(e?.message ?? e));
     }
   };
 
   const saveNotif = () => {
     if (!myProfile) return;
     updateRow('profiles', myProfile.id, { big_expense_threshold: parseAmount(threshold) });
-    Alert.alert('Mentve', 'Értesítési beállítások frissítve.');
+    notify('Mentve', 'Értesítési beállítások frissítve.');
   };
 
   const toggleNotif = (field: keyof Profile) => {

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Btn } from '../../ui/kit';
 import { WorkerForm, emptyWorkerForm, formToRow } from '../../components/WorkerForm';
 import { insertRow, callRpc } from '../../lib/repo';
+import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function NewWorker() {
   const [form, setForm] = useState(emptyWorkerForm());
@@ -15,7 +15,7 @@ export default function NewWorker() {
       try {
         await callRpc('set_worker_bank_account', { p_worker: id, p_account: form.bank_account.trim() });
       } catch {
-        Alert.alert('Figyelem', 'A bankszámlaszám mentéséhez internet kell — most nem sikerült, add meg később újra.');
+        notify('Figyelem', 'A bankszámlaszám mentéséhez internet kell — most nem sikerült, add meg később újra.');
       }
     }
     router.replace(`/worker/${id}`);

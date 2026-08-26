@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
@@ -8,6 +8,7 @@ import { useTable } from '../lib/hooks';
 import { supabase } from '../lib/supabase';
 import { todayISO } from '../lib/format';
 import { Site } from '../lib/types';
+import { notify, confirmDialog } from '../lib/dialogs';
 
 export default function ExportScreen() {
   const sites = useTable<Site>('sites');
@@ -38,7 +39,7 @@ export default function ExportScreen() {
         }
       }
     } catch (e: any) {
-      Alert.alert('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
+      notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
     } finally {
       setBusy(null);
     }

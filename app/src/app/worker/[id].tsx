@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Badge, Divider, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -10,6 +10,7 @@ import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings } from '
 import { Comments } from '../../components/Comments';
 import { CallButton } from '../workers/index';
 import { WorkerForm, workerToForm, formToRow, WorkerFormValues } from '../../components/WorkerForm';
+import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function WorkerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -67,7 +68,7 @@ export default function WorkerDetail() {
       const acc = await callRpc<string>('get_worker_bank_account', { p_worker: worker.id });
       setBank(acc ?? 'nincs megadva');
     } catch {
-      Alert.alert('Hiba', 'A bankszámlaszám megtekintéséhez internet kell.');
+      notify('Hiba', 'A bankszámlaszám megtekintéséhez internet kell.');
     }
   };
 
@@ -78,7 +79,7 @@ export default function WorkerDetail() {
       try {
         await callRpc('set_worker_bank_account', { p_worker: worker.id, p_account: form.bank_account.trim() });
       } catch {
-        Alert.alert('Figyelem', 'A bankszámlaszám mentéséhez internet kell — most nem sikerült.');
+        notify('Figyelem', 'A bankszámlaszám mentéséhez internet kell — most nem sikerült.');
       }
     }
     setEditing(false);
@@ -129,10 +130,9 @@ export default function WorkerDetail() {
             </View>
             <View style={{ flex: 1 }}>
               <Btn title="Törlés" kind="danger" small onPress={() => {
-                Alert.alert('Törlés', `Biztosan törlöd: ${worker.name}?`, [
-                  { text: 'Mégse', style: 'cancel' },
-                  { text: 'Törlés', style: 'destructive', onPress: () => { softDeleteRow('workers', worker.id); router.back(); } },
-                ]);
+                void confirmDialog('Törlés', `Biztosan törlöd: ${worker.name}?`, 'Törlés', true).then((ok) => {
+                  if (ok) { softDeleteRow('workers', worker.id); router.back(); }
+                });
               }} />
             </View>
           </View>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Image, Alert } from 'react-native';
+import { View, Image } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Input, Picker } from '../../ui/kit';
 import { S } from '../../ui/theme';
@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import { Expense, ExpensePhoto, Site, ExpenseCategory, Profile } from '../../lib/types';
 import { Comments } from '../../components/Comments';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
+import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function ExpenseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -98,10 +99,9 @@ export default function ExpenseDetail() {
               <View style={{ flex: 1 }}><Btn title="Szerkesztés" kind="ghost" small onPress={startEdit} /></View>
               <View style={{ flex: 1 }}>
                 <Btn title="Törlés" kind="danger" small onPress={() => {
-                  Alert.alert('Törlés', 'Biztosan törlöd ezt a költséget?', [
-                    { text: 'Mégse', style: 'cancel' },
-                    { text: 'Törlés', style: 'destructive', onPress: () => { softDeleteRow('expenses', expense.id); router.back(); } },
-                  ]);
+                  void confirmDialog('Törlés', 'Biztosan törlöd ezt a költséget?', 'Törlés', true).then((ok) => {
+                    if (ok) { softDeleteRow('expenses', expense.id); router.back(); }
+                  });
                 }} />
               </View>
             </View>

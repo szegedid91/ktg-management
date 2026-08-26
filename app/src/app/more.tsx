@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Row, Body, Btn, Sub, Card } from '../ui/kit';
 import { useAuth } from '../lib/auth';
 import { useSyncStatus } from '../lib/hooks';
 import { syncNow } from '../lib/sync';
 import { hdt } from '../lib/format';
+import { notify, confirmDialog } from '../lib/dialogs';
 
 const ITEMS: { label: string; icon: string; href: string }[] = [
   { label: 'Munkavállalók', icon: '👷', href: '/workers' },
@@ -41,14 +42,11 @@ export default function More() {
           small
           onPress={() => {
             if (sync.pendingOps > 0) {
-              Alert.alert(
+              void confirmDialog(
                 'Függő műveletek',
                 `${sync.pendingOps} művelet még nem szinkronizált. Kijelentkezéskor ezek elvesznek. Biztosan kilépsz?`,
-                [
-                  { text: 'Mégse', style: 'cancel' },
-                  { text: 'Kilépés', style: 'destructive', onPress: () => void signOut() },
-                ],
-              );
+                'Kilépés', true,
+              ).then((ok) => { if (ok) void signOut(); });
             } else {
               void signOut();
             }

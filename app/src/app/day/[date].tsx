@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Segmented, Check, Row } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -8,6 +8,7 @@ import { insertRow, softDeleteRow, markAttendancePaid, markCommissionPaid, getCu
 import { ft, hd, addDaysISO, parseAmount } from '../../lib/format';
 import { attendanceAmount, commissionAmount } from '../../lib/calc';
 import { Attendance, Worker, Site, Expense, Invoice, AppSettings, Profile, ExternalPerson, AttendanceBasis } from '../../lib/types';
+import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function DayView() {
   const { date, siteId } = useLocalSearchParams<{ date: string; siteId?: string }>();
@@ -84,7 +85,7 @@ export default function DayView() {
     const prevDates = [...new Set(attendance.filter((a) => a.site_id === site && a.work_date < date).map((a) => a.work_date))].sort();
     const prev = prevDates[prevDates.length - 1];
     if (!prev) {
-      Alert.alert('Nincs mit másolni', 'Ezen az építkezésen nincs korábbi jelenléti bejegyzés.');
+      notify('Nincs mit másolni', 'Ezen az építkezésen nincs korábbi jelenléti bejegyzés.');
       return;
     }
     const existing = new Set(dayRowsForSite.map((a) => a.worker_id));
@@ -108,7 +109,7 @@ export default function DayView() {
       });
       n++;
     }
-    Alert.alert('Kész', `${n} bejegyzés átmásolva innen: ${hd(prev)}`);
+    notify('Kész', `${n} bejegyzés átmásolva innen: ${hd(prev)}`);
   };
 
   const wageTotal = dayRowsForSite.reduce((s, a) => s + Number(a.amount), 0);

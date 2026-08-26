@@ -1,87 +1,122 @@
+// Gyors költségrögzítés: 1) összeg → 2) építkezés + kategória → 3) megjegyzés.
+// Szerszám/eszköz kategóriánál mentéskor felajánlja az eszköz-nyilvántartásba
+// vételt. A fotó/AI és a finomhangolás (nettó/ÁFA, dátum) lenyitható részletek.
+
 import React, { useState } from 'react';
-import { View, Text, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, Image, ActivityIndicator, Pressable } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Screen, Card, Input, Btn, Picker, Sub, H2 } from '../../ui/kit';
+import { Screen, Card, Input, Btn, Sub, H2, Body } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { insertRow, newId, getCurrentUserId } from '../../lib/repo';
+import { notify, confirmDialog } from '../../lib/dialogs';
+import { fromGross } from '../../lib/calc';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
-import { todayISO } from '../../lib/format';
+import { todayISO, ft, parseAmount } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
 import { Site, ExpenseCategory, AppSettings } from '../../lib/types';
+
+function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        backgroundColor: on ? C.primary : C.chipBg,
+        paddingHorizontal: S.md, paddingVertical: 9, borderRadius: 999,
+      }}
+    >
+      <Text style={{ color: on ? '#fff' : C.text, fontSize: 14, fontWeight: '600' }}>
+        {on ? '✓ ' : ''}{label}
+      </Text>
+    </Pressable>
+  );
+}
 
 export default function NewExpense() {
   const { siteId } = useLocalSearchParams<{ siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
   const categories = useTable<ExpenseCategory>('expense_categories');
   const settings = useTable<AppSettings>('app_settings')[0];
+  const defaultVat = settings ? Number(settings.default_vat_rate) : 27;
 
+  const [amountStr, setAmountStr] = useState('');
   const [site, setSite] = useState<string | null>(siteId ?? null);
-  const [date, setDate] = useState(todayISO());
-  const [title, setTitle] = useState('');
-  const [vat, setVat] = useState<VatState>(initialVatState(settings ? Number(settings.default_vat_rate) : 27));
   const [category, setCategory] = useState<string | null>(null);
-  const [newCat, setNewCat] = useState('');
-  const [showNewCat, setShowNewCat] = useState(false);
   const [note, setNote] = useState('');
+  const [showDetails, setShowDetails] = useState(false);
+  const [title, setTitle] = useState('');
+  const [date, setDate] = useState(todayISO());
+  const [vat, setVat] = useState<VatState>(initialVatState(defaultVat));
   const [photos, setPhotos] = useState<{ uri: string; base64?: string }[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const amount = parseAmount(amountStr);
+  const hasAmount = amount > 0;
+
+  // a gyors összeg = bruttó; a részletekben finomhangolható
+  const setQuickAmount = (t: string) => {
+    setAmountStr(t);
+    const a = fromGross(parseAmount(t), vat.vatRate);
+    setVat({ ...vat, gross: t, net: a.net ? String(a.net) : '', lastEdited: 'gross' });
+  };
+  const setVatDetailed = (v: VatState) => {
+    setVat(v);
+    const a = vatStateToAmounts(v);
+    setAmountStr(a.gross ? String(a.gross) : '');
+  };
 
   const pickPhoto = async (fromCamera: boolean) => {
-    const opts: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ['images'],
-      quality: 0.7,
-      base64: true,
-    };
+    const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7, base64: true };
     const res = fromCamera
       ? await ImagePicker.launchCameraAsync(opts)
       : await ImagePicker.launchImageLibraryAsync(opts);
     if (res.canceled || !res.assets?.[0]) return;
     const asset = res.assets[0];
     setPhotos((p) => [...p, { uri: asset.uri, base64: asset.base64 ?? undefined }]);
-    // AI kiolvasás felajánlása
-    if (asset.base64) {
-      Alert.alert('AI kiolvasás', 'Kiolvassam a blokk adatait a fotóról?', [
-        { text: 'Ne', style: 'cancel' },
-        { text: 'Igen', onPress: () => void runAi(asset.base64!) },
-      ]);
+    if (asset.base64 && await confirmDialog('AI kiolvasás', 'Kiolvassam a blokk adatait a fotóról?', 'Igen')) {
+      void runAi(asset.base64);
     }
   };
 
   const runAi = async (base64: string) => {
     setAiBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke('receipt-ocr', {
-        body: { image_base64: base64 },
-      });
+      const { data, error } = await supabase.functions.invoke('receipt-ocr', { body: { image_base64: base64 } });
       if (error) throw error;
-      if (data?.gross_amount) {
-        const rate = vat.vatRate;
-        setVat({ net: '', gross: String(data.gross_amount), vatRate: rate, lastEdited: 'gross' });
-        // átszámítás bruttóból
-        setVat((v) => {
-          const a = vatStateToAmounts({ ...v, gross: String(data.gross_amount), lastEdited: 'gross' });
-          return { ...v, gross: String(data.gross_amount), net: String(a.net), lastEdited: 'gross' };
-        });
-      }
+      if (data?.gross_amount) setQuickAmount(String(data.gross_amount));
       if (data?.date) setDate(data.date);
       if (data?.merchant && !title) setTitle(data.merchant);
-      Alert.alert('AI kiolvasás kész', 'Ellenőrizd és javítsd az előtöltött adatokat!');
+      notify('AI kiolvasás kész', 'Ellenőrizd és javítsd az előtöltött adatokat!');
     } catch (e: any) {
-      Alert.alert('AI kiolvasás nem sikerült', 'Töltsd ki kézzel az adatokat.\n' + String(e?.message ?? e));
+      notify('AI kiolvasás nem sikerült', 'Töltsd ki kézzel az adatokat.');
     } finally {
       setAiBusy(false);
     }
   };
 
   const save = async () => {
-    if (!site) return;
-    const amounts = vatStateToAmounts(vat);
-    let categoryId = category;
-    if (showNewCat && newCat.trim()) {
-      categoryId = insertRow('expense_categories', { name: newCat.trim(), is_builtin: false });
+    if (!site || !hasAmount || saving) return;
+    setSaving(true);
+
+    const catName = categories.find((c) => c.id === category)?.name ?? '';
+    // Szerszám/eszköz vásárlásnál felajánljuk az eszköz-nyilvántartásba vételt
+    if (/szerszám|eszköz/i.test(catName)) {
+      const eqName = (title.trim() || note.trim().split('\n')[0] || '').trim();
+      if (await confirmDialog(
+        'Eszköz-nyilvántartás',
+        `Felvegyük az eszközök közé is?${eqName ? `\n(${eqName})` : ''}`,
+        'Igen, vegyük fel',
+      )) {
+        insertRow('equipment', {
+          name: eqName || `Új eszköz (${todayISO()})`,
+          note: `Vásárolva: ${date} — ${ft(amount)}`,
+        });
+      }
     }
+
+    const amounts = vatStateToAmounts(vat);
     const expenseId = insertRow('expenses', {
       site_id: site,
       paid_by: getCurrentUserId(),
@@ -91,19 +126,17 @@ export default function NewExpense() {
       vat_rate: amounts.vatRate,
       vat_amount: amounts.vat,
       gross_amount: amounts.gross,
-      category_id: categoryId,
+      category_id: category,
       note: note.trim() || null,
     });
-    // fotófeltöltés (online szükséges; offline esetén kimarad, később pótolható)
+
     for (const photo of photos) {
       try {
         const path = `${expenseId}/${newId()}.jpg`;
         const bin = photo.base64 ? Uint8Array.from(atob(photo.base64), (c) => c.charCodeAt(0)) : null;
         if (!bin) continue;
         const { error } = await supabase.storage.from('receipts').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
-        if (!error) {
-          insertRow('expense_photos', { expense_id: expenseId, storage_path: path });
-        }
+        if (!error) insertRow('expense_photos', { expense_id: expenseId, storage_path: path });
       } catch {
         // offline — a költség fotó nélkül mentődött
       }
@@ -114,44 +147,73 @@ export default function NewExpense() {
   return (
     <Screen>
       <Card>
-        <Picker label="Építkezés *" items={sites} selectedId={site} getId={(s) => s.id} getLabel={(s) => s.name} onSelect={setSite} />
-        <Input label="Dátum (ÉÉÉÉ-HH-NN)" value={date} onChangeText={setDate} placeholder="2026-08-26" />
-        <Input label="Megnevezés" value={title} onChangeText={setTitle} placeholder="pl. festék, létra" />
-        <AmountVat value={vat} onChange={setVat} />
-        <Picker
-          label="Kategória"
-          items={categories}
-          selectedId={category}
-          getId={(c) => c.id}
-          getLabel={(c) => c.name}
-          onSelect={(id) => { setCategory(id); setShowNewCat(false); }}
-          allowNull
-          nullLabel="— nincs kategória —"
+        <Input
+          label="Összeg (bruttó, Ft) *"
+          value={amountStr}
+          onChangeText={setQuickAmount}
+          keyboardType="numeric"
+          placeholder="pl. 45 000"
         />
-        {showNewCat ? (
-          <Input label="Új kategória neve" value={newCat} onChangeText={setNewCat} placeholder="pl. Bérleti díj" />
-        ) : (
-          <Btn title="+ Új kategória" kind="ghost" small onPress={() => setShowNewCat(true)} />
-        )}
-        <Input label="Megjegyzés" value={note} onChangeText={setNote} multiline placeholder="opcionális" />
+        {hasAmount ? <Sub>Nettó {ft(vatStateToAmounts(vat).net)} + {vat.vatRate}% ÁFA</Sub> : null}
       </Card>
 
-      <Card>
-        <H2>Számlafotó</H2>
-        <View style={{ flexDirection: 'row', gap: S.md }}>
-          <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="secondary" onPress={() => void pickPhoto(true)} /></View>
-          <View style={{ flex: 1 }}><Btn title="🖼️ Galéria" kind="ghost" onPress={() => void pickPhoto(false)} /></View>
-        </View>
-        {aiBusy ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator /><Sub>AI kiolvasás folyamatban…</Sub></View> : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-          {photos.map((p, i) => (
-            <Image key={i} source={{ uri: p.uri }} style={{ width: 72, height: 72, borderRadius: 8 }} />
-          ))}
-        </View>
-        {photos.length > 0 ? <Sub>A fotó a tételhez csatolva marad (privát tároló).</Sub> : null}
-      </Card>
+      {hasAmount ? (
+        <>
+          <Card>
+            <H2>Építkezés *</H2>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+              {sites.map((s) => (
+                <Chip key={s.id} label={s.name} on={site === s.id} onPress={() => setSite(s.id)} />
+              ))}
+            </View>
+            {sites.length === 0 ? <Sub>Nincs aktív építkezés.</Sub> : null}
+          </Card>
 
-      <Btn title="Mentés" onPress={() => void save()} disabled={!site} />
+          <Card>
+            <H2>Kategória</H2>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+              {categories.map((c) => (
+                <Chip key={c.id} label={c.name} on={category === c.id}
+                  onPress={() => setCategory(category === c.id ? null : c.id)} />
+              ))}
+            </View>
+          </Card>
+
+          <Card>
+            <Input label="Megjegyzés" value={note} onChangeText={setNote} multiline
+              placeholder="pl. festék és létra az OBI-ból" />
+          </Card>
+
+          <Card>
+            <Btn
+              title={showDetails ? 'Részletek elrejtése ▴' : '📷 Fotó és részletek ▾'}
+              kind="ghost"
+              onPress={() => setShowDetails(!showDetails)}
+            />
+            {showDetails ? (
+              <>
+                <Input label="Megnevezés" value={title} onChangeText={setTitle} placeholder="pl. festék, létra" />
+                <Input label="Dátum (ÉÉÉÉ-HH-NN)" value={date} onChangeText={setDate} />
+                <AmountVat value={vat} onChange={setVatDetailed} />
+                <View style={{ flexDirection: 'row', gap: S.md }}>
+                  <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="secondary" onPress={() => void pickPhoto(true)} /></View>
+                  <View style={{ flex: 1 }}><Btn title="🖼️ Galéria" kind="ghost" onPress={() => void pickPhoto(false)} /></View>
+                </View>
+                {aiBusy ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator /><Sub>AI kiolvasás folyamatban…</Sub></View> : null}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                  {photos.map((p, i) => (
+                    <Image key={i} source={{ uri: p.uri }} style={{ width: 72, height: 72, borderRadius: 8 }} />
+                  ))}
+                </View>
+              </>
+            ) : null}
+          </Card>
+
+          <Btn title={saving ? 'Mentés…' : `Mentés (${ft(amount)})`} onPress={() => void save()} disabled={!site || saving} />
+        </>
+      ) : (
+        <Sub style={{ textAlign: 'center' }}>Írd be az összeget a folytatáshoz.</Sub>
+      )}
     </Screen>
   );
 }
