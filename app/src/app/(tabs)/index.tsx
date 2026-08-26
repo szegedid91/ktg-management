@@ -9,6 +9,42 @@ import { fetchView } from '../../lib/repo';
 import { Site, Expense, Attendance, Invoice, UserBalance } from '../../lib/types';
 import { useAuth } from '../../lib/auth';
 
+const MENU: { icon: string; label: string; href: string }[] = [
+  { icon: '🏗️', label: 'Építkezések', href: '/sites' },
+  { icon: '📅', label: 'Naptár', href: '/calendar' },
+  { icon: '👷', label: 'Munkavállalók', href: '/workers' },
+  { icon: '🧾', label: 'Számlák', href: '/invoices' },
+  { icon: '🤝', label: 'Elszámolás', href: '/settlement' },
+  { icon: '📊', label: 'Statisztika', href: '/stats' },
+  { icon: '🔨', label: 'Eszközök', href: '/equipment' },
+  { icon: '📤', label: 'Export', href: '/export' },
+  { icon: '🕵️', label: 'Audit napló', href: '/audit' },
+  { icon: '⚙️', label: 'Beállítások', href: '/settings' },
+];
+
+function MenuGrid() {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+      {MENU.map((m) => (
+        <Pressable
+          key={m.href}
+          onPress={() => router.push(m.href as any)}
+          style={({ pressed }) => ({
+            width: '18.4%', minWidth: 96, maxWidth: '33%', flexGrow: 1,
+            backgroundColor: C.card, borderRadius: S.radiusSm,
+            borderWidth: 1, borderColor: C.border,
+            alignItems: 'center', paddingVertical: S.md, gap: 4,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Text style={{ fontSize: 24 }}>{m.icon}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: C.text, textAlign: 'center' }}>{m.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 export default function Dashboard() {
   const { session } = useAuth();
   const sync = useSyncStatus();
@@ -76,6 +112,8 @@ export default function Dashboard() {
         ) : <Sub>Egyenleg betöltése…</Sub>}
         <Btn title="Elszámolás megnyitása" kind="ghost" small onPress={() => router.push('/settlement')} />
       </Card>
+
+      <MenuGrid />
 
       <Card>
         <H2>Ez a hónap</H2>

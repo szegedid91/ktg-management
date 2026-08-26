@@ -65,10 +65,11 @@ export default function Calendar() {
             <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: C.sub }}>{d}</Text>
           ))}
         </View>
+        <View>
         {Array.from({ length: cells.length / 7 }, (_, w) => (
           <View key={w} style={{ flexDirection: 'row' }}>
             {cells.slice(w * 7, w * 7 + 7).map((day, i) => {
-              if (!day) return <View key={i} style={{ flex: 1, aspectRatio: 0.82 }} />;
+              if (!day) return <View key={i} style={{ flex: 1, height: 54 }} />;
               const iso = `${prefix}-${String(day).padStart(2, '0')}`;
               const v = byDay.get(iso);
               const isToday = iso === today;
@@ -77,19 +78,22 @@ export default function Calendar() {
                   key={i}
                   onPress={() => router.push(`/day/${iso}`)}
                   style={{
-                    flex: 1, aspectRatio: 0.82, alignItems: 'center', padding: 2,
+                    flex: 1, height: 54, alignItems: 'center', paddingTop: 2,
                     borderRadius: 8, backgroundColor: isToday ? C.primary + '18' : 'transparent',
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: isToday ? '800' : '500', color: C.text }}>{day}</Text>
-                  {v?.present ? <Text style={{ fontSize: 9 }}>👷{v.present}</Text> : null}
-                  {v && v.cost > 0 ? <Text style={{ fontSize: 8, color: C.danger }} numberOfLines={1}>-{Math.round(v.cost / 1000)}e</Text> : null}
-                  {v && v.revenue > 0 ? <Text style={{ fontSize: 8, color: C.success }} numberOfLines={1}>+{Math.round(v.revenue / 1000)}e</Text> : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <Text style={{ fontSize: 13, fontWeight: isToday ? '800' : '500', color: C.text }}>{day}</Text>
+                    {v?.present ? <Text style={{ fontSize: 8 }}>👷{v.present}</Text> : null}
+                  </View>
+                  {v && v.cost > 0 ? <Text style={{ fontSize: 9, lineHeight: 11, color: C.danger }} numberOfLines={1}>-{Math.round(v.cost / 1000)}e</Text> : null}
+                  {v && v.revenue > 0 ? <Text style={{ fontSize: 9, lineHeight: 11, color: C.success }} numberOfLines={1}>+{Math.round(v.revenue / 1000)}e</Text> : null}
                 </Pressable>
               );
             })}
           </View>
         ))}
+        </View>
       </Card>
 
       <Card>
