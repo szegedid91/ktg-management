@@ -180,15 +180,23 @@ export default function DayView() {
           <H2>Munkavállalók — koppints a hozzáadáshoz</H2>
           {remainingCount === 0 ? <Sub>Mindenki fel van véve mára. ✅</Sub> : null}
           {remainingGroups.map((g) => (
-            <View key={g.trade} style={{ gap: S.sm }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: C.primary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>
+            <View key={g.trade} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: C.primary, textTransform: 'uppercase', letterSpacing: 0.5, width: '100%' }}>
                 {g.trade === 'Általános' ? '👷 Általános' : `🛠️ ${g.trade}`}
               </Text>
               {g.list.map((w) => (
-                <Row key={w.id} onPress={() => quickAdd(w)}>
-                  <Body style={{ fontWeight: '600', flex: 1 }}>{w.name}</Body>
-                  <Text style={{ fontSize: 20, color: C.success, fontWeight: '800' }}>＋</Text>
-                </Row>
+                <Text
+                  key={w.id}
+                  onPress={() => quickAdd(w)}
+                  style={{
+                    fontSize: 14, fontWeight: '600', color: C.text,
+                    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+                    borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {w.name} <Text style={{ color: C.success, fontWeight: '800' }}>＋</Text>
+                </Text>
               ))}
             </View>
           ))}
