@@ -108,13 +108,11 @@ export default function DayView() {
     notify('Kész', `${n} bejegyzés átmásolva innen: ${hd(prev)}`);
   };
 
-  const wageTotal = dayRowsForSite.reduce((s, a) => s + Number(a.amount), 0);
-
   const basisLabel = (a: Attendance) =>
-    a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
-      : a.pay_basis === 'daily' ? `${Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj'} ${ft(Number(a.applied_rate))}`
-        : a.pay_basis === 'project' ? `projektdíj`
-          : 'jelenlét (díj nélkül)';
+    a.pay_basis === 'hourly' ? `${a.hours} óra`
+      : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'egész nap')
+        : a.pay_basis === 'project' ? 'projektdíjas'
+          : 'jelenlét';
 
   /** Gyors hozzáadás egy koppintással, a munkavállaló alapértelmezett
    *  elszámolásával. Projektdíjasnál díj nélküli jelenlét megy, hogy a
@@ -275,12 +273,8 @@ export default function DayView() {
             <View key={a.id} style={{ gap: 4, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Body style={{ fontWeight: '700' }}>{workerName(a.worker_id)}</Body>
-                <Text style={{ fontWeight: '700' }}>{ft(Number(a.amount))}</Text>
+                <Sub>{!site ? siteName(a.site_id) + ' · ' : ''}{basisLabel(a)}</Sub>
               </View>
-              <Sub>{!site ? siteName(a.site_id) + ' · ' : ''}{basisLabel(a)}</Sub>
-              {Number(a.commission_amount) > 0 ? (
-                <Sub>↳ munkásé: {ft(workerPart)} · közvetítőé ({refName ?? '?'}): {ft(Number(a.commission_amount))}</Sub>
-              ) : null}
               {a.pay_basis !== 'presence' && workerPart > 0 ? (
                 <Check
                   checked={!!a.paid_at}
@@ -301,8 +295,6 @@ export default function DayView() {
             </View>
           );
         })}
-        <Divider />
-        <KV k="Bérköltség összesen" v={ft(wageTotal)} strong />
       </Card>
       ) : null}
     </Screen>
