@@ -24,6 +24,7 @@ const PREFIX = 'ktg:';
 class Store {
   private tables = new Map<SyncTable, Map<string, Row>>();
   private outbox: OutboxOp[] = [];
+  private failed: OutboxOp[] = [];
   private cursors: Record<string, string> = {};
   private listeners = new Set<() => void>();
   private loaded = false;
@@ -35,6 +36,7 @@ class Store {
     const keys = [
       ...SYNC_TABLES.map((t) => PREFIX + 't:' + t),
       PREFIX + 'outbox',
+      PREFIX + 'failed',
       PREFIX + 'cursors',
     ];
     const pairs = await AsyncStorage.multiGet(keys);
@@ -43,10 +45,11 @@ class Store {
       try {
         const parsed = JSON.parse(value);
         if (key === PREFIX + 'outbox') this.outbox = parsed;
+        else if (key === PREFIX + 'failed') this.failed = parsed;
         else if (key === PREFIX + 'cursors') this.cursors = parsed;
         else {
           const table = key.slice((PREFIX + 't:').length) as SyncTable;
-          this.tables.set(table, new Map(parsed.map((r: Row) => [r.id, r])));
+          this.tables.set(table, new Map(parsed.map((r: Row) => [String(r.id), r])));
         }
       } catch {
         // sérült cache — kihagyjuk, a következő sync újratölti
@@ -84,7 +87,7 @@ class Store {
   }
 
   get(table: SyncTable, id: string): Row | undefined {
-    return this.tables.get(table)?.get(id);
+    return this.tables.get(table)?.get(String(id));
   }
 
   /** Lokális beírás (optimista vagy szerverről érkező) */
@@ -94,11 +97,11 @@ class Store {
     if (fromServer) {
       // ha van függő lokális írás erre a sorra, a lokális marad, amíg fel nem megy
       const pending = this.outbox.some(
-        (op) => op.kind === 'upsert' && op.table === table && op.row?.id === row.id,
+        (op) => op.kind === 'upsert' && op.table === table && String(op.row?.id) === String(row.id),
       );
       if (pending) return;
     }
-    map.set(row.id, row);
+    map.set(String(row.id), row);
     this.persistTable(table);
     this.emit();
   }
@@ -108,11 +111,11 @@ class Store {
     let map = this.tables.get(table);
     if (!map) { map = new Map(); this.tables.set(table, map); }
     const pendingIds = fromServer
-      ? new Set(this.outbox.filter((op) => op.kind === 'upsert' && op.table === table).map((op) => op.row!.id))
+      ? new Set(this.outbox.filter((op) => op.kind === 'upsert' && op.table === table).map((op) => String(op.row!.id)))
       : new Set<string>();
     for (const row of rows) {
-      if (pendingIds.has(row.id)) continue;
-      map.set(row.id, row);
+      if (pendingIds.has(String(row.id))) continue;
+      map.set(String(row.id), row);
     }
     this.persistTable(table);
     this.emit();
@@ -190,6 +193,7 @@ class Store {
   async clearAll() {
     this.tables.clear();
     this.outbox = [];
+    this.failed = [];
     this.cursors = {};
     const keys = await AsyncStorage.getAllKeys();
     await AsyncStorage.multiRemove(keys.filter((k) => k.startsWith(PREFIX)));

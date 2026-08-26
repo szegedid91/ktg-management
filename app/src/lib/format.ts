@@ -6,8 +6,8 @@ export function ft(amount: number | null | undefined): string {
   const rounded = Math.round(amount);
   const sign = rounded < 0 ? '-' : '';
   const digits = Math.abs(rounded).toString();
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${sign}${grouped} Ft`;
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return `${sign}${grouped} Ft`;
 }
 
 /** "2026-08-26" vagy Date -> "2026.08.26." */

@@ -100,6 +100,8 @@ export async function syncNow(): Promise<void> {
       }
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
+      // függő push-értesítések kiküldése (legfeljebb percenként)
+      import('./push').then((m) => m.drainPushQueue()).catch(() => {});
     }
   } catch (err: any) {
     status.lastError = isNetworkError(err) ? null : String(err?.message ?? err);

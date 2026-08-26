@@ -1,28 +1,45 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "Építkezés Költségkövető",
+    "slug": "ktg-management",
+    "scheme": "ktg",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "hu.ktg.management",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Számlák és blokkok fotózásához szükséges a kamera.",
+        "NSPhotoLibraryUsageDescription": "Számlafotók kiválasztásához szükséges a fotókönyvtár."
+      }
     },
     "android": {
+      "package": "hu.ktg.management",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-camera",
+      "expo-image-picker",
+      "expo-notifications",
+      "expo-sharing"
     ]
   }
 }
