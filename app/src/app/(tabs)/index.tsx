@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty } from '../../ui/kit';
@@ -18,6 +18,8 @@ export default function Dashboard() {
   const invoices = useTable<Invoice>('invoices');
 
   const balances = useOnlineView<UserBalance[]>('balances', () => fetchView('v_user_balances'), []);
+  // az egyenleg alapból rejtett — a szem ikonnal fedhető fel
+  const [showBalance, setShowBalance] = useState(false);
 
   const month = todayISO().slice(0, 7);
   const stats = useMemo(() => {
@@ -46,15 +48,31 @@ export default function Dashboard() {
       ) : null}
 
       <Card>
-        <H2>Egyenlegem</H2>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <H2>Egyenlegem</H2>
+          <Pressable
+            onPress={() => setShowBalance(!showBalance)}
+            hitSlop={10}
+            accessibilityLabel={showBalance ? 'Egyenleg elrejtése' : 'Egyenleg megjelenítése'}
+          >
+            <Text style={{ fontSize: 22 }}>{showBalance ? '🙈' : '👁️'}</Text>
+          </Pressable>
+        </View>
         {myBalance ? (
-          <>
-            <Text style={{ fontSize: 28, fontWeight: '800', color: myBalance.balance >= 0 ? C.success : C.danger }}>
-              {ft(myBalance.balance)}
-            </Text>
-            <Sub>{myBalance.balance >= 0 ? 'Ennyi jár neked a közösből' : 'Ennyivel tartozol a közösnek'}
-              {balances.fromCache ? ' (offline, utolsó ismert)' : ''}</Sub>
-          </>
+          showBalance ? (
+            <>
+              <Text style={{ fontSize: 28, fontWeight: '800', color: myBalance.balance >= 0 ? C.success : C.danger }}>
+                {ft(myBalance.balance)}
+              </Text>
+              <Sub>{myBalance.balance >= 0 ? 'Ennyi jár neked a közösből' : 'Ennyivel tartozol a közösnek'}
+                {balances.fromCache ? ' (offline, utolsó ismert)' : ''}</Sub>
+            </>
+          ) : (
+            <>
+              <Text style={{ fontSize: 28, fontWeight: '800', color: C.sub, letterSpacing: 3 }}>••• ••• Ft</Text>
+              <Sub>Koppints a szemre a megjelenítéshez.</Sub>
+            </>
+          )
         ) : <Sub>Egyenleg betöltése…</Sub>}
         <Btn title="Elszámolás megnyitása" kind="ghost" small onPress={() => router.push('/settlement')} />
       </Card>
