@@ -157,15 +157,6 @@ export default function Dashboard() {
         ))}
       </Card>
 
-      <View style={{ flexDirection: 'row', gap: S.md }}>
-        <View style={{ flex: 1 }}>
-          <Btn title="+ Költség" onPress={() => router.push('/expense/new')} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Btn title="+ Jelenlét" onPress={() => router.push(`/day/${todayISO()}`)} />
-        </View>
-      </View>
-
       <Sub style={{ textAlign: 'center' }}>
         {sync.lastSyncAt ? `Utolsó szinkron: ${hd(sync.lastSyncAt)} ${new Date(sync.lastSyncAt).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })}` : 'Még nem volt szinkron'}
       </Sub>

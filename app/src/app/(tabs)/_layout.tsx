@@ -1,9 +1,10 @@
 import React from 'react';
 import { Text } from 'react-native';
-import { Tabs, Redirect } from 'expo-router';
+import { Tabs, Redirect, router } from 'expo-router';
 import { useAuth } from '../../lib/auth';
 import { C } from '../../ui/theme';
 import { Loading } from '../../ui/kit';
+import { todayISO } from '../../lib/format';
 
 function icon(emoji: string) {
   return ({ focused }: { focused: boolean }) => (
@@ -28,8 +29,26 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Kezdőlap', tabBarIcon: icon('🏠') }} />
-      <Tabs.Screen name="sites" options={{ title: 'Építkezések', tabBarIcon: icon('🏗️') }} />
-      <Tabs.Screen name="calendar" options={{ title: 'Naptár', tabBarIcon: icon('📅') }} />
+      <Tabs.Screen
+        name="add-expense"
+        options={{ title: '+ Költség', tabBarIcon: icon('💸') }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/expense/new');
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="add-attendance"
+        options={{ title: '+ Jelenlét', tabBarIcon: icon('👷') }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push(`/day/${todayISO()}`);
+          },
+        }}
+      />
       <Tabs.Screen name="settlement" options={{ title: 'Elszámolás', tabBarIcon: icon('🤝') }} />
       <Tabs.Screen name="more" options={{ title: 'Több', tabBarIcon: icon('☰') }} />
     </Tabs>

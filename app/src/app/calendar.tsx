@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Card, H2, Sub, Btn } from '../../ui/kit';
-import { C, S } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
-import { ft, monthName, todayISO } from '../../lib/format';
-import { Attendance, Expense, Invoice } from '../../lib/types';
+import { Screen, Card, H2, Sub, Btn } from '../ui/kit';
+import { C, S } from '../ui/theme';
+import { useTable } from '../lib/hooks';
+import { ft, monthName, todayISO } from '../lib/format';
+import { Attendance, Expense, Invoice } from '../lib/types';
 
 export default function Calendar() {
   const today = todayISO();

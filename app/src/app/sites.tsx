@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Card, H2, Sub, Btn, Row, Body, Money, Badge, Empty, Segmented } from '../../ui/kit';
-import { C } from '../../ui/theme';
-import { useTable, useOnlineView } from '../../lib/hooks';
-import { fetchView } from '../../lib/repo';
-import { ft } from '../../lib/format';
-import { Site, SiteTotals } from '../../lib/types';
+import { Screen, Card, H2, Sub, Btn, Row, Body, Money, Badge, Empty, Segmented } from '../ui/kit';
+import { C } from '../ui/theme';
+import { useTable, useOnlineView } from '../lib/hooks';
+import { fetchView } from '../lib/repo';
+import { ft } from '../lib/format';
+import { Site, SiteTotals } from '../lib/types';
 
 export default function Sites() {
   const sites = useTable<Site>('sites');
