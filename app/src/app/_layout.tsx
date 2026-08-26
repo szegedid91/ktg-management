@@ -24,6 +24,7 @@ export default function RootLayout() {
         <Stack.Screen name="worker/new" options={{ title: 'Új munkavállaló' }} />
         <Stack.Screen name="worker/[id]" options={{ title: 'Munkavállaló' }} />
         <Stack.Screen name="day/[date]" options={{ title: 'Napi jelenlét' }} />
+        <Stack.Screen name="pending/[kind]" options={{ title: 'Függő kifizetések' }} />
         <Stack.Screen name="invoices/index" options={{ title: 'Kimenő számlák' }} />
         <Stack.Screen name="invoice/new" options={{ title: 'Új számla' }} />
         <Stack.Screen name="invoice/[id]" options={{ title: 'Számla' }} />

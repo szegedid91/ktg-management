@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -71,9 +71,22 @@ export default function Dashboard() {
       {(stats.outstanding > 0 || stats.unpaidWages > 0 || stats.unpaidCommissions > 0) ? (
         <Card style={{ borderColor: C.accent }}>
           <H2>Függőben</H2>
-          {stats.outstanding > 0 ? <KV k="Kintlévőség (számlázva, nem folyt be)" v={ft(stats.outstanding)} /> : null}
-          {stats.unpaidWages > 0 ? <KV k="Kifizetetlen bérek" v={ft(stats.unpaidWages)} /> : null}
-          {stats.unpaidCommissions > 0 ? <KV k="Kifizetetlen közvetítői díjak" v={ft(stats.unpaidCommissions)} /> : null}
+          <Sub>Koppints egy sorra a részletes, építkezésenkénti bontáshoz.</Sub>
+          {stats.outstanding > 0 ? (
+            <Pressable onPress={() => router.push('/invoices')}>
+              <KV k="Kintlévőség (számlázva, nem folyt be)" v={`${ft(stats.outstanding)}  ›`} />
+            </Pressable>
+          ) : null}
+          {stats.unpaidWages > 0 ? (
+            <Pressable onPress={() => router.push('/pending/wages')}>
+              <KV k="Kifizetetlen bérek" v={`${ft(stats.unpaidWages)}  ›`} />
+            </Pressable>
+          ) : null}
+          {stats.unpaidCommissions > 0 ? (
+            <Pressable onPress={() => router.push('/pending/commissions')}>
+              <KV k="Kifizetetlen közvetítői díjak" v={`${ft(stats.unpaidCommissions)}  ›`} />
+            </Pressable>
+          ) : null}
         </Card>
       ) : null}
 
