@@ -4,10 +4,10 @@ import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Segmented, Check, Row } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
-import { insertRow, softDeleteRow, markAttendancePaid, markCommissionPaid, getCurrentUserId } from '../../lib/repo';
-import { ft, hd, addDaysISO, parseAmount } from '../../lib/format';
+import { insertRow, softDeleteRow, getCurrentUserId } from '../../lib/repo';
+import { ft, hd, parseAmount } from '../../lib/format';
 import { attendanceAmount, commissionAmount } from '../../lib/calc';
-import { Attendance, Worker, Site, AppSettings, Profile, ExternalPerson, AttendanceBasis } from '../../lib/types';
+import { Attendance, Worker, Site, AppSettings, AttendanceBasis } from '../../lib/types';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function DayView() {
@@ -16,8 +16,6 @@ export default function DayView() {
   const allSites = useTable<Site>('sites');
   const workers = useTable<Worker>('workers');
   const attendance = useTable<Attendance>('attendance');
-  const profiles = useTable<Profile>('profiles');
-  const externals = useTable<ExternalPerson>('external_people');
   const settings = useTable<AppSettings>('app_settings')[0];
   const me = getCurrentUserId();
 
@@ -262,39 +260,15 @@ export default function DayView() {
       <Card>
         <H2>Napi bontás</H2>
         {dayRowsForSite.length === 0 ? <Empty text="Nincs jelenléti bejegyzés ezen a napon." /> : null}
-        {dayRowsForSite.map((a) => {
-          const workerPart = Number(a.amount) - Number(a.commission_amount);
-          const refName = a.referrer_user_id
-            ? profiles.find((p) => p.id === a.referrer_user_id)?.display_name
-            : a.referrer_external_id
-              ? externals.find((e) => e.id === a.referrer_external_id)?.name
-              : null;
-          return (
-            <View key={a.id} style={{ gap: 4, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Body style={{ fontWeight: '700' }}>{workerName(a.worker_id)}</Body>
-                <Sub>{!site ? siteName(a.site_id) + ' · ' : ''}{basisLabel(a)}</Sub>
-              </View>
-              {a.pay_basis !== 'presence' && workerPart > 0 ? (
-                <Check
-                  checked={!!a.paid_at}
-                  onToggle={() => markAttendancePaid([a.id], !a.paid_at)}
-                  label={a.paid_at ? `Kifizetve (${profiles.find((p) => p.id === a.paid_by)?.display_name ?? '?'})` : 'Kifizetés jelölése'}
-                />
-              ) : null}
-              {a.referrer_external_id && Number(a.commission_amount) > 0 ? (
-                <Check
-                  checked={!!a.commission_paid_at}
-                  onToggle={() => markCommissionPaid([a.id], !a.commission_paid_at)}
-                  label={a.commission_paid_at ? 'Közvetítői díj kifizetve' : 'Közvetítői díj kifizetése'}
-                />
-              ) : null}
-              {a.created_by === me ? (
-                <Text onPress={() => softDeleteRow('attendance', a.id)} style={{ color: C.danger, fontSize: 12 }}>Bejegyzés törlése</Text>
-              ) : null}
-            </View>
-          );
-        })}
+        {dayRowsForSite.map((a) => (
+          <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border }}>
+            <Body style={{ fontWeight: '700', flex: 1 }}>{workerName(a.worker_id)}</Body>
+            <Sub>{!site ? siteName(a.site_id) + ' · ' : ''}{basisLabel(a)}</Sub>
+            {a.created_by === me ? (
+              <Text onPress={() => softDeleteRow('attendance', a.id)} style={{ color: C.danger, fontSize: 16 }} accessibilityLabel="Bejegyzés törlése">🗑️</Text>
+            ) : null}
+          </View>
+        ))}
       </Card>
       ) : null}
     </Screen>
