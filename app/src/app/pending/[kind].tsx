@@ -104,7 +104,7 @@ export default function PendingScreen() {
       .map(([siteId, persons]) => {
         const list = [...persons.values()]
           .map((p) => ({ ...p, items: p.items.sort((a, b) => a.date.localeCompare(b.date)) }))
-          .sort((a, b) => b.total - a.total);
+          .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
         return {
           siteId,
           siteName: sites.find((s) => s.id === siteId)?.name ?? '?',
