@@ -203,6 +203,7 @@ export default function WorkerDetail() {
             {a.paid_at ? (
               <Sub style={{ fontSize: 11 }}>
                 kifizetve: {hd(a.paid_at)} · {profiles.find((p) => p.id === a.paid_by)?.display_name ?? '?'}
+                {a.paid_note ? ` — „${a.paid_note}”` : ''}
               </Sub>
             ) : null}
           </View>

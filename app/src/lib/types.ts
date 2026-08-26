@@ -127,8 +127,11 @@ export interface Attendance extends BaseRow {
   referrer_external_id: UUID | null;
   paid_at: string | null;
   paid_by: UUID | null;
+  /** a kifizetéskor írt megjegyzés */
+  paid_note: string | null;
   commission_paid_at: string | null;
   commission_paid_by: UUID | null;
+  commission_paid_note: string | null;
   note: string | null;
 }
 

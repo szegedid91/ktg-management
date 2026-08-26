@@ -30,6 +30,7 @@ const FIELD_LABELS: Record<string, string> = {
   site_id: 'Építkezés', worker_id: 'Munkavállaló', category_id: 'Kategória',
   equipment_id: 'Eszköz', expense_id: 'Költség', paid_by: 'Fizette',
   pay_basis: 'Elszámolás', hours: 'Óraszám', day_multiplier: 'Nap szorzó', applied_rate: 'Alkalmazott díj',
+  paid_note: 'Kifizetési megjegyzés', commission_paid_note: 'Közvetítői kifizetés megjegyzése',
   hourly_rate: 'Órabér', daily_rate: 'Napi díj', project_rate: 'Projektdíj',
   default_pay_basis: 'Alap elszámolás', trade: 'Szakipar', worker_type: 'Típus',
   company_name: 'Cégnév', tax_number: 'Adószám', hq_address: 'Székhely', is_vat_payer: 'ÁFA-körös',

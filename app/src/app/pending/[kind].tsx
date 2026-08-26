@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
-import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge, Input } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { markAttendancePaid, markCommissionPaid } from '../../lib/repo';
@@ -112,6 +112,9 @@ export default function PendingScreen() {
   const [personFilter, setPersonFilter] = useState<Set<string>>(new Set());
   // alapból mindenki összecsukva; lenyitáskor látszik az összeg és a napi bontás
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // a pipa csak kijelöl — a kifizetés a "Kijelöltek kifizetése" gombbal történik
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [payNote, setPayNote] = useState('');
 
   const toggleIn = (set: Set<string>, setter: (s: Set<string>) => void, id: string) => {
     const next = new Set(set);
@@ -144,7 +147,23 @@ export default function PendingScreen() {
 
   const grandTotal = visibleGroups.reduce((s, g) => s + g.total, 0);
   const isFiltered = siteFilter.size > 0 || personFilter.size > 0;
-  const payItems = (ids: string[]) => isWages ? markAttendancePaid(ids, true) : markCommissionPaid(ids, true);
+
+  // a kijelöltek összege (csak a még listában lévő tételeket számoljuk)
+  const amountById = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of groups) for (const p of g.persons) for (const it of p.items) m.set(it.id, it.amount);
+    return m;
+  }, [groups]);
+  const selectedIds = [...selected].filter((id) => amountById.has(id));
+  const selectedTotal = selectedIds.reduce((s, id) => s + (amountById.get(id) ?? 0), 0);
+
+  const paySelected = () => {
+    if (selectedIds.length === 0) return;
+    if (isWages) markAttendancePaid(selectedIds, true, payNote);
+    else markCommissionPaid(selectedIds, true, payNote);
+    setSelected(new Set());
+    setPayNote('');
+  };
 
   return (
     <Screen>
@@ -194,8 +213,22 @@ export default function PendingScreen() {
           v={ft(grandTotal)}
           strong
         />
-        <Sub>A pipa rögzíti, hogy ki és mikor fizette — ez a te egyenlegedet terheli.</Sub>
+        <Sub>A pipa kijelöli a tételeket — a kifizetést a lenti gomb rögzíti (ki, mikor, megjegyzés).</Sub>
       </Card>
+
+      {selectedIds.length > 0 ? (
+        <Card style={{ borderColor: C.primary }}>
+          <KV k={`Kijelölve: ${selectedIds.length} tétel`} v={ft(selectedTotal)} strong />
+          <Input
+            label="Megjegyzés a kifizetéshez (nem kötelező)"
+            value={payNote}
+            onChangeText={setPayNote}
+            placeholder="pl. készpénzben, augusztusi előleggel együtt"
+          />
+          <Btn title={`✓ Kijelöltek kifizetése (${ft(selectedTotal)})`} onPress={paySelected} />
+          <Btn title="Kijelölés törlése" kind="ghost" small onPress={() => setSelected(new Set())} />
+        </Card>
+      ) : null}
 
       {visibleGroups.length === 0 ? <Empty text="Nincs függő tétel. ✅" /> : null}
 
@@ -231,8 +264,8 @@ export default function PendingScreen() {
                       <View key={it.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingLeft: S.lg }}>
                         <View style={{ flex: 1 }}>
                           <Check
-                            checked={false}
-                            onToggle={() => payItems([it.id])}
+                            checked={selected.has(it.id)}
+                            onToggle={() => toggleIn(selected, setSelected, it.id)}
                             label={`${hd(it.date)} — ${ft(it.amount)}`}
                             sub={it.detail}
                           />
@@ -241,10 +274,17 @@ export default function PendingScreen() {
                     ))}
                     <View style={{ paddingLeft: S.lg }}>
                       <Btn
-                        title={`${p.name}: mind kifizetve (${ft(p.total)})`}
+                        title={p.items.every((i) => selected.has(i.id))
+                          ? `${p.name}: kijelölés törlése`
+                          : `${p.name}: mind kijelölése (${ft(p.total)})`}
                         kind="secondary"
                         small
-                        onPress={() => payItems(p.items.map((i) => i.id))}
+                        onPress={() => {
+                          const next = new Set(selected);
+                          const all = p.items.every((i) => next.has(i.id));
+                          p.items.forEach((i) => { if (all) next.delete(i.id); else next.add(i.id); });
+                          setSelected(next);
+                        }}
                       />
                     </View>
                   </>

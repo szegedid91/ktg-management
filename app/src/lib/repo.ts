@@ -72,23 +72,25 @@ export function queueRpc(fn: string, args: Record<string, any>,
 }
 
 // ---------- Kifizetés-pipák ----------
-export function markAttendancePaid(ids: string[], paid: boolean) {
-  queueRpc('mark_attendance_paid', { p_ids: ids, p_paid: paid },
+export function markAttendancePaid(ids: string[], paid: boolean, note?: string) {
+  const n = note?.trim() || null;
+  queueRpc('mark_attendance_paid', { p_ids: ids, p_paid: paid, p_note: n },
     ids.map((id) => ({
       table: 'attendance' as SyncTable, id,
       patch: paid
-        ? { paid_at: nowISO(), paid_by: currentUserId }
-        : { paid_at: null, paid_by: null },
+        ? { paid_at: nowISO(), paid_by: currentUserId, paid_note: n }
+        : { paid_at: null, paid_by: null, paid_note: null },
     })));
 }
 
-export function markCommissionPaid(ids: string[], paid: boolean) {
-  queueRpc('mark_commission_paid', { p_ids: ids, p_paid: paid },
+export function markCommissionPaid(ids: string[], paid: boolean, note?: string) {
+  const n = note?.trim() || null;
+  queueRpc('mark_commission_paid', { p_ids: ids, p_paid: paid, p_note: n },
     ids.map((id) => ({
       table: 'attendance' as SyncTable, id,
       patch: paid
-        ? { commission_paid_at: nowISO(), commission_paid_by: currentUserId }
-        : { commission_paid_at: null, commission_paid_by: null },
+        ? { commission_paid_at: nowISO(), commission_paid_by: currentUserId, commission_paid_note: n }
+        : { commission_paid_at: null, commission_paid_by: null, commission_paid_note: null },
     })));
 }
 
