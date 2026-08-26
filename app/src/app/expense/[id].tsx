@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Image } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Input, Picker } from '../../ui/kit';
 import { S } from '../../ui/theme';
 import { useRow, useTable } from '../../lib/hooks';
@@ -100,7 +101,7 @@ export default function ExpenseDetail() {
               <View style={{ flex: 1 }}>
                 <Btn title="Törlés" kind="danger" small onPress={() => {
                   void confirmDialog('Törlés', 'Biztosan törlöd ezt a költséget?', 'Törlés', true).then((ok) => {
-                    if (ok) { softDeleteRow('expenses', expense.id); router.back(); }
+                    if (ok) { softDeleteRow('expenses', expense.id); smartBack(); }
                   });
                 }} />
               </View>

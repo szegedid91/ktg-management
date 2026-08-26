@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { View, Text, Image, ActivityIndicator, Pressable } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { smartBack } from '../../lib/nav';
 import * as ImagePicker from 'expo-image-picker';
 import { Screen, Card, Input, Btn, Sub, H2, Body } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -182,7 +183,7 @@ export default function NewExpense() {
         // offline — a költség fotó nélkül mentődött
       }
     }
-    router.back();
+    smartBack();
   };
 
   return (

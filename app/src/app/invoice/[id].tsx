@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { smartBack } from '../../lib/nav';
 import { Screen, Card, Sub, Btn, KV, Empty, Check, Body } from '../../ui/kit';
 import { S } from '../../ui/theme';
 import { useRow, useTable } from '../../lib/hooks';
@@ -54,7 +55,7 @@ export default function InvoiceDetail() {
       {mine ? (
         <Btn title="Számla törlése" kind="danger" onPress={() => {
           void confirmDialog('Törlés', 'Biztosan törlöd ezt a számlát?', 'Törlés', true).then((ok) => {
-            if (ok) { softDeleteRow('invoices', invoice.id); router.back(); }
+            if (ok) { softDeleteRow('invoices', invoice.id); smartBack(); }
           });
         }} />
       ) : null}

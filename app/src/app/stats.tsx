@@ -133,7 +133,47 @@ export default function Stats() {
     if (!selYear) setSelYear(Number(todayISO().slice(0, 4)));
   };
 
-  const siteOk = (siteId: string | null) => selSites.size === 0 || (!!siteId && selSites.has(siteId));
+  // az időszak burkoló intervalluma (több hónapnál az elsőtől az utolsóig)
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  let rangeStart = presetStart; let rangeEnd = '9999-12-31';
+  if (selYear) {
+    if (selMonths.size) {
+      const mMin = Math.min(...selMonths); const mMax = Math.max(...selMonths);
+      rangeStart = `${selYear}-${pad2(mMin)}-01`;
+      rangeEnd = mMax === 12 ? `${selYear + 1}-01-01` : `${selYear}-${pad2(mMax + 1)}-01`;
+    } else {
+      rangeStart = `${selYear}-01-01`;
+      rangeEnd = `${selYear + 1}-01-01`;
+    }
+  }
+
+  // csak az időszakban aktív területek választhatók: ami az időszak előtt
+  // lezárult, vagy csak az időszak után indult (első bejegyzése későbbi), kiesik
+  const firstActivity = useMemo(() => {
+    const m = new Map<string, string>();
+    const upd = (id: string | null, d: string) => {
+      if (!id) return;
+      const cur = m.get(id);
+      if (!cur || d < cur) m.set(id, d);
+    };
+    for (const e of allExpenses) upd(e.site_id, e.expense_date);
+    for (const a of allAttendance) upd(a.site_id, a.work_date);
+    for (const i of invoices) upd(i.site_id, i.invoice_date);
+    return m;
+  }, [allExpenses, allAttendance, invoices]);
+
+  const visibleSites = sites
+    .filter((s) => {
+      const closedBefore = s.status === 'closed' && !!s.closed_at && s.closed_at.slice(0, 10) < rangeStart;
+      const fa = firstActivity.get(s.id);
+      const startsAfter = fa ? fa >= rangeEnd : false;
+      return !closedBefore && !startsAfter;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+
+  // ha az időszak-váltással kiesett egy kijelölt terület, azt nem vesszük figyelembe
+  const effectiveSites = new Set([...selSites].filter((id) => visibleSites.some((s) => s.id === id)));
+  const siteOk = (siteId: string | null) => effectiveSites.size === 0 || (!!siteId && effectiveSites.has(siteId));
   const toggleSelSite = (id: string) => {
     const next = new Set(selSites);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -254,12 +294,12 @@ export default function Stats() {
         <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600' }}>Terület:</Text>
         <Pressable
           onPress={() => setSelSites(new Set())}
-          style={{ backgroundColor: selSites.size === 0 ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+          style={{ backgroundColor: effectiveSites.size === 0 ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
         >
-          <Text style={{ color: selSites.size === 0 ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>Mind</Text>
+          <Text style={{ color: effectiveSites.size === 0 ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>Mind</Text>
         </Pressable>
-        {[...sites].sort((a, b) => a.name.localeCompare(b.name, 'hu')).map((s) => {
-          const on = selSites.has(s.id);
+        {visibleSites.map((s) => {
+          const on = effectiveSites.has(s.id);
           return (
             <Pressable
               key={s.id}

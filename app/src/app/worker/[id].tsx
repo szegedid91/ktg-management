@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Badge, Divider, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useRow, useTable } from '../../lib/hooks';
@@ -131,7 +132,7 @@ export default function WorkerDetail() {
             <View style={{ flex: 1 }}>
               <Btn title="Törlés" kind="danger" small onPress={() => {
                 void confirmDialog('Törlés', `Biztosan törlöd: ${worker.name}?`, 'Törlés', true).then((ok) => {
-                  if (ok) { softDeleteRow('workers', worker.id); router.back(); }
+                  if (ok) { softDeleteRow('workers', worker.id); smartBack(); }
                 });
               }} />
             </View>

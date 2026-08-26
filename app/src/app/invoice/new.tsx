@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import { smartBack } from '../../lib/nav';
 import { Screen, Card, Input, Btn, Picker } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
 import { insertRow } from '../../lib/repo';
@@ -44,7 +45,7 @@ export default function NewInvoice() {
       gross_amount: a.gross,
       note: note.trim() || null,
     });
-    router.back();
+    smartBack();
   };
 
   return (

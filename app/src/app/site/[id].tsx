@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Badge, Row, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useRow, useOnlineView } from '../../lib/hooks';
@@ -122,7 +123,7 @@ export default function SiteDetail() {
             {!closed && site.created_by === me ? (
               <Btn title="Építkezés törlése" kind="ghost" onPress={() => {
                 void confirmDialog('Törlés', `Biztosan törlöd: ${site.name}?`, 'Törlés', true).then((ok) => {
-                  if (ok) { softDeleteRow('sites', site.id); router.back(); }
+                  if (ok) { softDeleteRow('sites', site.id); smartBack(); }
                 });
               }} />
             ) : null}
