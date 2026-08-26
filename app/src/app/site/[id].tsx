@@ -6,7 +6,7 @@ import { C, S } from '../../ui/theme';
 import { useTable, useRow, useOnlineView } from '../../lib/hooks';
 import { callRpc, fetchView, getCurrentUserId, updateRow, softDeleteRow, markInvoicePaid } from '../../lib/repo';
 import { syncNow } from '../../lib/sync';
-import { ft, hd } from '../../lib/format';
+import { ft, hd, todayISO } from '../../lib/format';
 import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals } from '../../lib/types';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
@@ -17,6 +17,7 @@ export default function SiteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const site = useRow<Site>('sites', id);
   const [tab, setTab] = useState<Tab>('summary');
+  const [costTab, setCostTab] = useState<'expenses' | 'wages'>('expenses');
   const expenses = useTable<Expense>('expenses').filter((e) => e.site_id === id);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.site_id === id);
   const invoices = useTable<Invoice>('invoices').filter((i) => i.site_id === id);
@@ -131,17 +132,57 @@ export default function SiteDetail() {
 
       {tab === 'expenses' ? (
         <>
-          {!closed ? <Btn title="+ Költség rögzítése" kind="secondary" onPress={() => router.push(`/expense/new?siteId=${id}`)} /> : null}
-          {expenses.length === 0 ? <Empty text="Még nincs költség." /> : null}
-          {[...expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date)).map((e) => (
-            <Row key={e.id} onPress={() => router.push(`/expense/${e.id}`)}>
-              <View style={{ flex: 1 }}>
-                <Body style={{ fontWeight: '600' }}>{e.title || 'Költség'}</Body>
-                <Sub>{hd(e.expense_date)} · {categories.find((c) => c.id === e.category_id)?.name ?? 'Nincs kategória'}</Sub>
-              </View>
-              <Text style={{ fontWeight: '700' }}>{ft(e.net_amount)}</Text>
-            </Row>
-          ))}
+          <Segmented
+            options={[
+              { value: 'expenses', label: `Költségek (${expenses.length})` },
+              { value: 'wages', label: `Munkabérek (${attendance.filter((a) => a.pay_basis !== 'presence').length})` },
+            ]}
+            value={costTab}
+            onChange={setCostTab}
+          />
+
+          {costTab === 'expenses' ? (
+            <>
+              {!closed ? <Btn title="+ Költség rögzítése" kind="secondary" onPress={() => router.push(`/expense/new?siteId=${id}`)} /> : null}
+              <Card>
+                <KV k="Költségek összesen (nettó)" v={ft(totals.expNet)} strong />
+              </Card>
+              {expenses.length === 0 ? <Empty text="Még nincs költség." /> : null}
+              {[...expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date)).map((e) => (
+                <Row key={e.id} onPress={() => router.push(`/expense/${e.id}`)}>
+                  <View style={{ flex: 1 }}>
+                    <Body style={{ fontWeight: '600' }}>{e.title || 'Költség'}</Body>
+                    <Sub>{hd(e.expense_date)} · {categories.find((c) => c.id === e.category_id)?.name ?? 'Nincs kategória'}</Sub>
+                  </View>
+                  <Text style={{ fontWeight: '700' }}>{ft(e.net_amount)}</Text>
+                </Row>
+              ))}
+            </>
+          ) : (
+            <>
+              {!closed ? <Btn title="+ Jelenlét rögzítése" kind="secondary" onPress={() => router.push(`/day/${todayISO()}?siteId=${id}`)} /> : null}
+              <Card>
+                <KV k="Bérköltség összesen (nettó)" v={ft(totals.wageNet)} strong />
+                {totals.unpaidWage > 0 ? <KV k="⚠️ Ebből kifizetetlen" v={ft(totals.unpaidWage)} /> : null}
+              </Card>
+              {attendance.filter((a) => a.pay_basis !== 'presence').length === 0 ? <Empty text="Még nincs bérköltség." /> : null}
+              {[...attendance]
+                .filter((a) => a.pay_basis !== 'presence')
+                .sort((a, b) => b.work_date.localeCompare(a.work_date))
+                .map((a) => (
+                  <Row key={a.id} onPress={() => router.push(`/day/${a.work_date}?siteId=${id}`)}>
+                    <View style={{ flex: 1 }}>
+                      <Body style={{ fontWeight: '600' }}>{workers.find((w) => w.id === a.worker_id)?.name ?? '?'}</Body>
+                      <Sub>
+                        {hd(a.work_date)} · {a.pay_basis === 'hourly' ? `${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj') : 'projektdíj'}
+                        {a.paid_at ? ' · kifizetve ✓' : ''}
+                      </Sub>
+                    </View>
+                    <Text style={{ fontWeight: '700', color: a.paid_at ? C.success : C.text }}>{ft(Number(a.amount))}</Text>
+                  </Row>
+                ))}
+            </>
+          )}
         </>
       ) : null}
 

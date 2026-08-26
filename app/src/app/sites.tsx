@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, Row, Body, Money, Badge, Empty, Segmented } from '../ui/kit';
 import { C } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
@@ -9,8 +9,11 @@ import { ft } from '../lib/format';
 import { Site, SiteTotals } from '../lib/types';
 
 export default function Sites() {
+  const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const sites = useTable<Site>('sites');
-  const [filter, setFilter] = useState<'active' | 'closed' | 'all'>('active');
+  const [filter, setFilter] = useState<'active' | 'closed' | 'all'>(
+    filterParam === 'closed' ? 'closed' : filterParam === 'all' ? 'all' : 'active',
+  );
   const totals = useOnlineView<SiteTotals[]>('site_totals', () => fetchView('v_site_totals'), []);
 
   const filtered = sites

@@ -79,6 +79,7 @@ function DashboardInner() {
   }, [expenses, attendance, invoices, month]);
 
   const activeSites = sites.filter((s) => s.status === 'active');
+  const closedSites = sites.filter((s) => s.status === 'closed');
   const myBalance = balances.data?.find((b) => b.user_id === session?.user.id);
 
   return (
@@ -140,6 +141,13 @@ function DashboardInner() {
         {activeSites.map((s) => (
           <Btn key={s.id} title={s.name} kind="ghost" onPress={() => router.push(`/site/${s.id}`)} />
         ))}
+        {closedSites.length > 0 ? (
+          <Pressable onPress={() => router.push('/sites?filter=closed')}>
+            <Sub style={{ textAlign: 'center', paddingVertical: 6 }}>
+              📁 Lezárt építkezések ({closedSites.length})  ›
+            </Sub>
+          </Pressable>
+        ) : null}
       </Card>
 
       <Sub style={{ textAlign: 'center' }}>
