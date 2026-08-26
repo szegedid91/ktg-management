@@ -54,8 +54,9 @@ export default function Dashboard() {
   const invoices = useTable<Invoice>('invoices');
 
   const balances = useOnlineView<UserBalance[]>('balances', () => fetchView('v_user_balances'), []);
-  // az egyenleg alapból rejtett — a szem ikonnal fedhető fel
+  // az összegek alapból rejtettek — a fenti szem ikon fedi fel mindet
   const [showBalance, setShowBalance] = useState(false);
+  const mask = (n: number) => (showBalance ? ft(n) : '••• Ft');
 
   const month = todayISO().slice(0, 7);
   const stats = useMemo(() => {
@@ -117,11 +118,11 @@ export default function Dashboard() {
 
       <Card>
         <H2>Ez a hónap</H2>
-        <KV k="Költés (nettó)" v={ft(stats.mExp + stats.mWage)} />
-        <KV k="— ebből anyag/egyéb" v={ft(stats.mExp)} />
-        <KV k="— ebből bér" v={ft(stats.mWage)} />
-        <KV k="Befolyt bevétel (nettó)" v={ft(stats.mRev)} />
-        <KV k="Eredmény" v={ft(stats.mRev - stats.mExp - stats.mWage)} strong />
+        <KV k="Költés (nettó)" v={mask(stats.mExp + stats.mWage)} />
+        <KV k="— ebből anyag/egyéb" v={mask(stats.mExp)} />
+        <KV k="— ebből bér" v={mask(stats.mWage)} />
+        <KV k="Befolyt bevétel (nettó)" v={mask(stats.mRev)} />
+        <KV k="Eredmény" v={mask(stats.mRev - stats.mExp - stats.mWage)} strong />
       </Card>
 
       {(stats.outstanding > 0 || stats.unpaidWages > 0 || stats.unpaidCommissions > 0) ? (
