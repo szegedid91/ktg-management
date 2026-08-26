@@ -1,11 +1,16 @@
-import React, { useMemo, useState } from 'react';
+// Audit napló — ember-olvasható formában: a nyers mező-diffek helyett
+// nevekkel, formázott összegekkel és magyar címkékkel írjuk le, mi történt.
+
+import React, { useState } from 'react';
 import { View, Text } from 'react-native';
-import { Screen, Card, Sub, Body, Btn, Empty, Segmented, Picker, Loading } from '../ui/kit';
+import { Screen, Card, Sub, Body, Btn, Empty, Picker, Loading } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
-import { hdt } from '../lib/format';
-import { AuditLogRow, Profile, Site } from '../lib/types';
+import { hdt, hd, ft } from '../lib/format';
+import {
+  AuditLogRow, Profile, Site, Worker, ExternalPerson, ExpenseCategory, Equipment,
+} from '../lib/types';
 
 const TABLE_LABELS: Record<string, string> = {
   sites: 'Építkezés', expenses: 'Költség', expense_photos: 'Számlafotó',
@@ -15,25 +20,61 @@ const TABLE_LABELS: Record<string, string> = {
   app_settings: 'Beállítások', expense_categories: 'Kategória',
 };
 
-const ACTION_LABELS: Record<string, string> = { INSERT: 'létrehozás', UPDATE: 'módosítás', DELETE: 'törlés' };
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Név', title: 'Megnevezés', note: 'Megjegyzés', address: 'Cím', status: 'Státusz',
+  body: 'Szöveg', display_name: 'Név', email: 'E-mail', phone: 'Telefon', phones: 'Telefonszámok',
+  net_amount: 'Nettó összeg', gross_amount: 'Bruttó összeg', vat_amount: 'ÁFA összeg',
+  vat_rate: 'ÁFA kulcs (%)', amount: 'Összeg', commission_amount: 'Közvetítői díj',
+  expense_date: 'Dátum', work_date: 'Dátum', invoice_date: 'Számla kelte', settle_date: 'Dátum',
+  due_date: 'Fizetési határidő', default_payment_days: 'Fizetési határidő (nap)',
+  site_id: 'Építkezés', worker_id: 'Munkavállaló', category_id: 'Kategória',
+  equipment_id: 'Eszköz', expense_id: 'Költség', paid_by: 'Fizette',
+  pay_basis: 'Elszámolás', hours: 'Óraszám', day_multiplier: 'Nap szorzó', applied_rate: 'Alkalmazott díj',
+  hourly_rate: 'Órabér', daily_rate: 'Napi díj', project_rate: 'Projektdíj',
+  default_pay_basis: 'Alap elszámolás', trade: 'Szakipar', worker_type: 'Típus',
+  company_name: 'Cégnév', tax_number: 'Adószám', hq_address: 'Székhely', is_vat_payer: 'ÁFA-körös',
+  referrer_user_id: 'Közvetítő (tulajdonos)', referrer_external_id: 'Közvetítő (külsős)',
+  commission_mode: 'Jutalék típusa', commission_value: 'Jutalék értéke', commission_unit: 'Jutalék egysége',
+  location_label: 'Helyszín', taken_by: 'Elvitte', moved_at: 'Mozgatás ideje',
+  from_user: 'Küldő', to_user: 'Fogadó', profit_share_percent: 'Profitrészesedés (%)',
+  big_expense_threshold: 'Riasztási küszöb', overdue_days: 'Lejárat (nap)',
+  company_hourly_rate: 'Céges órabér', company_daily_rate: 'Céges napi díj', company_project_rate: 'Céges projektdíj',
+  individual_hourly_rate: 'Magánszemély órabér', individual_daily_rate: 'Magánszemély napi díj',
+  individual_project_rate: 'Magánszemély projektdíj',
+  out_hourly_rate: 'Kimenő órabér', out_daily_rate: 'Kimenő napi díj', out_project_rate: 'Kimenő projektdíj',
+  default_vat_rate: 'Alapértelmezett ÁFA (%)',
+  notify_comments: 'Komment értesítés', notify_big_expense: 'Nagy költés riasztás',
+  notify_weekly: 'Heti összefoglaló', notify_overdue: 'Lejárat értesítés',
+};
 
-// a fontos mezők, amiknek a változását ember-olvashatóan mutatjuk
-const SKIP_FIELDS = new Set(['updated_at', 'created_at', 'id', 'created_by']);
+const MONEY_FIELDS = new Set([
+  'net_amount', 'gross_amount', 'vat_amount', 'amount', 'commission_amount', 'applied_rate',
+  'hourly_rate', 'daily_rate', 'project_rate', 'big_expense_threshold', 'commission_value',
+  'company_hourly_rate', 'company_daily_rate', 'company_project_rate',
+  'individual_hourly_rate', 'individual_daily_rate', 'individual_project_rate',
+  'out_hourly_rate', 'out_daily_rate', 'out_project_rate',
+]);
+const DATE_FIELDS = new Set(['expense_date', 'work_date', 'invoice_date', 'settle_date', 'due_date']);
+// technikai mezők, amiket nem sorolunk fel diffként (a fontosakat külön kezeljük)
+const SKIP_FIELDS = new Set([
+  'id', 'created_by', 'created_at', 'updated_at', 'updated_by', 'deleted_at',
+  'paid_at', 'paid_by', 'commission_paid_at', 'commission_paid_by',
+  'paid_marked_by', 'closed_at', 'closed_by', 'invoiced_at',
+  'push_token', 'storage_path', 'photo_path', 'bank_account_enc',
+]);
 
-function diffSummary(row: AuditLogRow): string {
-  if (row.action === 'INSERT' || !row.old_data || !row.new_data) return '';
-  const changes: string[] = [];
-  for (const key of Object.keys(row.new_data)) {
-    if (SKIP_FIELDS.has(key)) continue;
-    const oldV = JSON.stringify(row.old_data[key]);
-    const newV = JSON.stringify(row.new_data[key]);
-    if (oldV !== newV) changes.push(`${key}: ${oldV ?? '∅'} → ${newV ?? '∅'}`);
-  }
-  return changes.slice(0, 6).join('\n');
-}
+const BASIS_LABELS: Record<string, string> = {
+  hourly: 'órabér', daily: 'napi díj', project: 'projektdíj', presence: 'csak jelenlét',
+};
 
 export default function Audit() {
   const profiles = useTable<Profile>('profiles');
+  const sites = useTable<Site>('sites', true);
+  const workers = useTable<Worker>('workers', true);
+  const externals = useTable<ExternalPerson>('external_people', true);
+  const categories = useTable<ExpenseCategory>('expense_categories', true);
+  const equipment = useTable<Equipment>('equipment', true);
+
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string | null>(null);
   const [limit, setLimit] = useState(50);
@@ -49,7 +90,102 @@ export default function Audit() {
     [userFilter, tableFilter, limit],
   );
 
-  const name = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? 'rendszer';
+  const userName = (id: unknown) => profiles.find((p) => p.id === id)?.display_name ?? 'rendszer';
+  const siteName = (id: unknown) => (id ? sites.find((s) => s.id === id)?.name ?? 'ismeretlen építkezés' : 'közös');
+  const workerNm = (id: unknown) => workers.find((w) => w.id === id)?.name ?? 'ismeretlen munkavállaló';
+  const extName = (id: unknown) => externals.find((e) => e.id === id)?.name ?? 'ismeretlen külsős';
+  const catName = (id: unknown) => categories.find((c) => c.id === id)?.name ?? 'ismeretlen kategória';
+  const eqName = (id: unknown) => equipment.find((e) => e.id === id)?.name ?? 'ismeretlen eszköz';
+
+  const fmtVal = (field: string, v: unknown): string => {
+    if (v === null || v === undefined || v === '') return 'üres';
+    if (typeof v === 'boolean') return v ? 'igen' : 'nem';
+    if (MONEY_FIELDS.has(field)) return ft(Number(v));
+    if (DATE_FIELDS.has(field)) return hd(String(v));
+    if (field === 'site_id') return siteName(v);
+    if (field === 'worker_id') return workerNm(v);
+    if (field === 'category_id') return catName(v);
+    if (field === 'equipment_id') return eqName(v);
+    if (field === 'referrer_external_id') return extName(v);
+    if (field === 'referrer_user_id' || field === 'paid_by' || field === 'from_user' || field === 'to_user') return userName(v);
+    if (field === 'pay_basis' || field === 'default_pay_basis') return BASIS_LABELS[String(v)] ?? String(v);
+    if (field === 'status') return v === 'active' ? 'aktív' : 'lezárt';
+    if (field === 'worker_type') return v === 'company' ? 'céges' : 'magánszemély';
+    if (field === 'moved_at') return hdt(String(v));
+    if (Array.isArray(v)) return v.join(', ') || 'üres';
+    return String(v);
+  };
+
+  /** Mi az érintett tétel? — pl. "Segéd Sanyi — 2026.04.07. · Újlak utca" */
+  const subject = (r: AuditLogRow): string => {
+    const d = (r.new_data ?? r.old_data ?? {}) as Record<string, unknown>;
+    switch (r.table_name) {
+      case 'sites': return String(d.name ?? '');
+      case 'workers': return `${d.name}${d.trade ? ` (${d.trade})` : ''}`;
+      case 'external_people': return String(d.name ?? '');
+      case 'equipment': return String(d.name ?? '');
+      case 'expense_categories': return String(d.name ?? '');
+      case 'profiles': return String(d.display_name ?? '');
+      case 'app_settings': return 'Alapértelmezett díjak és ÁFA';
+      case 'attendance':
+        return `${workerNm(d.worker_id)} — ${hd(String(d.work_date))} · ${siteName(d.site_id)}`;
+      case 'expenses':
+        return `${d.title ?? (d.category_id ? catName(d.category_id) : 'költség')} — ${ft(Number(d.net_amount ?? 0))} nettó · ${siteName(d.site_id)}`;
+      case 'invoices':
+        return `${d.title ?? 'számla'} — ${ft(Number(d.net_amount ?? 0))} nettó · ${siteName(d.site_id)}`;
+      case 'settlements':
+        return `${userName(d.from_user)} → ${userName(d.to_user)}: ${ft(Number(d.amount ?? 0))}`;
+      case 'comments':
+        return `„${String(d.body ?? '').slice(0, 60)}${String(d.body ?? '').length > 60 ? '…' : ''}”`;
+      case 'equipment_moves':
+        return `${eqName(d.equipment_id)} → ${d.site_id ? siteName(d.site_id) : d.location_label ?? '?'}`;
+      case 'expense_photos': return 'számlafotó';
+      default: return '';
+    }
+  };
+
+  /** Fejléc: felismerjük a tipikus eseményeket, a többinél általános címke. */
+  const headline = (r: AuditLogRow): string => {
+    const label = TABLE_LABELS[r.table_name] ?? r.table_name;
+    const o = (r.old_data ?? {}) as Record<string, unknown>;
+    const n = (r.new_data ?? {}) as Record<string, unknown>;
+    if (r.action === 'UPDATE') {
+      if (!o.deleted_at && n.deleted_at) return `${label} törölve`;
+      if (o.deleted_at && !n.deleted_at) return `${label} visszaállítva`;
+      if (r.table_name === 'attendance') {
+        if (!o.paid_at && n.paid_at) return 'Bér kifizetve jelölve';
+        if (o.paid_at && !n.paid_at) return 'Bér kifizetése visszavonva';
+        if (!o.commission_paid_at && n.commission_paid_at) return 'Közvetítői díj kifizetve jelölve';
+        if (o.commission_paid_at && !n.commission_paid_at) return 'Közvetítői díj kifizetése visszavonva';
+      }
+      if (r.table_name === 'invoices') {
+        if (!o.paid_at && n.paid_at) return 'Számla befolyt jelölve';
+        if (o.paid_at && !n.paid_at) return 'Számla befolyás visszavonva';
+      }
+      if (r.table_name === 'sites') {
+        if (o.status === 'active' && n.status === 'closed') return 'Építkezés lezárva';
+        if (o.status === 'closed' && n.status === 'active') return 'Építkezés újranyitva';
+      }
+      return `${label} módosítva`;
+    }
+    if (r.action === 'DELETE') return `${label} végleg törölve`;
+    return `${label} létrehozva`;
+  };
+
+  /** Módosításnál: mi változott, ember-olvashatóan. */
+  const changes = (r: AuditLogRow): string[] => {
+    if (r.action !== 'UPDATE' || !r.old_data || !r.new_data) return [];
+    const out: string[] = [];
+    for (const key of Object.keys(r.new_data)) {
+      if (SKIP_FIELDS.has(key)) continue;
+      const oldV = (r.old_data as any)[key];
+      const newV = (r.new_data as any)[key];
+      if (JSON.stringify(oldV) === JSON.stringify(newV)) continue;
+      const label = FIELD_LABELS[key] ?? key;
+      out.push(`${label}: ${fmtVal(key, oldV)} → ${fmtVal(key, newV)}`);
+    }
+    return out.slice(0, 8);
+  };
 
   return (
     <Screen>
@@ -79,22 +215,22 @@ export default function Audit() {
       {rows.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — utolsó ismert napló.</Sub> : null}
       {(rows.data ?? []).length === 0 && !rows.loading ? <Empty text="Nincs naplóbejegyzés." /> : null}
       {(rows.data ?? []).map((r) => {
-        const diff = diffSummary(r);
+        const diff = changes(r);
+        const head = headline(r);
+        const destructive = head.includes('töröl');
         return (
           <Card key={r.id} style={{ padding: S.md }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Body style={{ fontWeight: '700' }}>
-                {TABLE_LABELS[r.table_name] ?? r.table_name} — {ACTION_LABELS[r.action]}
+              <Body style={{ fontWeight: '700', color: destructive ? C.danger : C.text, flex: 1 }}>
+                {head}
               </Body>
               <Sub>{hdt(r.changed_at)}</Sub>
             </View>
-            <Sub>{name(r.changed_by)}</Sub>
-            {r.action === 'INSERT' && r.new_data ? (
-              <Text style={{ fontSize: 13, color: C.sub }} numberOfLines={2}>
-                {String((r.new_data as any).name ?? (r.new_data as any).title ?? (r.new_data as any).body ?? '')}
-              </Text>
-            ) : null}
-            {diff ? <Text style={{ fontSize: 12, color: C.sub, fontFamily: 'monospace' as any }}>{diff}</Text> : null}
+            <Body>{subject(r)}</Body>
+            <Sub>{userName(r.changed_by)}</Sub>
+            {diff.map((line, i) => (
+              <Text key={i} style={{ fontSize: 13, color: C.sub }}>• {line}</Text>
+            ))}
           </Card>
         );
       })}

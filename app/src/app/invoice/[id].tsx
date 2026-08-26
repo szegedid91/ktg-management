@@ -5,7 +5,7 @@ import { Screen, Card, Sub, Btn, KV, Empty, Check, Body } from '../../ui/kit';
 import { S } from '../../ui/theme';
 import { useRow, useTable } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, markInvoicePaid } from '../../lib/repo';
-import { ft, hd } from '../../lib/format';
+import { ft, hd, todayISO } from '../../lib/format';
 import { Invoice, Site, Profile } from '../../lib/types';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
@@ -27,6 +27,12 @@ export default function InvoiceDetail() {
         <KV k="Építkezés" v={sites.find((s) => s.id === invoice.site_id)?.name ?? '?'} />
         <KV k="Teljesítés" v={hd(invoice.invoice_date)} />
         <KV k="Számlázva" v={invoice.invoiced_at ? hd(invoice.invoiced_at) : '—'} />
+        <KV
+          k="Fizetési határidő"
+          v={invoice.due_date
+            ? `${hd(invoice.due_date)}${!invoice.paid_at && invoice.due_date < todayISO() ? ' ⚠️ lejárt' : ''}`
+            : '—'}
+        />
         <KV k="Nettó" v={ft(invoice.net_amount)} strong />
         <KV k={`ÁFA (${invoice.vat_rate}%)`} v={ft(invoice.vat_amount)} />
         <KV k="Bruttó" v={ft(invoice.gross_amount)} />

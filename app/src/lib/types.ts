@@ -38,6 +38,8 @@ export interface AppSettings {
   out_daily_rate: number;
   out_project_rate: number;
   default_vat_rate: number;
+  /** alapértelmezett fizetési határidő: napok száma a számlázástól */
+  default_payment_days: number;
   updated_by: UUID | null;
   updated_at: string;
 }
@@ -93,7 +95,8 @@ export interface Worker extends BaseRow {
 }
 
 export interface Expense extends BaseRow {
-  site_id: UUID;
+  /** null = közös, területhez nem kötött költség */
+  site_id: UUID | null;
   paid_by: UUID;
   expense_date: string;
   title: string | null;
@@ -149,6 +152,8 @@ export interface Invoice extends BaseRow {
   vat_rate: number;
   vat_amount: number;
   gross_amount: number;
+  /** fizetési határidő */
+  due_date: string | null;
   paid_at: string | null;
   paid_marked_by: UUID | null;
   note: string | null;

@@ -38,6 +38,7 @@ export default function Settings() {
         out_daily_rate: String(Number(settings.out_daily_rate) || ''),
         out_project_rate: String(Number(settings.out_project_rate) || ''),
         default_vat_rate: String(Number(settings.default_vat_rate)),
+        default_payment_days: String(Number(settings.default_payment_days) || 8),
       });
       setLoadedFor('rates');
     }
@@ -112,6 +113,7 @@ export default function Settings() {
         <RateInput label="Projektdíj (Ft)" value={rates.out_project_rate ?? ''} onChange={(v) => setRates({ ...rates, out_project_rate: v })} />
         <Divider />
         <RateInput label="Alapértelmezett ÁFA (%)" value={rates.default_vat_rate ?? '27'} onChange={(v) => setRates({ ...rates, default_vat_rate: v })} />
+        <RateInput label="Fizetési határidő (nap a számlázástól)" value={rates.default_payment_days ?? '8'} onChange={(v) => setRates({ ...rates, default_payment_days: v })} />
         <Btn title="Díjak mentése" onPress={saveRates} />
       </Card>
 

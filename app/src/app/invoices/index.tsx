@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { Screen, Card, Sub, Body, Btn, Row, Badge, Empty, Segmented, KV } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
-import { ft, hd } from '../../lib/format';
+import { ft, hd, todayISO } from '../../lib/format';
 import { Invoice, Site } from '../../lib/types';
 
 export default function Invoices() {
@@ -87,18 +87,29 @@ export default function Invoices() {
         onChange={setFilter}
       />
       {filtered.length === 0 ? <Empty text="Nincs számla ebben a szűrésben." /> : null}
-      {filtered.map((i) => (
-        <Row key={i.id} onPress={() => router.push(`/invoice/${i.id}`)}>
-          <View style={{ flex: 1 }}>
-            <Body style={{ fontWeight: '600' }}>{i.title || 'Számla'}</Body>
-            <Sub>{sites.find((s) => s.id === i.site_id)?.name ?? '?'} · {hd(i.invoice_date)}</Sub>
-          </View>
-          <View style={{ alignItems: 'flex-end', gap: 2 }}>
-            <Text style={{ fontWeight: '700' }}>{ft(i.net_amount)}</Text>
-            <Badge text={i.paid_at ? `befolyt ${hd(i.paid_at)}` : 'kintlévő'} color={i.paid_at ? C.success : C.warning} />
-          </View>
-        </Row>
-      ))}
+      {filtered.map((i) => {
+        const overdue = !i.paid_at && !!i.due_date && i.due_date < todayISO();
+        return (
+          <Row key={i.id} onPress={() => router.push(`/invoice/${i.id}`)}>
+            <View style={{ flex: 1 }}>
+              <Body style={{ fontWeight: '600' }}>{i.title || 'Számla'}</Body>
+              <Sub>{sites.find((s) => s.id === i.site_id)?.name ?? '?'} · {hd(i.invoice_date)}</Sub>
+              {i.due_date && !i.paid_at ? (
+                <Sub style={overdue ? { color: C.danger, fontWeight: '700' } : undefined}>
+                  {overdue ? '⚠️ Lejárt: ' : 'Fizetési határidő: '}{hd(i.due_date)}
+                </Sub>
+              ) : null}
+            </View>
+            <View style={{ alignItems: 'flex-end', gap: 2 }}>
+              <Text style={{ fontWeight: '700' }}>{ft(i.net_amount)}</Text>
+              <Badge
+                text={i.paid_at ? `befolyt ${hd(i.paid_at)}` : overdue ? 'lejárt' : 'kintlévő'}
+                color={i.paid_at ? C.success : overdue ? C.danger : C.warning}
+              />
+            </View>
+          </Row>
+        );
+      })}
       <Btn title="+ Új kimenő számla" kind="secondary" onPress={() => router.push('/invoice/new')} />
     </Screen>
   );

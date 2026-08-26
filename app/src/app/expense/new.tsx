@@ -13,6 +13,7 @@ import { insertRow, newId, getCurrentUserId } from '../../lib/repo';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { fromGross } from '../../lib/calc';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
+import { PercentSlider } from '../../components/PercentSlider';
 import { todayISO, ft, parseAmount } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
 import { Site, ExpenseCategory, AppSettings } from '../../lib/types';
@@ -41,7 +42,9 @@ export default function NewExpense() {
   const defaultVat = settings ? Number(settings.default_vat_rate) : 27;
 
   const [amountStr, setAmountStr] = useState('');
-  const [site, setSite] = useState<string | null>(siteId ?? null);
+  // több terület is választható; üresen hagyva közös (területhez nem kötött) költség
+  const [siteIds, setSiteIds] = useState<string[]>(siteId ? [siteId] : []);
+  const [splits, setSplits] = useState<Record<string, number>>(siteId ? { [siteId]: 100 } : {});
   const [category, setCategory] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [showDetails, setShowDetails] = useState(false);
@@ -54,6 +57,29 @@ export default function NewExpense() {
 
   const amount = parseAmount(amountStr);
   const hasAmount = amount > 0;
+
+  const toggleSite = (id: string) => {
+    const next = siteIds.includes(id) ? siteIds.filter((x) => x !== id) : [...siteIds, id];
+    setSiteIds(next);
+    // ki-/bejelöléskor egyenlő megosztásról indulunk
+    const eq = next.length ? 100 / next.length : 0;
+    setSplits(Object.fromEntries(next.map((s) => [s, eq])));
+  };
+
+  /** Egy csúszka mozgatásakor a többi terület aránya arányosan igazodik, hogy 100% maradjon. */
+  const setSplit = (id: string, pct: number) => {
+    setSplits((prev) => {
+      const others = siteIds.filter((s) => s !== id);
+      const next: Record<string, number> = { ...prev, [id]: pct };
+      if (others.length) {
+        const oldRest = others.reduce((s, o) => s + (prev[o] ?? 0), 0);
+        const rest = 100 - pct;
+        if (oldRest <= 0.0001) others.forEach((o) => { next[o] = rest / others.length; });
+        else others.forEach((o) => { next[o] = ((prev[o] ?? 0) * rest) / oldRest; });
+      }
+      return next;
+    });
+  };
 
   // a gyors összeg = bruttó; a részletekben finomhangolható
   const setQuickAmount = (t: string) => {
@@ -97,7 +123,7 @@ export default function NewExpense() {
   };
 
   const save = async () => {
-    if (!site || !hasAmount || saving) return;
+    if (!hasAmount || saving) return;
     setSaving(true);
 
     const catName = categories.find((c) => c.id === category)?.name ?? '';
@@ -117,20 +143,35 @@ export default function NewExpense() {
     }
 
     const amounts = vatStateToAmounts(vat);
-    const expenseId = insertRow('expenses', {
-      site_id: site,
-      paid_by: getCurrentUserId(),
-      expense_date: date,
-      title: title.trim() || null,
-      net_amount: amounts.net,
-      vat_rate: amounts.vatRate,
-      vat_amount: amounts.vat,
-      gross_amount: amounts.gross,
-      category_id: category,
-      note: note.trim() || null,
+    // 0 terület → közös költség; 1 → sima; több → soronként megosztva a %-ok szerint
+    const targets: (string | null)[] = siteIds.length ? siteIds : [null];
+    let remNet = amounts.net; let remVat = amounts.vat; let remGross = amounts.gross;
+    let expenseId: string | null = null;
+    targets.forEach((sid, i) => {
+      const last = i === targets.length - 1;
+      const p = sid && targets.length > 1 ? (splits[sid] ?? 0) / 100 : 1;
+      const net = last ? remNet : Math.round(amounts.net * p);
+      const vatA = last ? remVat : Math.round(amounts.vat * p);
+      const gross = last ? remGross : net + vatA;
+      remNet -= net; remVat -= vatA; remGross -= gross;
+      if (targets.length > 1 && gross === 0) return; // 0%-os terület: nem kap sort
+      const id = insertRow('expenses', {
+        site_id: sid,
+        paid_by: getCurrentUserId(),
+        expense_date: date,
+        title: title.trim() || null,
+        net_amount: net,
+        vat_rate: amounts.vatRate,
+        vat_amount: vatA,
+        gross_amount: gross,
+        category_id: category,
+        note: note.trim() || null,
+      });
+      if (!expenseId) expenseId = id;
     });
 
     for (const photo of photos) {
+      if (!expenseId) break;
       try {
         const path = `${expenseId}/${newId()}.jpg`;
         const bin = photo.base64 ? Uint8Array.from(atob(photo.base64), (c) => c.charCodeAt(0)) : null;
@@ -160,13 +201,33 @@ export default function NewExpense() {
       {hasAmount ? (
         <>
           <Card>
-            <H2>Építkezés *</H2>
+            <H2>Építkezés</H2>
+            <Sub>Nem kötelező — üresen hagyva közös költség lesz. Több terület is kijelölhető.</Sub>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
               {sites.map((s) => (
-                <Chip key={s.id} label={s.name} on={site === s.id} onPress={() => setSite(s.id)} />
+                <Chip key={s.id} label={s.name} on={siteIds.includes(s.id)} onPress={() => toggleSite(s.id)} />
               ))}
             </View>
             {sites.length === 0 ? <Sub>Nincs aktív építkezés.</Sub> : null}
+            {siteIds.length >= 2 ? (
+              <View style={{ gap: S.sm, marginTop: 4 }}>
+                <Sub>Megosztás a területek között — húzd a csúszkát:</Sub>
+                {siteIds.map((id) => {
+                  const pct = splits[id] ?? 0;
+                  return (
+                    <View key={id}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Body style={{ fontWeight: '600' }}>{sites.find((s) => s.id === id)?.name}</Body>
+                        <Body style={{ fontWeight: '700' }}>
+                          {Math.round(pct)}% · {ft(Math.round((amount * pct) / 100))}
+                        </Body>
+                      </View>
+                      <PercentSlider value={pct} onChange={(v) => setSplit(id, v)} />
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
           </Card>
 
           <Card>
@@ -209,7 +270,7 @@ export default function NewExpense() {
             ) : null}
           </Card>
 
-          <Btn title={saving ? 'Mentés…' : `Mentés (${ft(amount)})`} onPress={() => void save()} disabled={!site || saving} />
+          <Btn title={saving ? 'Mentés…' : `Mentés (${ft(amount)})`} onPress={() => void save()} disabled={saving} />
         </>
       ) : (
         <Sub style={{ textAlign: 'center' }}>Írd be az összeget a folytatáshoz.</Sub>

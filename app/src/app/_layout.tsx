@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, Text } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { AuthProvider } from '../lib/auth';
+import { DialogHost } from '../components/DialogHost';
 import { C } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
@@ -58,6 +59,7 @@ export default function RootLayout() {
         <Stack.Screen name="audit" options={{ title: 'Audit napló' }} />
         <Stack.Screen name="export" options={{ title: 'Export könyvelőnek' }} />
       </Stack>
+      <DialogHost />
     </AuthProvider>
   );
 }

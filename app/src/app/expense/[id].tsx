@@ -86,7 +86,7 @@ export default function ExpenseDetail() {
         </Card>
       ) : (
         <Card>
-          <KV k="Építkezés" v={site?.name ?? '?'} />
+          <KV k="Építkezés" v={site?.name ?? (expense.site_id ? '?' : 'Közös költség')} />
           <KV k="Dátum" v={hd(expense.expense_date)} />
           <KV k="Nettó" v={ft(expense.net_amount)} strong />
           <KV k={`ÁFA (${expense.vat_rate}%)`} v={ft(expense.vat_amount)} />
