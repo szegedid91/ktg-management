@@ -162,22 +162,33 @@ export default function PendingScreen() {
   const grandTotal = visibleGroups.reduce((s, g) => s + g.total, 0);
   const isFiltered = siteFilter.size > 0 || personFilter.size > 0;
 
-  // a kijelöltek összege (csak a még listában lévő tételeket számoljuk)
-  const amountById = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const g of groups) for (const p of g.persons) for (const it of p.items) m.set(it.id, it.amount);
-    return m;
-  }, [groups]);
-  const selectedIds = [...selected].filter((id) => amountById.has(id));
+  // a lenti sáv csak az éppen nyitva lévő ember kijelölt tételeit mutatja
+  // és fizeti ki — a többi ember kijelölése megmarad későbbre
+  const openPerson = useMemo(() => {
+    if (!expandedKey) return null;
+    for (const g of groups) {
+      for (const p of g.persons) {
+        if (`${g.siteId}:${p.key}` === expandedKey) return p;
+      }
+    }
+    return null;
+  }, [groups, expandedKey]);
+
+  const openItemIds = new Set((openPerson?.items ?? []).map((i) => i.id));
+  const selectedIds = [...selected].filter((id) => openItemIds.has(id));
+  const amountById = new Map((openPerson?.items ?? []).map((i) => [i.id, i.amount]));
   const selectedTotal = selectedIds.reduce((s, id) => s + (amountById.get(id) ?? 0), 0);
 
   const paySelected = () => {
     if (selectedIds.length === 0) return;
     if (isWages) markAttendancePaid(selectedIds, true, payNote);
     else markCommissionPaid(selectedIds, true, payNote);
-    setSelected(new Set());
+    setSelected((prev) => {
+      const next = new Set(prev);
+      selectedIds.forEach((id) => next.delete(id));
+      return next;
+    });
     setPayNote('');
-    selectionCache.delete(cacheKey);
   };
 
   // kompakt kifizető sáv az alsó menüsor felett, két sorban
@@ -188,9 +199,16 @@ export default function PendingScreen() {
     }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontWeight: '700', fontSize: 14, color: C.text }}>
-          Kijelölve: {selectedIds.length} tétel · {ft(selectedTotal)}
+          {openPerson?.name}: {selectedIds.length} tétel · {ft(selectedTotal)}
         </Text>
-        <Text onPress={() => setSelected(new Set())} style={{ color: C.sub, fontSize: 13, fontWeight: '600' }}>
+        <Text
+          onPress={() => setSelected((prev) => {
+            const next = new Set(prev);
+            selectedIds.forEach((id) => next.delete(id));
+            return next;
+          })}
+          style={{ color: C.sub, fontSize: 13, fontWeight: '600' }}
+        >
           ✕ törlés
         </Text>
       </View>
