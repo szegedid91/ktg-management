@@ -88,7 +88,7 @@ function DashboardInner() {
   return (
     <Screen>
       {sync.pendingOps > 0 ? (
-        <Card style={{ backgroundColor: '#FFF7E0', borderColor: C.accent }}>
+        <Card style={{ backgroundColor: C.warnBg, borderColor: C.accent }}>
           <Sub style={{ color: C.warning }}>
             ⏳ {sync.pendingOps} művelet vár szinkronizálásra{sync.lastError ? ` — ${sync.lastError}` : ''}
           </Sub>
@@ -96,7 +96,7 @@ function DashboardInner() {
       ) : null}
 
       {sync.failedOps > 0 ? (
-        <Card style={{ backgroundColor: '#FDECEA', borderColor: C.danger }}>
+        <Card style={{ backgroundColor: C.dangerBg, borderColor: C.danger }}>
           <Sub style={{ color: C.danger, fontWeight: '700' }}>
             ⛔ {sync.failedOps} műveletet elutasított a szerver — ezek nem kerültek mentésre.
           </Sub>

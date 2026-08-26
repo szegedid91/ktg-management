@@ -3,7 +3,7 @@
 import React, { ReactNode, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, Modal,
-  StyleSheet, ActivityIndicator, ViewStyle, TextStyle, KeyboardAvoidingView, Platform,
+  ActivityIndicator, ViewStyle, TextStyle, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { C, S, F } from './theme';
 import { BottomBar } from '../components/BottomBar';
@@ -210,39 +210,64 @@ export function KV({ k, v, strong }: { k: string; v: ReactNode; strong?: boolean
   );
 }
 
-export const st = StyleSheet.create({
-  card: {
-    backgroundColor: C.card, borderRadius: S.radius, padding: S.lg,
-    borderWidth: 1, borderColor: C.border, gap: S.sm,
+// Getter-alapú stílusok: renderkor olvassák a C-t, így a témaváltás
+// (esti nézet) azonnal érvényesül — a StyleSheet.create betöltéskor
+// bemerevítené a színeket.
+export const st = {
+  get card(): ViewStyle {
+    return {
+      backgroundColor: C.card, borderRadius: S.radius, padding: S.lg,
+      borderWidth: 1, borderColor: C.border, gap: S.sm,
+    };
   },
-  btn: {
-    paddingHorizontal: S.lg, paddingVertical: 12, borderRadius: S.radiusSm,
-    alignItems: 'center', justifyContent: 'center',
+  get btn(): ViewStyle {
+    return {
+      paddingHorizontal: S.lg, paddingVertical: 12, borderRadius: S.radiusSm,
+      alignItems: 'center', justifyContent: 'center',
+    };
   },
-  btnSmall: { paddingHorizontal: S.md, paddingVertical: 7 },
-  input: {
-    backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.border,
-    borderRadius: S.radiusSm, paddingHorizontal: S.md, paddingVertical: 10,
-    fontSize: 15, color: C.text, minHeight: 42, justifyContent: 'center',
+  get btnSmall(): ViewStyle {
+    return { paddingHorizontal: S.md, paddingVertical: 7 };
   },
-  label: { fontSize: 13, fontWeight: '600', color: C.sub },
-  chip: {
-    backgroundColor: C.chipBg, paddingHorizontal: S.md, paddingVertical: 7,
-    borderRadius: 999,
+  get input(): TextStyle & ViewStyle {
+    return {
+      backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.border,
+      borderRadius: S.radiusSm, paddingHorizontal: S.md, paddingVertical: 10,
+      fontSize: 15, color: C.text, minHeight: 42, justifyContent: 'center',
+    };
   },
-  checkbox: {
-    width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: C.border,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff',
+  get label(): TextStyle {
+    return { fontSize: 13, fontWeight: '600', color: C.sub };
   },
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: S.md,
-    backgroundColor: C.card, borderRadius: S.radiusSm, padding: S.md,
-    borderWidth: 1, borderColor: C.border,
+  get chip(): ViewStyle {
+    return {
+      backgroundColor: C.chipBg, paddingHorizontal: S.md, paddingVertical: 7,
+      borderRadius: 999,
+    };
   },
-  modalBg: { flex: 1, backgroundColor: '#0008', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: C.card, borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    maxHeight: '70%', paddingVertical: S.sm,
+  get checkbox(): ViewStyle {
+    return {
+      width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: C.border,
+      alignItems: 'center', justifyContent: 'center', backgroundColor: C.card,
+    };
   },
-  modalRow: { paddingHorizontal: S.lg, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border },
-});
+  get row(): ViewStyle {
+    return {
+      flexDirection: 'row', alignItems: 'center', gap: S.md,
+      backgroundColor: C.card, borderRadius: S.radiusSm, padding: S.md,
+      borderWidth: 1, borderColor: C.border,
+    };
+  },
+  get modalBg(): ViewStyle {
+    return { flex: 1, backgroundColor: '#0008', justifyContent: 'flex-end' };
+  },
+  get modalSheet(): ViewStyle {
+    return {
+      backgroundColor: C.card, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+      maxHeight: '70%', paddingVertical: S.sm,
+    };
+  },
+  get modalRow(): ViewStyle {
+    return { paddingHorizontal: S.lg, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border };
+  },
+};

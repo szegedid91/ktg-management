@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check } from '../ui/kit';
-import { S, C } from '../ui/theme';
+import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented } from '../ui/kit';
+import { S, C, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
 import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow, fetchView } from '../lib/repo';
 import { syncNow } from '../lib/sync';
@@ -26,6 +26,7 @@ export default function Settings() {
   const [threshold, setThreshold] = useState('');
   const [newCat, setNewCat] = useState('');
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [theme, setThemeState] = useState<ThemeMode>(getThemeMode());
 
   // zárt regisztráció: csak az itt engedélyezett e-mailek regisztrálhatnak
   const allowed = useOnlineView<{ email: string }[]>(
@@ -122,6 +123,18 @@ export default function Settings() {
 
   return (
     <Screen>
+      <Card>
+        <H2>🌗 Megjelenés</H2>
+        <Segmented
+          options={[
+            { value: 'light', label: '☀️ Világos' },
+            { value: 'dark', label: '🌙 Esti (sötét)' },
+          ]}
+          value={theme}
+          onChange={(v: ThemeMode) => { setThemeMode(v); setThemeState(v); }}
+        />
+      </Card>
+
       <Card>
         <H2>Alapértelmezett díjak — magánszemély</H2>
         <RateInput label="Órabér (Ft)" value={rates.individual_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_hourly_rate: v })} />

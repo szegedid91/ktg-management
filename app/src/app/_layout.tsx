@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, Text } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { AuthProvider } from '../lib/auth';
 import { DialogHost } from '../components/DialogHost';
-import { C } from '../ui/theme';
+import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
  *  (pl. közvetlen link vagy oldal-frissítés után): ilyenkor a Kezdőlapra visz. */
@@ -23,9 +23,17 @@ function HeaderBack() {
 }
 
 export default function RootLayout() {
+  // esti nézet: témaváltáskor a key csere újrarendereli a teljes fát
+  const [theme, setTheme] = useState(getThemeMode());
+  useEffect(() => {
+    void loadThemeMode();
+    return subscribeTheme(setTheme);
+  }, []);
+
   return (
     <AuthProvider>
       <Stack
+        key={theme}
         screenOptions={{
           headerStyle: { backgroundColor: C.primary },
           headerTintColor: '#fff',
