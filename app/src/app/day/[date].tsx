@@ -7,7 +7,7 @@ import { useTable } from '../../lib/hooks';
 import { insertRow, softDeleteRow, markAttendancePaid, markCommissionPaid, getCurrentUserId } from '../../lib/repo';
 import { ft, hd, addDaysISO, parseAmount } from '../../lib/format';
 import { attendanceAmount, commissionAmount } from '../../lib/calc';
-import { Attendance, Worker, Site, Expense, Invoice, AppSettings, Profile, ExternalPerson, AttendanceBasis } from '../../lib/types';
+import { Attendance, Worker, Site, AppSettings, Profile, ExternalPerson, AttendanceBasis } from '../../lib/types';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function DayView() {
@@ -16,8 +16,6 @@ export default function DayView() {
   const allSites = useTable<Site>('sites');
   const workers = useTable<Worker>('workers');
   const attendance = useTable<Attendance>('attendance');
-  const expenses = useTable<Expense>('expenses');
-  const invoices = useTable<Invoice>('invoices');
   const profiles = useTable<Profile>('profiles');
   const externals = useTable<ExternalPerson>('external_people');
   const settings = useTable<AppSettings>('app_settings')[0];
@@ -34,8 +32,6 @@ export default function DayView() {
   const dayRows = attendance.filter((a) => a.work_date === date);
   const dayRowsForSite = site ? dayRows.filter((a) => a.site_id === site) : dayRows;
 
-  const dayExpenses = expenses.filter((e) => e.expense_date === date && (!site || e.site_id === site));
-  const dayInvoices = invoices.filter((i) => i.invoice_date === date && (!site || i.site_id === site));
 
   const workerName = (id: string) => workers.find((w) => w.id === id)?.name ?? '?';
   const siteName = (id: string) => allSites.find((s) => s.id === id)?.name ?? '?';
@@ -113,7 +109,6 @@ export default function DayView() {
   };
 
   const wageTotal = dayRowsForSite.reduce((s, a) => s + Number(a.amount), 0);
-  const expTotal = dayExpenses.reduce((s, e) => s + Number(e.net_amount), 0);
 
   const basisLabel = (a: Attendance) =>
     a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
@@ -308,11 +303,6 @@ export default function DayView() {
         })}
         <Divider />
         <KV k="Bérköltség összesen" v={ft(wageTotal)} strong />
-        {dayExpenses.length > 0 ? <KV k={`Aznapi költségek (${dayExpenses.length} tétel)`} v={ft(expTotal)} /> : null}
-        <KV k="Nap összesen (nettó)" v={ft(wageTotal + expTotal)} strong />
-        {dayInvoices.length > 0 ? (
-          <KV k="Aznapi számlázott bevétel" v={ft(dayInvoices.reduce((s, i) => s + Number(i.net_amount), 0))} />
-        ) : null}
       </Card>
       ) : null}
     </Screen>
