@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { router } from 'expo-router';
-import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty } from '../../ui/kit';
-import { C, S } from '../../ui/theme';
-import { useTable, useSyncStatus, useOnlineView } from '../../lib/hooks';
-import { ft, todayISO, hd } from '../../lib/format';
-import { fetchView } from '../../lib/repo';
-import { Site, Expense, Attendance, Invoice, UserBalance } from '../../lib/types';
-import { useAuth } from '../../lib/auth';
+import { router, Redirect } from 'expo-router';
+import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty, Loading } from '../ui/kit';
+import { C, S } from '../ui/theme';
+import { useTable, useSyncStatus, useOnlineView } from '../lib/hooks';
+import { ft, todayISO, hd } from '../lib/format';
+import { fetchView } from '../lib/repo';
+import { Site, Expense, Attendance, Invoice, UserBalance } from '../lib/types';
+import { useAuth } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
   { icon: '🏗️', label: 'Építkezések', href: '/sites' },
@@ -46,6 +46,13 @@ function MenuGrid() {
 }
 
 export default function Dashboard() {
+  const { session, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!session) return <Redirect href="/login" />;
+  return <DashboardInner />;
+}
+
+function DashboardInner() {
   const { session } = useAuth();
   const sync = useSyncStatus();
   const sites = useTable<Site>('sites');
@@ -123,28 +130,6 @@ export default function Dashboard() {
         <KV k="Befolyt bevétel (nettó)" v={mask(stats.mRev)} />
         <KV k="Eredmény" v={mask(stats.mRev - stats.mExp - stats.mWage)} strong />
       </Card>
-
-      {(stats.outstanding > 0 || stats.unpaidWages > 0 || stats.unpaidCommissions > 0) ? (
-        <Card style={{ borderColor: C.accent }}>
-          <H2>Függőben</H2>
-          <Sub>Koppints egy sorra a részletes, építkezésenkénti bontáshoz.</Sub>
-          {stats.outstanding > 0 ? (
-            <Pressable onPress={() => router.push('/invoices')}>
-              <KV k="Kintlévőség (számlázva, nem folyt be)" v={`${ft(stats.outstanding)}  ›`} />
-            </Pressable>
-          ) : null}
-          {stats.unpaidWages > 0 ? (
-            <Pressable onPress={() => router.push('/pending/wages')}>
-              <KV k="Kifizetetlen bérek" v={`${ft(stats.unpaidWages)}  ›`} />
-            </Pressable>
-          ) : null}
-          {stats.unpaidCommissions > 0 ? (
-            <Pressable onPress={() => router.push('/pending/commissions')}>
-              <KV k="Kifizetetlen közvetítői díjak" v={`${ft(stats.unpaidCommissions)}  ›`} />
-            </Pressable>
-          ) : null}
-        </Card>
-      ) : null}
 
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -40,6 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         import('./push').then((m) => m.registerPushToken()).catch(() => {});
       } else {
         stopSyncLoop();
+        // kijelentkezés után vissza a belépőre, bárhol is járt
+        import('expo-router').then((m) => m.router.replace('/login')).catch(() => {});
       }
     });
 

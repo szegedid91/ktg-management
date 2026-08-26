@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Alert } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
-import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Segmented, Check } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Segmented, Check, Row } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { insertRow, softDeleteRow, markAttendancePaid, markCommissionPaid, getCurrentUserId } from '../../lib/repo';
@@ -120,26 +120,106 @@ export default function DayView() {
         : a.pay_basis === 'project' ? `projektdíj`
           : 'jelenlét (díj nélkül)';
 
+  /** Gyors hozzáadás egy koppintással, a munkavállaló alapértelmezett
+   *  elszámolásával. Projektdíjasnál díj nélküli jelenlét megy, hogy a
+   *  projektdíj véletlenül se terhelődjön újra — az a részletes űrlapról megy. */
+  const quickAdd = (w: Worker) => {
+    if (!site) return;
+    const b: AttendanceBasis = w.default_pay_basis === 'project' ? 'presence' : (w.default_pay_basis ?? 'daily');
+    const h = b === 'hourly' ? 8 : null;
+    const rate = b === 'presence' ? 0 : resolveRate(w, b);
+    const amt = attendanceAmount(b as any, rate, h, 1);
+    const comm = (w.referrer_user_id || w.referrer_external_id)
+      ? commissionAmount(amt, w.commission_mode, w.commission_value != null ? Number(w.commission_value) : null, w.commission_unit, b as any, h, 1)
+      : 0;
+    insertRow('attendance', {
+      work_date: date, site_id: site, worker_id: w.id,
+      pay_basis: b, hours: h, day_multiplier: 1,
+      applied_rate: rate, amount: amt, commission_amount: comm,
+      referrer_user_id: w.referrer_user_id, referrer_external_id: w.referrer_external_id,
+    });
+  };
+
+  const quickHint = (w: Worker) => {
+    const b = w.default_pay_basis === 'project' ? 'presence' : (w.default_pay_basis ?? 'daily');
+    if (b === 'presence') return 'jelenlét (a projektdíj a részletes űrlapról)';
+    if (b === 'hourly') return 'órabér · 8 ó';
+    return 'napi díj';
+  };
+
+  // hátralévő munkások szakipar szerint csoportosítva (általánosok a végén)
+  const remainingGroups = (() => {
+    const remaining = workers
+      .filter((w) => !dayRowsForSite.some((a) => a.worker_id === w.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+    const m = new Map<string, Worker[]>();
+    for (const w of remaining) {
+      const key = w.trade ?? 'Általános';
+      const arr = m.get(key) ?? [];
+      arr.push(w);
+      m.set(key, arr);
+    }
+    return [...m.entries()]
+      .sort((a, b) => {
+        if (a[0] === 'Általános') return 1;
+        if (b[0] === 'Általános') return -1;
+        return a[0].localeCompare(b[0], 'hu');
+      })
+      .map(([trade, list]) => ({ trade, list }));
+  })();
+  const remainingCount = remainingGroups.reduce((s, g) => s + g.list.length, 0);
+
   return (
     <Screen>
       <Stack.Screen options={{ title: hd(date) }} />
-      <Picker
-        label="Építkezés"
-        items={sites}
-        selectedId={site}
-        getId={(s) => s.id}
-        getLabel={(s) => s.name}
-        onSelect={setSite}
-        allowNull
-        nullLabel="— minden építkezés —"
-      />
+
+      {!site ? (
+        <Card>
+          <H2>Melyik építkezésen dolgoztak?</H2>
+          {sites.length === 0 ? <Sub>Nincs aktív építkezés.</Sub> : null}
+          {sites.map((s) => (
+            <Btn key={s.id} title={`🏗️ ${s.name}`} onPress={() => setSite(s.id)} />
+          ))}
+        </Card>
+      ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+          <View style={{ flex: 1 }}>
+            <Body style={{ fontWeight: '700' }}>🏗️ {allSites.find((s) => s.id === site)?.name}</Body>
+          </View>
+          <Btn title="Másik építkezés" kind="ghost" small onPress={() => { setSite(null); setAdding(false); }} />
+        </View>
+      )}
 
       {site ? (
-        <View style={{ flexDirection: 'row', gap: S.md }}>
-          <View style={{ flex: 1 }}><Btn title="+ Jelenlét" onPress={() => setAdding(true)} /></View>
-          <View style={{ flex: 1 }}><Btn title="📋 Tegnap ugyanaz" kind="secondary" onPress={copyYesterday} /></View>
-        </View>
-      ) : <Sub>Rögzítéshez válassz építkezést.</Sub>}
+        <Card>
+          <H2>Munkavállalók — koppints a hozzáadáshoz</H2>
+          {remainingCount === 0 ? <Sub>Mindenki fel van véve mára. ✅</Sub> : null}
+          {remainingGroups.map((g) => (
+            <View key={g.trade} style={{ gap: S.sm }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: C.primary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>
+                {g.trade === 'Általános' ? '👷 Általános' : `🛠️ ${g.trade}`}
+              </Text>
+              {g.list.map((w) => (
+                <Row key={w.id} onPress={() => quickAdd(w)}>
+                  <View style={{ flex: 1 }}>
+                    <Body style={{ fontWeight: '600' }}>{w.name}</Body>
+                    <Sub>{quickHint(w)}</Sub>
+                  </View>
+                  <Text style={{ fontSize: 20, color: C.success, fontWeight: '800' }}>＋</Text>
+                </Row>
+              ))}
+            </View>
+          ))}
+          <View style={{ flexDirection: 'row', gap: S.md }}>
+            <View style={{ flex: 1 }}>
+              <Btn title="Részletes hozzáadás…" kind="ghost" small onPress={() => setAdding(true)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Btn title="📋 Tegnap ugyanaz" kind="secondary" small onPress={copyYesterday} />
+            </View>
+          </View>
+        </Card>
+      ) : null}
 
       {adding && site ? (
         <Card>

@@ -92,6 +92,19 @@ begin
     ('Hegesztő Huba',      array['+36 30 213 1313'], 'company',    true,  27, 'hourly', 9000, null,  null, u_dani, null,      'percent', 8,     null,  'HubaWeld Kft.', '55667788-2-03', u_anna),
     ('Takarító Tercsi',    array['+36 30 214 1414'], 'individual', false, 27, 'daily',  null, 25000, null, null,   null,      null,      null,  null,  null, null, u_dani);
 
+  -- szakipar-besorolás
+  update public.workers set trade = 'Kőműves' where name = 'Kőműves Karcsi';
+  update public.workers set trade = 'Burkoló' where name = 'Burkoló Béla';
+  update public.workers set trade = 'Villanyszerelő' where name = 'Villany Vili';
+  update public.workers set trade = 'Vízszerelő' where name = 'Vízszerelő Vince';
+  update public.workers set trade = 'Festő' where name = 'Festő Feri';
+  update public.workers set trade = 'Ács' where name = 'Ács Andor';
+  update public.workers set trade = 'Tetőfedő' where name = 'Tetőfedő Tibi';
+  update public.workers set trade = 'Gipszkartonos' where name = 'Gipszkartonos Gyula';
+  update public.workers set trade = 'Bádogos' where name = 'Bádogos Bandi';
+  update public.workers set trade = 'Hegesztő' where name = 'Hegesztő Huba';
+  update public.workers set trade = 'Kertész' where name = 'Kertész Kázmér';
+
   select id into w_tibi from public.workers where name = 'Tetőfedő Tibi';
 
   -- ---------- Jelenlét: csapatbeosztás ----------

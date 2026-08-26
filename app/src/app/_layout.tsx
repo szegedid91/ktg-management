@@ -33,8 +33,10 @@ export default function RootLayout() {
           headerLeft: () => <HeaderBack />,
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ title: 'Kezdőlap', headerLeft: () => null }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="more" options={{ title: 'Több' }} />
+        <Stack.Screen name="pending/index" options={{ title: 'Függőben' }} />
         <Stack.Screen name="sites" options={{ title: 'Építkezések' }} />
         <Stack.Screen name="calendar" options={{ title: 'Naptár' }} />
         <Stack.Screen name="settlement" options={{ title: 'Elszámolás' }} />

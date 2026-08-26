@@ -103,6 +103,7 @@ export default function WorkerDetail() {
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <H2>{worker.name}</H2>
+          {worker.trade ? <Badge text={`🛠️ ${worker.trade}`} color={C.primary} /> : null}
           <Badge text={worker.worker_type === 'company' ? 'céges' : 'magánszemély'} />
           {worker.worker_type === 'company' && worker.is_vat_payer ? <Badge text={`ÁFA ${worker.vat_rate}%`} color={C.warning} /> : null}
         </View>

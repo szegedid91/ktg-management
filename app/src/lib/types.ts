@@ -77,6 +77,8 @@ export interface Worker extends BaseRow {
   hq_address: string | null;
   note: string | null;
   worker_type: WorkerType;
+  /** null = általános munkaerő; kitöltve = szakember (pl. 'Villanyszerelő') */
+  trade: string | null;
   is_vat_payer: boolean;
   vat_rate: number;
   default_pay_basis: PayBasis | null;

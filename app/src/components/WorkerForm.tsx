@@ -9,8 +9,15 @@ import { Worker, Profile, ExternalPerson, PayBasis } from '../lib/types';
 import { insertRow } from '../lib/repo';
 import { parseAmount } from '../lib/format';
 
+export const COMMON_TRADES = [
+  'Villanyszerelő', 'Vízszerelő', 'Kőműves', 'Burkoló', 'Ács', 'Festő',
+  'Gipszkartonos', 'Bádogos', 'Hegesztő', 'Tetőfedő', 'Asztalos', 'Kertész',
+];
+
 export interface WorkerFormValues {
   name: string;
+  kind: 'general' | 'specialist';
+  trade: string;
   phones: string;
   email: string;
   company_name: string;
@@ -35,7 +42,8 @@ export interface WorkerFormValues {
 
 export function emptyWorkerForm(): WorkerFormValues {
   return {
-    name: '', phones: '', email: '', company_name: '', tax_number: '', hq_address: '',
+    name: '', kind: 'general', trade: '',
+    phones: '', email: '', company_name: '', tax_number: '', hq_address: '',
     bank_account: '', note: '', worker_type: 'individual', is_vat_payer: false, vat_rate: '27',
     default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '',
     referrer_kind: 'none', referrer_user_id: null, referrer_external_id: null,
@@ -45,7 +53,8 @@ export function emptyWorkerForm(): WorkerFormValues {
 
 export function workerToForm(w: Worker): WorkerFormValues {
   return {
-    name: w.name, phones: w.phones.join(', '), email: w.email ?? '',
+    name: w.name, kind: w.trade ? 'specialist' : 'general', trade: w.trade ?? '',
+    phones: w.phones.join(', '), email: w.email ?? '',
     company_name: w.company_name ?? '', tax_number: w.tax_number ?? '', hq_address: w.hq_address ?? '',
     bank_account: '', note: w.note ?? '', worker_type: w.worker_type,
     is_vat_payer: w.is_vat_payer, vat_rate: String(w.vat_rate),
@@ -63,6 +72,7 @@ export function workerToForm(w: Worker): WorkerFormValues {
 export function formToRow(f: WorkerFormValues): Partial<Worker> {
   return {
     name: f.name.trim(),
+    trade: f.kind === 'specialist' ? (f.trade.trim() || null) : null,
     phones: f.phones.split(',').map((p) => p.trim()).filter(Boolean),
     email: f.email.trim() || null,
     company_name: f.company_name.trim() || null,
@@ -95,6 +105,32 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
     <View style={{ gap: S.md }}>
       <Card>
         <Input label="Név *" value={value.name} onChangeText={(t) => set({ name: t })} autoCapitalize="words" />
+        <Segmented
+          label="Munkakör"
+          options={[
+            { value: 'general', label: 'Általános' },
+            { value: 'specialist', label: 'Szakember' },
+          ]}
+          value={value.kind}
+          onChange={(v) => set({ kind: v })}
+        />
+        {value.kind === 'specialist' ? (
+          <>
+            <Segmented
+              label="Szakipar"
+              options={COMMON_TRADES.map((t) => ({ value: t, label: t }))}
+              value={(COMMON_TRADES.includes(value.trade) ? value.trade : null) as any}
+              onChange={(v) => set({ trade: v })}
+            />
+            <Input
+              label="Egyéb szakipar (ha nincs a listában)"
+              value={COMMON_TRADES.includes(value.trade) ? '' : value.trade}
+              onChangeText={(t) => set({ trade: t })}
+              placeholder="pl. Szigetelő"
+              autoCapitalize="words"
+            />
+          </>
+        ) : null}
         <Input label="Telefonszám(ok, vesszővel)" value={value.phones} onChangeText={(t) => set({ phones: t })} keyboardType="phone-pad" placeholder="+36 30 123 4567" />
         <Input label="Email" value={value.email} onChangeText={(t) => set({ email: t })} keyboardType="email-address" autoCapitalize="none" />
         <Input label="Bankszámlaszám" value={value.bank_account} onChangeText={(t) => set({ bank_account: t })} placeholder="titkosítva tárolódik" />

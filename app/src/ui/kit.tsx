@@ -6,12 +6,16 @@ import {
   StyleSheet, ActivityIndicator, ViewStyle, TextStyle, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { C, S, F } from './theme';
+import { BottomBar } from '../components/BottomBar';
 
 export function Screen({ children, scroll = true, pad = true }: { children: ReactNode; scroll?: boolean; pad?: boolean }) {
   const content = pad ? <View style={{ padding: S.lg, gap: S.md, flex: scroll ? undefined : 1 }}>{children}</View> : children;
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>{content}</ScrollView> : content}
+      <View style={{ flex: 1 }}>
+        {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>{content}</ScrollView> : content}
+      </View>
+      <BottomBar />
     </KeyboardAvoidingView>
   );
 }

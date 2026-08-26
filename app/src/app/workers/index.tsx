@@ -41,6 +41,7 @@ export default function Workers() {
           <View style={{ flex: 1 }}>
             <Body style={{ fontWeight: '700' }}>{w.name}</Body>
             <Sub>
+              {w.trade ? `${w.trade} · ` : ''}
               {w.worker_type === 'company' ? 'céges' : 'magánszemély'}
               {w.phones[0] ? ` · ${w.phones[0]}` : ''}
             </Sub>

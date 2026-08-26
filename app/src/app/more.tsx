@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Row, Body, Btn, Sub, Card } from '../../ui/kit';
-import { useAuth } from '../../lib/auth';
-import { useSyncStatus } from '../../lib/hooks';
-import { syncNow } from '../../lib/sync';
-import { hdt } from '../../lib/format';
+import { Screen, Row, Body, Btn, Sub, Card } from '../ui/kit';
+import { useAuth } from '../lib/auth';
+import { useSyncStatus } from '../lib/hooks';
+import { syncNow } from '../lib/sync';
+import { hdt } from '../lib/format';
 
 const ITEMS: { label: string; icon: string; href: string }[] = [
   { label: 'Munkavállalók', icon: '👷', href: '/workers' },
