@@ -165,8 +165,31 @@ export default function PendingScreen() {
     setPayNote('');
   };
 
+  // kompakt kifizető sáv az alsó menüsor felett, két sorban
+  const payFooter = selectedIds.length > 0 ? (
+    <View style={{
+      backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.primary,
+      paddingHorizontal: S.lg, paddingVertical: 8, gap: 6,
+    }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontWeight: '700', fontSize: 14, color: C.text }}>
+          Kijelölve: {selectedIds.length} tétel · {ft(selectedTotal)}
+        </Text>
+        <Text onPress={() => setSelected(new Set())} style={{ color: C.sub, fontSize: 13, fontWeight: '600' }}>
+          ✕ törlés
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'center' }}>
+        <View style={{ flex: 1 }}>
+          <Input value={payNote} onChangeText={setPayNote} placeholder="Megjegyzés (nem kötelező)" />
+        </View>
+        <Btn title="✓ Kifizetés" small onPress={paySelected} />
+      </View>
+    </View>
+  ) : undefined;
+
   return (
-    <Screen>
+    <Screen footer={payFooter}>
       <Stack.Screen options={{ title: isWages ? 'Kifizetetlen bérek' : 'Kifizetetlen közvetítői díjak' }} />
 
       {groups.length > 0 ? (
@@ -213,22 +236,8 @@ export default function PendingScreen() {
           v={ft(grandTotal)}
           strong
         />
-        <Sub>A pipa kijelöli a tételeket — a kifizetést a lenti gomb rögzíti (ki, mikor, megjegyzés).</Sub>
+        <Sub>A pipa kijelöli a tételeket — a kifizetést az alul megjelenő sáv gombja rögzíti.</Sub>
       </Card>
-
-      {selectedIds.length > 0 ? (
-        <Card style={{ borderColor: C.primary }}>
-          <KV k={`Kijelölve: ${selectedIds.length} tétel`} v={ft(selectedTotal)} strong />
-          <Input
-            label="Megjegyzés a kifizetéshez (nem kötelező)"
-            value={payNote}
-            onChangeText={setPayNote}
-            placeholder="pl. készpénzben, augusztusi előleggel együtt"
-          />
-          <Btn title={`✓ Kijelöltek kifizetése (${ft(selectedTotal)})`} onPress={paySelected} />
-          <Btn title="Kijelölés törlése" kind="ghost" small onPress={() => setSelected(new Set())} />
-        </Card>
-      ) : null}
 
       {visibleGroups.length === 0 ? <Empty text="Nincs függő tétel. ✅" /> : null}
 

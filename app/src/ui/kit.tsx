@@ -8,13 +8,18 @@ import {
 import { C, S, F } from './theme';
 import { BottomBar } from '../components/BottomBar';
 
-export function Screen({ children, scroll = true, pad = true }: { children: ReactNode; scroll?: boolean; pad?: boolean }) {
+export function Screen({ children, scroll = true, pad = true, footer }: {
+  children: ReactNode; scroll?: boolean; pad?: boolean;
+  /** fix sáv a görgethető tartalom alatt, az alsó menüsor felett */
+  footer?: ReactNode;
+}) {
   const content = pad ? <View style={{ padding: S.lg, gap: S.md, flex: scroll ? undefined : 1 }}>{children}</View> : children;
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={{ flex: 1 }}>
         {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>{content}</ScrollView> : content}
       </View>
+      {footer}
       <BottomBar />
     </KeyboardAvoidingView>
   );
