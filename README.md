@@ -80,6 +80,28 @@ cd app && npm test
 cd app && npm run typecheck
 ```
 
+## Élő telepítés (2026.08.26.)
+
+| | |
+|---|---|
+| Web | **https://ktg.szakify.hu** (GitHub Pages, `szegedid91/ktg-management` repo `gh-pages` ága) |
+| Backend | Supabase `ktg-management` (`sswzkwrcgagdabeywprw`, eu-central-1) — migrációk + 3 edge function fent |
+| DNS | dns24.hu: `ktg` CNAME → `szegedid91.github.io` |
+
+Új verzió kirakása:
+```bash
+cd app && rm -rf dist && npx expo export --platform web --clear
+cp dist/index.html dist/404.html && echo "ktg.szakify.hu" > dist/CNAME
+cd dist && git init -b gh-pages && git add -A && git commit -m deploy \
+  && git push --force https://github.com/szegedid91/ktg-management.git gh-pages
+```
+(A cloud URL/kulcs az `app/.env.production`-ből megy a buildbe.)
+
+Függőben lévő kézi teendők a Supabase dashboardon:
+- `ANTHROPIC_API_KEY` secret (Edge Functions → Secrets) az AI blokk-kiolvasáshoz
+- Email-megerősítés kikapcsolása, ha nem kell (Authentication → Sign In/Up)
+- Cron a push-dispatchhez (lásd lent)
+
 ## Éles üzembe helyezés
 
 1. **Supabase projekt**: hozz létre egy projektet (supabase.com), majd:
