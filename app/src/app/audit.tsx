@@ -3,7 +3,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Card, H2, Sub, Body, Btn, Empty, Picker, Loading } from '../ui/kit';
+import { Screen, Card, H2, Sub, Body, Btn, Empty, Picker, Loading, Input } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
@@ -100,20 +100,32 @@ export default function Audit() {
   // munkavállaló-szűrő — a törölt munkavállalók is választhatók
   const [workerFilter, setWorkerFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateRange>('all');
+  // egyéni tól–ig tartomány — kitöltve felülírja a gyors chipeket
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [limit, setLimit] = useState(50);
 
-  const dateFrom = dateFilter === 'today' ? todayISO()
-    : dateFilter === '7d' ? addDaysISO(todayISO(), -7)
-      : dateFilter === '30d' ? addDaysISO(todayISO(), -30)
-        : null;
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const customFrom = ISO_DATE.test(fromDate) ? fromDate : null;
+  const customTo = ISO_DATE.test(toDate) ? toDate : null;
+  const customActive = !!(customFrom || customTo);
+
+  const dateFrom = customActive ? customFrom
+    : dateFilter === 'today' ? todayISO()
+      : dateFilter === '7d' ? addDaysISO(todayISO(), -7)
+        : dateFilter === '30d' ? addDaysISO(todayISO(), -30)
+          : null;
+  // az "ig" nap is beleszámít: a következő nap éjfélje előtti eseményekig szűrünk
+  const dateToExcl = customTo ? addDaysISO(customTo, 1) : null;
 
   const rows = useOnlineView<AuditLogRow[]>(
-    `audit-${userFilter}-${tableFilter}-${workerFilter}-${dateFilter}-${limit}`,
+    `audit-${userFilter}-${tableFilter}-${workerFilter}-${dateFilter}-${fromDate}-${toDate}-${limit}`,
     () => fetchView('audit_log', (q) => {
       let x = q.order('changed_at', { ascending: false }).limit(limit);
       if (userFilter) x = x.eq('changed_by', userFilter);
       if (tableFilter) x = x.eq('table_name', tableFilter);
       if (dateFrom) x = x.gte('changed_at', dateFrom);
+      if (dateToExcl) x = x.lt('changed_at', dateToExcl);
       if (workerFilter) {
         // minden, ami a munkavállalóhoz köthető: a saját adatlapja,
         // a jelenlétei, és a rá írt kommentek
@@ -126,12 +138,13 @@ export default function Audit() {
       }
       return x;
     }),
-    [userFilter, tableFilter, workerFilter, dateFilter, limit],
+    [userFilter, tableFilter, workerFilter, dateFilter, fromDate, toDate, limit],
   );
 
-  const hasFilter = !!(userFilter || tableFilter || workerFilter || dateFilter !== 'all');
+  const hasFilter = !!(userFilter || tableFilter || workerFilter || dateFilter !== 'all' || fromDate || toDate);
   const clearFilters = () => {
-    setUserFilter(null); setTableFilter(null); setWorkerFilter(null); setDateFilter('all');
+    setUserFilter(null); setTableFilter(null); setWorkerFilter(null);
+    setDateFilter('all'); setFromDate(''); setToDate('');
   };
 
   const userName = (id: unknown) => profiles.find((p) => p.id === id)?.display_name ?? 'rendszer';
@@ -246,8 +259,21 @@ export default function Audit() {
         <Sub>Időszak:</Sub>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           {DATE_OPTIONS.map((o) => (
-            <Chip key={o.value} label={o.label} on={dateFilter === o.value} onPress={() => setDateFilter(o.value)} />
+            <Chip
+              key={o.value}
+              label={o.label}
+              on={!customActive && dateFilter === o.value}
+              onPress={() => { setDateFilter(o.value); setFromDate(''); setToDate(''); }}
+            />
           ))}
+        </View>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}>
+            <Input label="Dátumtól" value={fromDate} onChangeText={setFromDate} placeholder="ÉÉÉÉ-HH-NN" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Input label="Dátumig" value={toDate} onChangeText={setToDate} placeholder="ÉÉÉÉ-HH-NN" />
+          </View>
         </View>
 
         <Sub>Ki csinálta:</Sub>

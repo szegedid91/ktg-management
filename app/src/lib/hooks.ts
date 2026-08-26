@@ -40,12 +40,16 @@ export function useOnlineView<T>(cacheKey: string, fetcher: () => Promise<T>, de
   const [loading, setLoading] = useState(true);
   const [fromCache, setFromCache] = useState(false);
   const mounted = useRef(true);
+  // gyors egymásutáni frissítéseknél (pl. szűrő gépelése) csak a legutolsó
+  // kérés eredménye számít — a megkésett régebbi válasz nem írhatja felül
+  const reqToken = useRef(0);
   useEffect(() => () => { mounted.current = false; }, []);
 
   const refresh = useCallback(async () => {
+    const token = ++reqToken.current;
     setLoading(true);
     const res = await fetchViewCached(cacheKey, fetcher);
-    if (mounted.current) {
+    if (mounted.current && reqToken.current === token) {
       setData(res.data);
       setFromCache(res.fromCache);
       setLoading(false);
