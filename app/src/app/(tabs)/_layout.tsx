@@ -49,7 +49,6 @@ export default function TabsLayout() {
           },
         }}
       />
-      <Tabs.Screen name="settlement" options={{ title: 'Elszámolás', tabBarIcon: icon('🤝') }} />
       <Tabs.Screen name="more" options={{ title: 'Több', tabBarIcon: icon('☰') }} />
     </Tabs>
   );

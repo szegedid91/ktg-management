@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
-import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Input, Picker, Body } from '../../ui/kit';
-import { C, S } from '../../ui/theme';
-import { useOnlineView, useTable } from '../../lib/hooks';
-import { fetchView, callRpc, insertRow, getCurrentUserId, softDeleteRow } from '../../lib/repo';
-import { ft, hd, todayISO, parseAmount } from '../../lib/format';
-import { UserBalance, CommonResult, Settlement, Profile } from '../../lib/types';
+import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Input, Picker, Body } from '../ui/kit';
+import { C, S } from '../ui/theme';
+import { useOnlineView, useTable } from '../lib/hooks';
+import { fetchView, callRpc, insertRow, getCurrentUserId, softDeleteRow } from '../lib/repo';
+import { ft, hd, todayISO, parseAmount } from '../lib/format';
+import { UserBalance, CommonResult, Settlement, Profile } from '../lib/types';
 
 export default function SettlementScreen() {
   const balances = useOnlineView<UserBalance[]>('balances', () => fetchView('v_user_balances'), []);

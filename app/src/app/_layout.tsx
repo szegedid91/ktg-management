@@ -37,6 +37,7 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="sites" options={{ title: 'Építkezések' }} />
         <Stack.Screen name="calendar" options={{ title: 'Naptár' }} />
+        <Stack.Screen name="settlement" options={{ title: 'Elszámolás' }} />
         <Stack.Screen name="site/new" options={{ title: 'Új építkezés' }} />
         <Stack.Screen name="site/[id]" options={{ title: 'Építkezés' }} />
         <Stack.Screen name="expense/new" options={{ title: 'Költség rögzítése' }} />
