@@ -1,7 +1,25 @@
 import React from 'react';
-import { Stack } from 'expo-router';
+import { Pressable, Text } from 'react-native';
+import { Stack, router } from 'expo-router';
 import { AuthProvider } from '../lib/auth';
 import { C } from '../ui/theme';
+
+/** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
+ *  (pl. közvetlen link vagy oldal-frissítés után): ilyenkor a Kezdőlapra visz. */
+function HeaderBack() {
+  return (
+    <Pressable
+      onPress={() => {
+        if (router.canGoBack()) router.back();
+        else router.replace('/');
+      }}
+      hitSlop={12}
+      style={({ pressed }) => ({ paddingHorizontal: 8, paddingVertical: 4, opacity: pressed ? 0.6 : 1 })}
+    >
+      <Text style={{ color: '#fff', fontSize: 24, fontWeight: '600', lineHeight: 26 }}>‹</Text>
+    </Pressable>
+  );
+}
 
 export default function RootLayout() {
   return (
@@ -12,6 +30,7 @@ export default function RootLayout() {
           headerTintColor: '#fff',
           headerTitleStyle: { fontWeight: '700' },
           contentStyle: { backgroundColor: C.bg },
+          headerLeft: () => <HeaderBack />,
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
