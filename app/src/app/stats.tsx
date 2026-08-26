@@ -92,6 +92,8 @@ export default function Stats() {
   // több hónap is kijelölhető (nem-összefüggő is, pl. jan + márc)
   const [selYear, setSelYear] = useState<number | null>(null);
   const [selMonths, setSelMonths] = useState<Set<number>>(new Set());
+  // terület-szűrő: üres = minden építkezés (a közös költségekkel együtt)
+  const [selSites, setSelSites] = useState<Set<string>>(new Set());
 
   const allExpenses = useTable<Expense>('expenses');
   const allAttendance = useTable<Attendance>('attendance');
@@ -131,9 +133,16 @@ export default function Stats() {
     if (!selYear) setSelYear(Number(todayISO().slice(0, 4)));
   };
 
-  const expenses = allExpenses.filter((e) => inRange(e.expense_date));
-  const attendance = allAttendance.filter((a) => inRange(a.work_date));
-  const paidInvoices = invoices.filter((i) => i.paid_at && inRange(i.paid_at));
+  const siteOk = (siteId: string | null) => selSites.size === 0 || (!!siteId && selSites.has(siteId));
+  const toggleSelSite = (id: string) => {
+    const next = new Set(selSites);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelSites(next);
+  };
+
+  const expenses = allExpenses.filter((e) => inRange(e.expense_date) && siteOk(e.site_id));
+  const attendance = allAttendance.filter((a) => inRange(a.work_date) && siteOk(a.site_id));
+  const paidInvoices = invoices.filter((i) => i.paid_at && inRange(i.paid_at) && siteOk(i.site_id));
 
   const byCategory = useMemo(() => {
     const m = new Map<string, number>();
@@ -240,6 +249,28 @@ export default function Stats() {
           })}
         </View>
       ) : null}
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600' }}>Terület:</Text>
+        <Pressable
+          onPress={() => setSelSites(new Set())}
+          style={{ backgroundColor: selSites.size === 0 ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+        >
+          <Text style={{ color: selSites.size === 0 ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>Mind</Text>
+        </Pressable>
+        {[...sites].sort((a, b) => a.name.localeCompare(b.name, 'hu')).map((s) => {
+          const on = selSites.has(s.id);
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => toggleSelSite(s.id)}
+              style={{ backgroundColor: on ? C.primary : C.chipBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
+            >
+              <Text style={{ color: on ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>{on ? '✓ ' : ''}{s.name}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       <Card>
         <H2>Költségek megoszlása</H2>
