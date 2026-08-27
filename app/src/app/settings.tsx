@@ -24,7 +24,6 @@ export default function Settings() {
   // a hozzáférés-kezelés az adminé (amíg nincs admin: mindenkié)
   const partners = profiles.filter((p) => !p.is_admin);
   const canManageAccess = !!myProfile?.is_admin || !profiles.some((p) => p.is_admin);
-  const adminName = profiles.find((p) => p.is_admin)?.display_name;
 
   const [rates, setRates] = useState<Record<string, string>>({});
   const [shares, setShares] = useState<Record<string, string>>({});
@@ -190,30 +189,26 @@ export default function Settings() {
         ) : null}
       </Card>
 
-      <Card>
-        <H2>🔐 Hozzáférés</H2>
-        {canManageAccess ? (
-          <>
-            <Sub>Csak az itt engedélyezett e-mail címekkel lehet regisztrálni. A meglévő fiókokat a lista nem érinti.</Sub>
-            {(allowed.data ?? []).filter((a) => !a.is_admin).map((a) => (
-              <View key={a.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Body>{a.email}</Body>
-                <Btn title="Visszavon" kind="ghost" small onPress={() => void removeAllowed(a.email)} />
-              </View>
-            ))}
-            {allowed.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — a lista kezeléséhez internet kell.</Sub> : null}
-            <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
-              <View style={{ flex: 1 }}>
-                <Input label="Új engedélyezett e-mail" value={newEmail} onChangeText={setNewEmail}
-                  placeholder="pl. tars@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
-              </View>
-              <Btn title="Engedélyez" small onPress={() => void addAllowed()} />
+      {canManageAccess ? (
+        <Card>
+          <H2>🔐 Hozzáférés</H2>
+          <Sub>Csak az itt engedélyezett e-mail címekkel lehet regisztrálni. A meglévő fiókokat a lista nem érinti.</Sub>
+          {(allowed.data ?? []).filter((a) => !a.is_admin).map((a) => (
+            <View key={a.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Body>{a.email}</Body>
+              <Btn title="Visszavon" kind="ghost" small onPress={() => void removeAllowed(a.email)} />
             </View>
-          </>
-        ) : (
-          <Sub>A regisztrációs hozzáférést az admin kezeli{adminName ? ` (${adminName})` : ''}.</Sub>
-        )}
-      </Card>
+          ))}
+          {allowed.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — a lista kezeléséhez internet kell.</Sub> : null}
+          <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+            <View style={{ flex: 1 }}>
+              <Input label="Új engedélyezett e-mail" value={newEmail} onChangeText={setNewEmail}
+                placeholder="pl. tars@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
+            </View>
+            <Btn title="Engedélyez" small onPress={() => void addAllowed()} />
+          </View>
+        </Card>
+      ) : null}
 
       <Card>
         <H2>Kategóriák</H2>
