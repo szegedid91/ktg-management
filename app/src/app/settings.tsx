@@ -214,10 +214,14 @@ export default function Settings() {
         <H2>Kategóriák</H2>
         {categories.map((c) => (
           <View key={c.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Body>{c.name}{c.is_builtin ? ' 🔒' : ''}</Body>
-            {!c.is_builtin && c.created_by === me ? (
-              <Btn title="Törlés" kind="ghost" small onPress={() => softDeleteRow('expense_categories', c.id)} />
-            ) : null}
+            <Body>{c.name}</Body>
+            <Btn title="Törlés" kind="ghost" small onPress={() => {
+              void confirmDialog(
+                'Kategória törlése',
+                `${c.name}\n\nA korábbi költségeken megmarad, csak új költséghez nem lesz választható.`,
+                'Törlés', true,
+              ).then((ok) => { if (ok) softDeleteRow('expense_categories', c.id); });
+            }} />
           </View>
         ))}
         <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
