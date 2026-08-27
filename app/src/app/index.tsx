@@ -3,13 +3,13 @@ import { View, Text, Pressable } from 'react-native';
 import { router, Redirect } from 'expo-router';
 import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty, Loading } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { useTable, useSyncStatus, useOnlineView } from '../lib/hooks';
+import { useTable, useSyncStatus } from '../lib/hooks';
 import { ft, todayISO, hd } from '../lib/format';
-import { fetchView } from '../lib/repo';
 import { store } from '../lib/store';
 import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
-import { Site, Expense, Attendance, Invoice, UserBalance, Profile, ShareChangeRequest } from '../lib/types';
+import { Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory } from '../lib/types';
+import { computeBalances } from '../lib/balances';
 import { useAuth } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
@@ -63,10 +63,10 @@ function DashboardInner() {
   const attendance = useTable<Attendance>('attendance');
   const invoices = useTable<Invoice>('invoices');
 
-  const balances = useOnlineView<UserBalance[]>('balances', () => fetchView('v_user_balances'), []);
-
   // részesedés-módosítási javaslat, ami az én jóváhagyásomra vár
   const profiles = useTable<Profile>('profiles');
+  const settlements = useTable<Settlement>('settlements');
+  const shareHistory = useTable<ProfitShareHistory>('profit_share_history');
   const shareRequests = useTable<ShareChangeRequest>('share_change_requests');
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
@@ -91,7 +91,12 @@ function DashboardInner() {
 
   const activeSites = sites.filter((s) => s.status === 'active');
   const closedSites = sites.filter((s) => s.status === 'closed');
-  const myBalance = balances.data?.find((b) => b.user_id === session?.user.id);
+  // lokális tükörből: bármilyen rögzítésre azonnal frissül
+  const myBalance = useMemo(
+    () => computeBalances(profiles, expenses, attendance, invoices, settlements, shareHistory)
+      .find((b) => b.user_id === session?.user.id),
+    [profiles, expenses, attendance, invoices, settlements, shareHistory, session?.user.id],
+  );
 
   return (
     <Screen>
@@ -160,8 +165,7 @@ function DashboardInner() {
               <Text style={{ fontSize: 28, fontWeight: '800', color: myBalance.balance >= 0 ? C.success : C.danger }}>
                 {ft(myBalance.balance)}
               </Text>
-              <Sub>{myBalance.balance >= 0 ? 'Ennyi jár neked a közösből' : 'Ennyivel tartozol a közösnek'}
-                {balances.fromCache ? ' (offline, utolsó ismert)' : ''}</Sub>
+              <Sub>{myBalance.balance >= 0 ? 'Ennyi jár neked a közösből' : 'Ennyivel tartozol a közösnek'}</Sub>
             </>
           ) : (
             <>

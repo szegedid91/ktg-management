@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { useSyncStatus } from '../lib/hooks';
 import { syncNow } from '../lib/sync';
 import { hdt } from '../lib/format';
+import { APP_VERSION } from '../lib/version';
 import { notify, confirmDialog } from '../lib/dialogs';
 
 const ITEMS: { label: string; icon: string; href: string }[] = [
@@ -35,6 +36,7 @@ export default function More() {
         <Sub>Bejelentkezve: {session?.user.email}</Sub>
         <Sub>Utolsó szinkron: {sync.lastSyncAt ? hdt(sync.lastSyncAt) : 'még nem volt'}
           {sync.pendingOps > 0 ? ` · ${sync.pendingOps} függő művelet` : ''}</Sub>
+        <Sub>Verzió: {APP_VERSION}</Sub>
         <Btn title="Szinkronizálás most" kind="ghost" small onPress={() => void syncNow()} />
         <Btn
           title="Kijelentkezés"

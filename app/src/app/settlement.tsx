@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Input, Picker, Body } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { useOnlineView, useTable } from '../lib/hooks';
-import { fetchView, callRpc, insertRow, getCurrentUserId, softDeleteRow } from '../lib/repo';
+import { useTable } from '../lib/hooks';
+import { insertRow, getCurrentUserId, softDeleteRow } from '../lib/repo';
 import { ft, hd, todayISO, parseAmount } from '../lib/format';
-import { UserBalance, CommonResult, Settlement, Profile, Expense, Attendance, Site, ProfitShareHistory } from '../lib/types';
+import { Settlement, Profile, Expense, Attendance, Site, Invoice, ProfitShareHistory } from '../lib/types';
+import { computeBalances, suggestTransfers } from '../lib/balances';
 
 function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
@@ -40,16 +41,32 @@ function periodRange(p: Period): [string, string] {
 }
 
 export default function SettlementScreen() {
-  const balances = useOnlineView<UserBalance[]>('balances', () => fetchView('v_user_balances'), []);
-  const common = useOnlineView<CommonResult[]>('common', () => fetchView('v_common_result'), []);
-  const suggestions = useOnlineView<any[]>('suggestions', () => callRpc('suggested_settlements'), []);
   const settlements = useTable<Settlement>('settlements');
   const profiles = useTable<Profile>('profiles');
   const expenses = useTable<Expense>('expenses');
   const attendance = useTable<Attendance>('attendance');
+  const invoices = useTable<Invoice>('invoices');
   const sites = useTable<Site>('sites');
   const shareHistory = useTable<ProfitShareHistory>('profit_share_history');
   const me = getCurrentUserId();
+
+  // egyenlegek és javaslatok a lokális tükörből: bármilyen rögzítésre
+  // (költség, bér, számla, rendezés) azonnal frissülnek
+  const balances = useMemo(
+    () => computeBalances(profiles, expenses, attendance, invoices, settlements, shareHistory),
+    [profiles, expenses, attendance, invoices, settlements, shareHistory],
+  );
+  const suggestions = useMemo(() => suggestTransfers(balances), [balances]);
+
+  // közös eredmény ugyanígy lokálisan
+  const c = useMemo(() => {
+    const paid = invoices.filter((i) => i.paid_at);
+    const revenue_paid_net = paid.reduce((s, i) => s + Number(i.net_amount), 0);
+    const outstanding_net = invoices.filter((i) => !i.paid_at).reduce((s, i) => s + Number(i.net_amount), 0);
+    const expense_net = expenses.reduce((s, e) => s + Number(e.net_amount), 0);
+    const wage_net = attendance.reduce((s, a) => s + Number(a.amount), 0);
+    return { revenue_paid_net, outstanding_net, expense_net, wage_net, profit_net: revenue_paid_net - expense_net - wage_net };
+  }, [invoices, expenses, attendance]);
 
   const [showForm, setShowForm] = useState(false);
   const [toUser, setToUser] = useState<string | null>(null);
@@ -65,7 +82,6 @@ export default function SettlementScreen() {
     setSelSites(next);
   };
 
-  const c = common.data?.[0];
   const name = (id: string | null | undefined) => profiles.find((p) => p.id === id)?.display_name ?? '?';
 
   /** Ki mennyit költött az időszakban/területen, és ez alapján ki kinek jön.
@@ -157,7 +173,6 @@ export default function SettlementScreen() {
     setShowForm(false);
     setAmount('');
     setNote('');
-    setTimeout(() => { void balances.refresh(); void suggestions.refresh(); }, 1500);
   };
 
   return (
@@ -234,10 +249,6 @@ export default function SettlementScreen() {
         </Sub>
       </Card>
 
-      {(balances.fromCache || common.fromCache) ? (
-        <Sub style={{ color: C.warning }}>⚠️ Offline — az utolsó ismert egyenlegeket látod.</Sub>
-      ) : null}
-
       <Card>
         <H2>Közös eredmény (nettó)</H2>
         {c ? (
@@ -252,7 +263,7 @@ export default function SettlementScreen() {
         ) : <Sub>Betöltés…</Sub>}
       </Card>
 
-      {(balances.data ?? []).map((b) => (
+      {balances.map((b) => (
         <Card key={b.user_id} style={b.user_id === me ? { borderColor: C.primary } : undefined}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <H2>{b.display_name}{b.user_id === me ? ' (én)' : ''}</H2>
@@ -273,10 +284,10 @@ export default function SettlementScreen() {
 
       <Card style={{ borderColor: C.accent }}>
         <H2>Javasolt rendezés</H2>
-        {(suggestions.data ?? []).length === 0 ? (
+        {suggestions.length === 0 ? (
           <Sub>Nincs rendezendő különbség. ✅</Sub>
         ) : (
-          (suggestions.data ?? []).map((s, i) => (
+          suggestions.map((s, i) => (
             <Body key={i} style={{ fontWeight: '600' }}>
               💸 {s.from_name} utaljon {s.to_name} részére: {ft(s.amount)}
             </Body>
@@ -319,8 +330,7 @@ export default function SettlementScreen() {
             {s.created_by === me ? (
               <Btn title="Törlés" kind="ghost" small onPress={() => {
                 softDeleteRow('settlements', s.id);
-                setTimeout(() => { void balances.refresh(); void suggestions.refresh(); }, 1500);
-              }} />
+                          }} />
             ) : null}
           </View>
         ))}

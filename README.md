@@ -90,7 +90,7 @@ cd app && npm run typecheck
 
 Új verzió kirakása:
 ```bash
-cd app && rm -rf dist && npx expo export --platform web --clear
+cd app && node scripts/genversion.mjs && rm -rf dist && npx expo export --platform web --clear
 cp dist/index.html dist/404.html && echo "ktg.szakify.hu" > dist/CNAME
 touch dist/.nojekyll  # FONTOS: e nélkül a Pages (Jekyll) kihagyja az _expo mappát → fehér oldal
 node scripts/postbuild-web.mjs  # PWA meta a dist/index.html-be

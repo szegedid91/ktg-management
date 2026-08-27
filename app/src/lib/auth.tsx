@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { store } from './store';
 import { startSyncLoop, stopSyncLoop, syncNow } from './sync';
+import { startRealtime, stopRealtime } from './realtime';
 import { setCurrentUserId } from './repo';
 import { AppState } from 'react-native';
 
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(data.session);
         setCurrentUserId(data.session?.user.id ?? null);
         setLoading(false);
-        if (data.session) startSyncLoop();
+        if (data.session) { startSyncLoop(); startRealtime(); }
       });
     });
 
@@ -53,10 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       setCurrentUserId(s?.user.id ?? null);
       if (s) {
-        void guardUserSwitch(s.user.id).then(() => startSyncLoop());
+        void guardUserSwitch(s.user.id).then(() => { startSyncLoop(); startRealtime(); });
         import('./push').then((m) => m.registerPushToken()).catch(() => {});
       } else {
         stopSyncLoop();
+        stopRealtime();
         // kijelentkezés után vissza a belépőre, bárhol is járt
         import('expo-router').then((m) => m.router.replace('/login')).catch(() => {});
       }
@@ -97,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { await syncNow(); } catch { /* offline kijelentkezés is mehet */ }
     await supabase.auth.signOut();
     stopSyncLoop();
+    stopRealtime();
     await store.clearAll();
   };
 
