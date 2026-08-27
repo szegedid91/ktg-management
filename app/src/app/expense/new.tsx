@@ -43,6 +43,8 @@ export default function NewExpense() {
   const defaultVat = settings ? Number(settings.default_vat_rate) : 27;
 
   const [amountStr, setAmountStr] = useState('');
+  // adott terület oldaláról indítva a költség oda kerül — nincs átválasztás
+  const fixedSite = siteId ? sites.find((s) => s.id === siteId) ?? null : null;
   // több terület is választható; üresen hagyva közös (területhez nem kötött) költség
   const [siteIds, setSiteIds] = useState<string[]>(siteId ? [siteId] : []);
   const [splits, setSplits] = useState<Record<string, number>>(siteId ? { [siteId]: 100 } : {});
@@ -221,13 +223,19 @@ export default function NewExpense() {
         <>
           <Card>
             <H2>Építkezés</H2>
-            <Sub>Nem kötelező — üresen hagyva közös költség lesz. Több terület is kijelölhető.</Sub>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-              {sites.map((s) => (
-                <Chip key={s.id} label={s.name} on={siteIds.includes(s.id)} onPress={() => toggleSite(s.id)} />
-              ))}
-            </View>
-            {sites.length === 0 ? <Sub>Nincs aktív építkezés.</Sub> : null}
+            {fixedSite ? (
+              <Body style={{ fontWeight: '700' }}>🏗️ {fixedSite.name}</Body>
+            ) : (
+              <>
+                <Sub>Nem kötelező — üresen hagyva közös költség lesz. Több terület is kijelölhető.</Sub>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                  {sites.map((s) => (
+                    <Chip key={s.id} label={s.name} on={siteIds.includes(s.id)} onPress={() => toggleSite(s.id)} />
+                  ))}
+                </View>
+                {sites.length === 0 ? <Sub>Nincs aktív építkezés.</Sub> : null}
+              </>
+            )}
             {siteIds.length >= 2 ? (
               <View style={{ gap: S.sm, marginTop: 4 }}>
                 <Sub>Megosztás a területek között — húzd a csúszkát:</Sub>
