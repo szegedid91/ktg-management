@@ -14,6 +14,8 @@ export interface Profile {
   id: UUID;
   display_name: string;
   email: string | null;
+  /** admin: hozzáférést kezel, de nem szerepel az elszámolásban */
+  is_admin: boolean;
   profit_share_percent: number;
   push_token: string | null;
   notify_comments: boolean;
