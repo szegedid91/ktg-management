@@ -92,6 +92,7 @@ cd app && npm run typecheck
 ```bash
 cd app && rm -rf dist && npx expo export --platform web --clear
 cp dist/index.html dist/404.html && echo "ktg.szakify.hu" > dist/CNAME
+touch dist/.nojekyll  # FONTOS: e nélkül a Pages (Jekyll) kihagyja az _expo mappát → fehér oldal
 cd dist && git init -b gh-pages && git add -A && git commit -m deploy \
   && git push --force https://github.com/szegedid91/ktg-management.git gh-pages
 ```
