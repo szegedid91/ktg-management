@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
+import { router } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, Empty, Picker, Loading, Input } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
@@ -247,6 +248,34 @@ export default function Audit() {
     return out.slice(0, 8);
   };
 
+  /** Melyik oldalra vigyen a bejegyzés — null: nincs hova. */
+  const linkFor = (r: AuditLogRow): string | null => {
+    const d = (r.new_data ?? r.old_data ?? {}) as any;
+    switch (r.table_name) {
+      case 'sites': return `/site/${r.record_id}`;
+      case 'expenses': return `/expense/${r.record_id}`;
+      case 'invoices': return `/invoice/${r.record_id}`;
+      case 'workers': return `/worker/${r.record_id}`;
+      case 'attendance': return d.work_date ? `/day/${d.work_date}` : null;
+      case 'settlements': return '/settlement';
+      case 'equipment':
+      case 'equipment_moves': return '/equipment';
+      case 'expense_categories':
+      case 'app_settings':
+      case 'profiles': return '/settings';
+      case 'expense_photos': return d.expense_id ? `/expense/${d.expense_id}` : null;
+      case 'comments': {
+        const map: Record<string, string> = {
+          site: `/site/${d.entity_id}`, expense: `/expense/${d.entity_id}`,
+          invoice: `/invoice/${d.entity_id}`, worker: `/worker/${d.entity_id}`,
+          equipment: '/equipment', settlement: '/settlement',
+        };
+        return d.entity_type && d.entity_id ? map[d.entity_type] ?? null : null;
+      }
+      default: return null;
+    }
+  };
+
   return (
     <Screen>
       <Card>
@@ -321,13 +350,14 @@ export default function Audit() {
         const diff = changes(r);
         const head = headline(r);
         const destructive = head.includes('töröl');
-        return (
-          <Card key={r.id} style={{ padding: S.md }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        const link = linkFor(r);
+        const card = (
+          <Card style={{ padding: S.md }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Body style={{ fontWeight: '700', color: destructive ? C.danger : C.text, flex: 1 }}>
                 {head}
               </Body>
-              <Sub>{hdt(r.changed_at)}</Sub>
+              <Sub>{hdt(r.changed_at)}{link ? '  ›' : ''}</Sub>
             </View>
             <Body>{subject(r)}</Body>
             <Sub>{userName(r.changed_by)}</Sub>
@@ -336,6 +366,12 @@ export default function Audit() {
             ))}
           </Card>
         );
+        return link ? (
+          <Pressable key={r.id} onPress={() => router.push(link as any)}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+            {card}
+          </Pressable>
+        ) : <View key={r.id}>{card}</View>;
       })}
       {(rows.data ?? []).length >= limit ? (
         <Btn title="Több betöltése" kind="ghost" onPress={() => setLimit(limit + 50)} />

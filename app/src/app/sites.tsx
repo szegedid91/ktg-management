@@ -6,7 +6,7 @@ import { C } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
 import { ft } from '../lib/format';
-import { Site, SiteTotals } from '../lib/types';
+import { Site, SiteTotals, Expense } from '../lib/types';
 
 export default function Sites() {
   const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
@@ -15,6 +15,9 @@ export default function Sites() {
     filterParam === 'closed' ? 'closed' : filterParam === 'all' ? 'all' : 'active',
   );
   const totals = useOnlineView<SiteTotals[]>('site_totals', () => fetchView('v_site_totals'), []);
+  // területhez nem kötött (közös) költségek — külön listájuk van
+  const commonExpenses = useTable<Expense>('expenses').filter((e) => !e.site_id);
+  const commonTotal = commonExpenses.reduce((s, e) => s + Number(e.net_amount), 0);
 
   const filtered = sites
     .filter((s) => filter === 'all' || s.status === filter)
@@ -31,6 +34,15 @@ export default function Sites() {
         value={filter}
         onChange={setFilter}
       />
+      {commonExpenses.length > 0 ? (
+        <Row onPress={() => router.push('/expenses/common')}>
+          <View style={{ flex: 1 }}>
+            <Body style={{ fontWeight: '700' }}>🧰 Közös költségek</Body>
+            <Sub>{commonExpenses.length} tétel · {ft(commonTotal)} nettó — területhez nem kötött (pl. üzemanyag)</Sub>
+          </View>
+          <Badge text="közös" color={C.primary} />
+        </Row>
+      ) : null}
       {filtered.length === 0 ? <Empty text="Nincs építkezés ebben a szűrésben." /> : null}
       {filtered.map((s) => {
         const t = totals.data?.find((x) => x.site_id === s.id);

@@ -58,6 +58,7 @@ export default function RootLayout() {
         <Stack.Screen name="site/new" options={{ title: 'Új építkezés' }} />
         <Stack.Screen name="site/[id]" options={{ title: 'Építkezés' }} />
         <Stack.Screen name="expense/new" options={{ title: 'Költség rögzítése' }} />
+        <Stack.Screen name="expenses/common" options={{ title: 'Közös költségek' }} />
         <Stack.Screen name="expense/[id]" options={{ title: 'Költség' }} />
         <Stack.Screen name="workers/index" options={{ title: 'Munkavállalók' }} />
         <Stack.Screen name="worker/new" options={{ title: 'Új munkavállaló' }} />
