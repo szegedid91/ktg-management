@@ -26,6 +26,9 @@ const head = `
          Felső padding NINCS — a fejléc (safe-area-context) maga kezeli
          az insetet, a body-padding duplázná. */
       html, body { background-color: #1F4E5F; }
+      /* a böngésző saját lehúzás-frissítése és gumiszalag-effektje ne
+         ütközzön az app beépített lehúzásos frissítésével */
+      html, body { overscroll-behavior-y: none; }
     </style>
   </head>`;
 html = html.replace('</head>', head);

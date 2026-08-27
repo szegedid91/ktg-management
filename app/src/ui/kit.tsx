@@ -1,23 +1,91 @@
 // Közös UI-komponensek — minden képernyő ezekből épül
 
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, Modal,
+  View, Text, TextInput, Pressable, ScrollView, Modal, RefreshControl,
   ActivityIndicator, ViewStyle, TextStyle, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { C, S, F } from './theme';
 import { BottomBar } from '../components/BottomBar';
+import { syncNow } from '../lib/sync';
+
+const PULL_TRIGGER = 70; // ennyi px lehúzás indítja a frissítést
 
 export function Screen({ children, scroll = true, pad = true, footer }: {
   children: ReactNode; scroll?: boolean; pad?: boolean;
   /** fix sáv a görgethető tartalom alatt, az alsó menüsor felett */
   footer?: ReactNode;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const doRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try { await syncNow(); } finally { setRefreshing(false); }
+  };
+
+  // Lehúzásos frissítés weben: a böngésző nem ad RefreshControl-t,
+  // ezért érintésből számoljuk — csak a lista tetején, lefelé húzásra.
+  const scrollY = useRef(0);
+  const startY = useRef<number | null>(null);
+  const [pull, setPull] = useState(0);
+  const webPullProps = Platform.OS === 'web' ? {
+    onScroll: (e: any) => { scrollY.current = e.nativeEvent.contentOffset.y; },
+    scrollEventThrottle: 16,
+    onTouchStart: (e: any) => {
+      startY.current = scrollY.current <= 0 ? e.nativeEvent.touches?.[0]?.pageY ?? null : null;
+    },
+    onTouchMove: (e: any) => {
+      if (startY.current == null || refreshing) return;
+      const d = (e.nativeEvent.touches?.[0]?.pageY ?? 0) - startY.current;
+      setPull(d > 0 ? Math.min(d * 0.45, PULL_TRIGGER + 20) : 0);
+    },
+    onTouchEnd: () => {
+      if (pull >= PULL_TRIGGER) void doRefresh();
+      startY.current = null;
+      setPull(0);
+    },
+  } : {};
+
   const content = pad ? <View style={{ padding: S.lg, gap: S.md, flex: scroll ? undefined : 1 }}>{children}</View> : children;
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={{ flex: 1 }}>
-        {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>{content}</ScrollView> : content}
+        {scroll ? (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 48 }}
+            refreshControl={Platform.OS !== 'web'
+              ? <RefreshControl refreshing={refreshing} onRefresh={() => void doRefresh()} tintColor={C.primary} />
+              : undefined}
+            {...webPullProps}
+          >
+            {content}
+          </ScrollView>
+        ) : content}
+        {Platform.OS === 'web' && (pull > 0 || refreshing) ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', top: 8, left: 0, right: 0, alignItems: 'center',
+              opacity: refreshing ? 1 : Math.min(pull / PULL_TRIGGER, 1),
+              transform: [{ translateY: refreshing ? 12 : pull * 0.4 }],
+            }}
+          >
+            <View style={{
+              width: 36, height: 36, borderRadius: 18, backgroundColor: C.card,
+              alignItems: 'center', justifyContent: 'center',
+              borderWidth: 1, borderColor: C.border,
+              shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+            }}>
+              {refreshing
+                ? <ActivityIndicator size="small" color={C.primary} />
+                : <Text style={{
+                    fontSize: 18, color: C.primary, fontWeight: '700',
+                    transform: [{ rotate: pull >= PULL_TRIGGER ? '180deg' : '0deg' }],
+                  }}>↓</Text>}
+            </View>
+          </View>
+        ) : null}
       </View>
       {footer}
       <BottomBar />
