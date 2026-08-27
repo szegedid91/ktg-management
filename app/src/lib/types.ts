@@ -240,11 +240,38 @@ export interface SiteTotals {
   margin_percent: number | null;
 }
 
+/** Részesedés-történet: melyik naptól mennyi — a számítások a tétel
+ *  dátumakor érvényes százalékot használják (nem visszamenőleges). */
+export interface ProfitShareHistory {
+  id: UUID;
+  user_id: UUID;
+  percent: number;
+  valid_from: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/** Részesedés-módosítási javaslat: a másik partner beleegyezésével lép életbe */
+export interface ShareChangeRequest {
+  id: UUID;
+  proposed_by: UUID;
+  shares: { user_id: UUID; percent: number }[];
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  effective_from: string | null;
+  decided_by: UUID | null;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
 // A szinkronizálható táblák nevei
 export const SYNC_TABLES = [
   'profiles', 'app_settings', 'expense_categories', 'sites', 'external_people',
   'workers', 'expenses', 'expense_photos', 'attendance', 'comments',
   'invoices', 'settlements', 'equipment', 'equipment_moves',
+  'profit_share_history', 'share_change_requests',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

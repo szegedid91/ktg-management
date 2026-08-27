@@ -5,7 +5,7 @@ import { C, S } from '../ui/theme';
 import { useOnlineView, useTable } from '../lib/hooks';
 import { fetchView, callRpc, insertRow, getCurrentUserId, softDeleteRow } from '../lib/repo';
 import { ft, hd, todayISO, parseAmount } from '../lib/format';
-import { UserBalance, CommonResult, Settlement, Profile, Expense, Attendance, Site } from '../lib/types';
+import { UserBalance, CommonResult, Settlement, Profile, Expense, Attendance, Site, ProfitShareHistory } from '../lib/types';
 
 function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
@@ -48,6 +48,7 @@ export default function SettlementScreen() {
   const expenses = useTable<Expense>('expenses');
   const attendance = useTable<Attendance>('attendance');
   const sites = useTable<Site>('sites');
+  const shareHistory = useTable<ProfitShareHistory>('profit_share_history');
   const me = getCurrentUserId();
 
   const [showForm, setShowForm] = useState(false);
@@ -75,25 +76,48 @@ export default function SettlementScreen() {
     const inPeriod = (d: string) => d >= from && d < to;
     const siteOk = (siteId: string | null) => selSites.size === 0 || (!!siteId && selSites.has(siteId));
 
+    // a felhasználó részesedése egy adott napon (a módosítások nem
+    // visszamenőlegesek: minden tétel a saját napja szerint számít)
+    const shareAt = (uid: string, date: string): number => {
+      let best: ProfitShareHistory | null = null;
+      for (const h of shareHistory) {
+        if (h.user_id !== uid || h.valid_from > date) continue;
+        if (!best || h.valid_from > best.valid_from) best = h;
+      }
+      if (best) return Number(best.percent);
+      return Number(profiles.find((p) => p.id === uid)?.profit_share_percent ?? 0);
+    };
+
+    // minden partner által fizetett tétel (összeg + dátum) — ebből lesz
+    // az „igazságos rész” a tétel napján érvényes részesedéssel
+    const items: { amount: number; date: string }[] = [];
+
     const stats = profiles.filter((p) => !p.is_admin).map((p) => {
-      const exp = expenses
-        .filter((e) => e.paid_by === p.id && inPeriod(e.expense_date) && siteOk(e.site_id))
-        .reduce((s, e) => s + Number(e.net_amount), 0);
-      const wage = attendance
-        .filter((a) => a.paid_by === p.id && !!a.paid_at && inPeriod(a.work_date) && siteOk(a.site_id))
-        .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
-      const comm = attendance
+      const expItems = expenses
+        .filter((e) => e.paid_by === p.id && inPeriod(e.expense_date) && siteOk(e.site_id));
+      const exp = expItems.reduce((s, e) => s + Number(e.net_amount), 0);
+      expItems.forEach((e) => items.push({ amount: Number(e.net_amount), date: e.expense_date }));
+
+      const wageItems = attendance
+        .filter((a) => a.paid_by === p.id && !!a.paid_at && inPeriod(a.work_date) && siteOk(a.site_id));
+      const wage = wageItems.reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
+      wageItems.forEach((a) => items.push({ amount: Number(a.amount) - Number(a.commission_amount), date: a.work_date }));
+
+      const commItems = attendance
         .filter((a) => a.commission_paid_by === p.id && !!a.commission_paid_at
-          && !!a.referrer_external_id && inPeriod(a.work_date) && siteOk(a.site_id))
-        .reduce((s, a) => s + Number(a.commission_amount), 0);
+          && !!a.referrer_external_id && inPeriod(a.work_date) && siteOk(a.site_id));
+      const comm = commItems.reduce((s, a) => s + Number(a.commission_amount), 0);
+      commItems.forEach((a) => items.push({ amount: Number(a.commission_amount), date: a.work_date }));
+
       return { id: p.id, name: p.display_name, share: Number(p.profit_share_percent), exp, wage, comm, total: exp + wage + comm };
     });
 
     const grandTotal = stats.reduce((s, u) => s + u.total, 0);
-    // igazságos rész = összköltés a részesedés arányában; aki többet állt,
-    // annak jár a különbség — az időszak átutalásai már levonva
+    // igazságos rész = tételenként a tétel napján érvényes részesedés
+    // arányában; aki többet állt, annak jár a különbség — az időszak
+    // átutalásai már levonva
     const adjusted = stats.map((u) => {
-      const fair = grandTotal * u.share / 100;
+      const fair = items.reduce((s, it) => s + it.amount * shareAt(u.id, it.date) / 100, 0);
       const out = settlements
         .filter((s) => s.from_user === u.id && inPeriod(s.settle_date))
         .reduce((s2, s) => s2 + Number(s.amount), 0);
@@ -119,7 +143,7 @@ export default function SettlementScreen() {
       }
     }
     return { stats, grandTotal, transfers };
-  }, [profiles, expenses, attendance, settlements, period, selSites]);
+  }, [profiles, expenses, attendance, settlements, shareHistory, period, selSites]);
 
   const saveSettlement = () => {
     if (!toUser || !amount) return;
@@ -205,7 +229,7 @@ export default function SettlementScreen() {
           ))
         )}
         <Sub>
-          A részesedés arányában ({compare.stats.map((u) => `${u.name} ${u.share}%`).join(' · ')}) számolva;
+          A tétel napján érvényes részesedés arányában (most: {compare.stats.map((u) => `${u.name} ${u.share}%`).join(' · ')}) számolva;
           az időszakban rögzített átutalások már levonva. Átutalás rögzítésekor azonnal frissül.
         </Sub>
       </Card>

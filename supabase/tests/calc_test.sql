@@ -24,6 +24,8 @@ delete from public.external_people;
 delete from public.sites;
 delete from public.expense_categories where is_builtin = false;
 delete from public.allowed_emails;
+delete from public.share_change_requests;
+delete from public.profit_share_history;
 delete from public.profiles;
 delete from auth.users;
 
@@ -260,7 +262,7 @@ end $$;
 do $$
 begin
   begin
-    perform public.set_profit_shares('[{"user_id":"00000000-0000-0000-0000-00000000000a","percent":60},{"user_id":"00000000-0000-0000-0000-00000000000b","percent":30}]'::jsonb);
+    perform public.fn_validate_shares('[{"user_id":"00000000-0000-0000-0000-00000000000a","percent":60},{"user_id":"00000000-0000-0000-0000-00000000000b","percent":30}]'::jsonb);
     raise exception 'NEM DOBOTT HIBÁT';
   exception
     when others then
@@ -268,8 +270,13 @@ begin
         raise exception 'A 90%%-os elosztást elfogadta!';
       end if;
   end;
-  perform public.set_profit_shares('[{"user_id":"00000000-0000-0000-0000-00000000000a","percent":60},{"user_id":"00000000-0000-0000-0000-00000000000b","percent":40}]'::jsonb);
+  -- a közvetlen set_profit_shares megszűnt (javaslat + beleegyezés van);
+  -- a belső építőköveket teszteljük auth nélkül
+  perform public.fn_validate_shares('[{"user_id":"00000000-0000-0000-0000-00000000000a","percent":60},{"user_id":"00000000-0000-0000-0000-00000000000b","percent":40}]'::jsonb);
+  perform public.fn_apply_shares('[{"user_id":"00000000-0000-0000-0000-00000000000a","percent":60},{"user_id":"00000000-0000-0000-0000-00000000000b","percent":40}]'::jsonb, current_date);
   assert (select profit_share_percent from public.profiles where id = '00000000-0000-0000-0000-00000000000a') = 60, '60-40 elosztás mentve';
+  -- időszakos érvényesség: mára az új arány, a történet-lekérdezés él
+  assert public.share_at('00000000-0000-0000-0000-00000000000a', current_date) = 60, 'új arány a mai naptól';
 end $$;
 
 -- ---------- Audit log ----------

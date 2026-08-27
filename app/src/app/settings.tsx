@@ -6,9 +6,10 @@ import { useTable, useOnlineView } from '../lib/hooks';
 import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow, fetchView } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { supabase } from '../lib/supabase';
-import { parseAmount } from '../lib/format';
-import { AppSettings, Profile, ExpenseCategory } from '../lib/types';
+import { parseAmount, hd } from '../lib/format';
+import { AppSettings, Profile, ExpenseCategory, ShareChangeRequest } from '../lib/types';
 import { notify, confirmDialog } from '../lib/dialogs';
+import { PercentSlider } from '../components/PercentSlider';
 
 function RateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
@@ -25,8 +26,12 @@ export default function Settings() {
   const partners = profiles.filter((p) => !p.is_admin);
   const canManageAccess = !!myProfile?.is_admin || !profiles.some((p) => p.is_admin);
 
+  // részesedés-módosítási javaslatok (a másik fél beleegyezése kell)
+  const shareRequests = useTable<ShareChangeRequest>('share_change_requests');
+  const pendingReq = shareRequests.find((r) => r.status === 'pending');
+
   const [rates, setRates] = useState<Record<string, string>>({});
-  const [shares, setShares] = useState<Record<string, string>>({});
+  const [shares, setShares] = useState<Record<string, number>>({});
   const [threshold, setThreshold] = useState('');
   const [newCat, setNewCat] = useState('');
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -75,10 +80,17 @@ export default function Settings() {
     }
   }, [settings, loadedFor]);
 
+  // ha a szerveren változik a részesedés (pl. jóváhagyott javaslat),
+  // a csúszkák álljanak át az új értékre
+  const shareKey = partners.map((p) => `${p.id}:${Math.round(Number(p.profit_share_percent))}`).join(',');
   useEffect(() => {
-    if (partners.length && Object.keys(shares).length === 0) {
-      setShares(Object.fromEntries(partners.map((p) => [p.id, String(Number(p.profit_share_percent))])));
+    if (partners.length) {
+      setShares(Object.fromEntries(partners.map((p) => [p.id, Math.round(Number(p.profit_share_percent))])));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareKey]);
+
+  useEffect(() => {
     if (myProfile && threshold === '') {
       setThreshold(String(Number(myProfile.big_expense_threshold)));
     }
@@ -93,22 +105,47 @@ export default function Settings() {
     notify('Mentve', 'Alapértelmezett díjak frissítve.');
   };
 
-  const saveShares = async () => {
-    // a DB pontosan 100-at követel — a kliens is
-    const sum = Math.round(Object.values(shares).reduce((s, v) => s + parseAmount(v), 0) * 100) / 100;
-    if (sum !== 100) {
-      notify('Hiba', `A részesedések összege pontosan 100% kell legyen (most: ${sum}%).`);
-      return;
-    }
+  /** Csúszka-állítás: a többi partner arányosan kapja a maradékot, így
+   *  az összeg mindig pontosan 100. */
+  const setShare = (id: string, val: number) => {
+    const others = partners.filter((p) => p.id !== id);
+    const rest = 100 - val;
+    const prevSum = others.reduce((s, p) => s + (shares[p.id] ?? 0), 0);
+    const next: Record<string, number> = { ...shares, [id]: val };
+    let acc = 0;
+    others.forEach((p, i) => {
+      const w = prevSum > 0 ? (shares[p.id] ?? 0) / prevSum : 1 / others.length;
+      const v = i === others.length - 1 ? rest - acc : Math.round(rest * w);
+      next[p.id] = Math.max(0, v);
+      acc += v;
+    });
+    setShares(next);
+  };
+
+  const sharesChanged = partners.some((p) => Math.round(Number(p.profit_share_percent)) !== (shares[p.id] ?? 0));
+
+  const proposeShares = async () => {
     try {
-      await callRpc('set_profit_shares', {
-        p_shares: partners.map((p) => ({ user_id: p.id, percent: parseAmount(shares[p.id] ?? '0') })),
+      const status = await callRpc<string>('propose_profit_shares', {
+        p_shares: partners.map((p) => ({ user_id: p.id, percent: shares[p.id] ?? 0 })),
       });
-      // a friss értékeket a szinkron hozza le — mások profilját nem írjuk felül
       void syncNow();
-      notify('Mentve', 'Profitrészesedések frissítve.');
+      if (status === 'approved') notify('Mentve ✅', 'A részesedés a mai naptól érvényes. A korábbi tételeket nem érinti.');
+      else notify('Javaslat elküldve 🤝', 'A módosításhoz a másik fél beleegyezése kell — jóváhagyás után, annak napjától érvényes. A korábbi tételeket nem érinti.');
     } catch (e: any) {
-      notify('Hiba', 'A részesedés módosításához internet kell.\n' + String(e?.message ?? e));
+      notify('Hiba', String(e?.message ?? e));
+    }
+  };
+
+  const decideShares = async (id: string, approve: boolean) => {
+    try {
+      const status = await callRpc<string>('decide_share_change', { p_id: id, p_approve: approve });
+      void syncNow();
+      if (status === 'approved') notify('Jóváhagyva ✅', 'Az új részesedés a mai naptól érvényes. A korábbi tételeket nem érinti.');
+      else if (status === 'rejected') notify('Elutasítva', 'A részesedések változatlanok maradtak.');
+      else notify('Visszavonva', 'A javaslatot visszavontad.');
+    } catch (e: any) {
+      notify('Hiba', String(e?.message ?? e));
     }
   };
 
@@ -162,17 +199,48 @@ export default function Settings() {
 
       <Card>
         <H2>Profitrészesedés</H2>
-        <Sub>Az összegnek 100%-nak kell lennie. Az adatbázis is ellenőrzi.</Sub>
-        {partners.map((p) => (
-          <Input
-            key={p.id}
-            label={`${p.display_name} (%)`}
-            value={shares[p.id] ?? ''}
-            onChangeText={(v) => setShares({ ...shares, [p.id]: v })}
-            keyboardType="numeric"
-          />
-        ))}
-        <Btn title="Részesedések mentése" onPress={() => void saveShares()} />
+        {pendingReq ? (
+          <>
+            <Sub>🤝 Függőben lévő módosítási javaslat ({hd(pendingReq.created_at.slice(0, 10))}, javasolta: {profiles.find((p) => p.id === pendingReq.proposed_by)?.display_name ?? '?'}):</Sub>
+            {pendingReq.shares.map((s) => (
+              <Body key={s.user_id} style={{ fontWeight: '700' }}>
+                {profiles.find((p) => p.id === s.user_id)?.display_name ?? '?'}: {Number(s.percent)}%
+                <Body style={{ fontWeight: '400', color: C.sub }}>
+                  {'  '}(most: {Math.round(Number(profiles.find((p) => p.id === s.user_id)?.profit_share_percent ?? 0))}%)
+                </Body>
+              </Body>
+            ))}
+            <Sub>Jóváhagyás után az új arány annak napjától érvényes — a korábbi tételek a régi arányban maradnak.</Sub>
+            {pendingReq.proposed_by === me ? (
+              <Btn title="Javaslat visszavonása" kind="ghost" onPress={() => void decideShares(pendingReq.id, false)} />
+            ) : myProfile && !myProfile.is_admin ? (
+              <View style={{ flexDirection: 'row', gap: S.md }}>
+                <View style={{ flex: 1 }}><Btn title="Elutasítom" kind="ghost" onPress={() => void decideShares(pendingReq.id, false)} /></View>
+                <View style={{ flex: 1 }}><Btn title="Jóváhagyom ✓" onPress={() => void decideShares(pendingReq.id, true)} /></View>
+              </View>
+            ) : (
+              <Sub>A másik fél döntésére vár.</Sub>
+            )}
+          </>
+        ) : (
+          <>
+            <Sub>A módosításhoz a másik fél beleegyezése kell, és csak a jóváhagyás napjától érvényes — visszamenőleg nem változtat semmit.</Sub>
+            {partners.map((p) => (
+              <View key={p.id} style={{ gap: 2 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Body style={{ fontWeight: '600' }}>{p.display_name}</Body>
+                  <Body style={{ fontWeight: '800', color: C.primary }}>{shares[p.id] ?? 0}%</Body>
+                </View>
+                <PercentSlider value={shares[p.id] ?? 0} onChange={(v) => setShare(p.id, v)} />
+              </View>
+            ))}
+            <Btn
+              title={partners.length > 1 ? 'Módosítás javaslása 🤝' : 'Részesedés mentése'}
+              onPress={() => void proposeShares()}
+              disabled={!sharesChanged}
+            />
+          </>
+        )}
       </Card>
 
       <Card>
