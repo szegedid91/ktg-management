@@ -5,7 +5,7 @@ import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Badge, Row, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useRow, useOnlineView } from '../../lib/hooks';
-import { callRpc, fetchView, getCurrentUserId, updateRow, softDeleteRow, markInvoicePaid } from '../../lib/repo';
+import { callRpc, fetchView, getCurrentUserId, updateRow, markInvoicePaid, queueRpc } from '../../lib/repo';
 import { syncNow } from '../../lib/sync';
 import { ft, hd, todayISO } from '../../lib/format';
 import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals } from '../../lib/types';
@@ -120,10 +120,20 @@ export default function SiteDetail() {
             {closed
               ? <Btn title="Újranyitás" kind="secondary" onPress={doReopen} />
               : <Btn title="Építkezés lezárása…" kind="danger" onPress={doClose} />}
-            {!closed && site.created_by === me ? (
+            {!closed ? (
               <Btn title="Építkezés törlése" kind="ghost" onPress={() => {
-                void confirmDialog('Törlés', `Biztosan törlöd: ${site.name}?`, 'Törlés', true).then((ok) => {
-                  if (ok) { softDeleteRow('sites', site.id); smartBack(); }
+                void confirmDialog(
+                  'Építkezés törlése',
+                  `${site.name}\n\nA hozzá tartozó költségek és bevételek 30 napig még megmaradnak és beleszámítanak az elszámolásba, utána véglegesen törlődnek. A másik fél értesítést kap a törlésről.`,
+                  'Törlés', true,
+                ).then((ok) => {
+                  if (ok) {
+                    // offline-képes: a törlés a sorba kerül, a szerver küldi
+                    // az értesítést a másik félnek
+                    queueRpc('delete_site', { p_id: site.id },
+                      [{ table: 'sites', id: site.id, patch: { deleted_at: new Date().toISOString() } }]);
+                    smartBack();
+                  }
                 });
               }} />
             ) : null}
