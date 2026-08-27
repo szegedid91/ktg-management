@@ -8,8 +8,14 @@ import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
 
 export default function Login() {
-  const { signIn, signUp } = useAuth();
+  const { session, signIn, signUp } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
+
+  // ha a munkamenet a betöltés után (pl. token-frissítéskor) áll helyre,
+  // ne ragadjunk a belépőn — irány a kezdőlap
+  React.useEffect(() => {
+    if (session) router.replace('/');
+  }, [session]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');

@@ -11,7 +11,19 @@ import { syncNow } from './sync';
 import { SyncTable } from './types';
 
 export function newId(): string {
-  return Crypto.randomUUID();
+  try {
+    return Crypto.randomUUID();
+  } catch {
+    // A crypto.randomUUID böngészőben csak biztonságos (https) környezetben
+    // létezik — http alatt UUID v4-et készítünk getRandomValues-ból.
+    const b = new Uint8Array(16);
+    const c: any = (globalThis as any).crypto ?? Crypto;
+    c.getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, '0'));
+    return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`;
+  }
 }
 
 function nowISO(): string {
