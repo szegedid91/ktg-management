@@ -12,6 +12,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // weben az e-mail-megerősítő link tokenjeit az URL-ből felvesszük,
+    // így a megerősítés után a felhasználó egyből be is van léptetve
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });

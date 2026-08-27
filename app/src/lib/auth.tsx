@@ -63,7 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, displayName: string) => {
     const { error } = await supabase.auth.signUp({
       email, password,
-      options: { data: { display_name: displayName } },
+      options: {
+        data: { display_name: displayName },
+        // a megerősítő link a saját "sikeres megerősítés" oldalunkra hozzon
+        ...(typeof window !== 'undefined'
+          ? { emailRedirectTo: `${window.location.origin}/megerosites` }
+          : {}),
+      },
     });
     return error ? hunAuthError(error.message) : null;
   };

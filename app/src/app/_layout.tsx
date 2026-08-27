@@ -44,6 +44,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ title: 'Kezdőlap', headerLeft: () => null }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="megerosites" options={{ title: 'E-mail megerősítés' }} />
         <Stack.Screen name="more" options={{ title: 'Több' }} />
         <Stack.Screen name="pending/index" options={{ title: 'Függőben' }} />
         <Stack.Screen name="sites" options={{ title: 'Építkezések' }} />
