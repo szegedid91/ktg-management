@@ -3,7 +3,7 @@
 // gombok a rögzítő űrlapokat nyitják.
 
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useAuth } from '../lib/auth';
 import { C, S } from '../ui/theme';
@@ -27,7 +27,12 @@ export function BottomBar() {
       style={{
         flexDirection: 'row', backgroundColor: C.card,
         borderTopWidth: 1, borderTopColor: C.border,
-        paddingBottom: 6, paddingTop: 6,
+        paddingTop: 6,
+        // iPhone home-indicator sáv: kezdőképernyőre telepített (PWA)
+        // módban a sáv ne lógjon a kijelző aljára
+        paddingBottom: Platform.OS === 'web'
+          ? ('max(6px, env(safe-area-inset-bottom))' as any)
+          : 6,
       }}
     >
       {ITEMS.map((item) => {
