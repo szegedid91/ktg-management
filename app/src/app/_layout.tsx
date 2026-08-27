@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, Text } from 'react-native';
 import { Stack, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthProvider } from '../lib/auth';
 import { DialogHost } from '../components/DialogHost';
 import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
@@ -29,13 +30,16 @@ export default function RootLayout() {
     void loadThemeMode();
     return subscribeTheme(setTheme);
   }, []);
+  // Kompakt fejléc: az alapértelmezett webes 64px helyett 46px tartalom-
+  // magasság; a kivágás (notch) fölötti sávot nekünk kell hozzáadni.
+  const insets = useSafeAreaInsets();
 
   return (
     <AuthProvider>
       <Stack
         key={theme}
         screenOptions={{
-          headerStyle: { backgroundColor: C.primary },
+          headerStyle: { backgroundColor: C.primary, height: 46 + insets.top } as any,
           headerTintColor: '#fff',
           headerTitleStyle: { fontWeight: '700' },
           contentStyle: { backgroundColor: C.bg },

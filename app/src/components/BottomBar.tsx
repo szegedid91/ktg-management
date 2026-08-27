@@ -27,11 +27,12 @@ export function BottomBar() {
       style={{
         flexDirection: 'row', backgroundColor: C.card,
         borderTopWidth: 1, borderTopColor: C.border,
-        paddingTop: 6,
+        paddingTop: 4,
         // iPhone home-indicator sáv: kezdőképernyőre telepített (PWA)
-        // módban a sáv ne lógjon a kijelző aljára
+        // módban a sáv ne lógjon a kijelző aljára — de a teljes 34px-es
+        // inset túl sok üres helyet hagyna, a gombok mehetnek kicsit lejjebb
         paddingBottom: Platform.OS === 'web'
-          ? ('max(6px, env(safe-area-inset-bottom))' as any)
+          ? ('max(4px, calc(env(safe-area-inset-bottom) - 12px))' as any)
           : 6,
       }}
     >
@@ -44,10 +45,10 @@ export function BottomBar() {
             key={item.label}
             onPress={item.action}
             style={({ pressed }) => ({
-              flex: 1, alignItems: 'center', gap: 2, opacity: pressed ? 0.6 : 1,
+              flex: 1, alignItems: 'center', gap: 1, opacity: pressed ? 0.6 : 1,
             })}
           >
-            <Text style={{ fontSize: 20, opacity: active ? 1 : 0.45 }}>{item.icon}</Text>
+            <Text style={{ fontSize: 19, opacity: active ? 1 : 0.45 }}>{item.icon}</Text>
             <Text style={{ fontSize: 10, fontWeight: active ? '700' : '500', color: active ? C.primary : C.sub }}>
               {item.label}
             </Text>
