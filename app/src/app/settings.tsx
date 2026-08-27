@@ -195,12 +195,10 @@ export default function Settings() {
         {canManageAccess ? (
           <>
             <Sub>Csak az itt engedélyezett e-mail címekkel lehet regisztrálni. A meglévő fiókokat a lista nem érinti.</Sub>
-            {(allowed.data ?? []).map((a) => (
+            {(allowed.data ?? []).filter((a) => !a.is_admin).map((a) => (
               <View key={a.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Body>{a.email}{a.is_admin ? '  👑 admin' : ''}</Body>
-                {a.is_admin ? null : (
-                  <Btn title="Visszavon" kind="ghost" small onPress={() => void removeAllowed(a.email)} />
-                )}
+                <Body>{a.email}</Body>
+                <Btn title="Visszavon" kind="ghost" small onPress={() => void removeAllowed(a.email)} />
               </View>
             ))}
             {allowed.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — a lista kezeléséhez internet kell.</Sub> : null}
