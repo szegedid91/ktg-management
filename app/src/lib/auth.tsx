@@ -2,11 +2,27 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { store } from './store';
 import { startSyncLoop, stopSyncLoop, syncNow } from './sync';
 import { setCurrentUserId } from './repo';
 import { AppState } from 'react-native';
+
+const LAST_USER_KEY = 'ktg:lastUserId';
+
+/** Fiókváltás-őr: ha nem ugyanaz a felhasználó lép be, mint akié a helyi
+ *  tükör/küldősor, mindent törlünk — a másik fiók nevében sorban álló
+ *  műveleteket az RLS úgyis elutasítaná. */
+async function guardUserSwitch(uid: string) {
+  try {
+    const last = await AsyncStorage.getItem(LAST_USER_KEY);
+    if (last && last !== uid) await store.clearAll();
+    await AsyncStorage.setItem(LAST_USER_KEY, uid);
+  } catch {
+    // tárolóhiba esetén nem blokkoljuk a belépést
+  }
+}
 
 interface AuthCtx {
   session: Session | null;
@@ -24,7 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void store.load().then(() => {
-      supabase.auth.getSession().then(({ data }) => {
+      supabase.auth.getSession().then(async ({ data }) => {
+        if (data.session) await guardUserSwitch(data.session.user.id);
         setSession(data.session);
         setCurrentUserId(data.session?.user.id ?? null);
         setLoading(false);
@@ -36,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       setCurrentUserId(s?.user.id ?? null);
       if (s) {
-        startSyncLoop();
+        void guardUserSwitch(s.user.id).then(() => startSyncLoop());
         import('./push').then((m) => m.registerPushToken()).catch(() => {});
       } else {
         stopSyncLoop();
@@ -75,6 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // amíg él a token: az el nem küldött rögzítések még felmennek,
+    // hogy fiókváltásnál se vesszen el semmi
+    try { await syncNow(); } catch { /* offline kijelentkezés is mehet */ }
     await supabase.auth.signOut();
     stopSyncLoop();
     await store.clearAll();
