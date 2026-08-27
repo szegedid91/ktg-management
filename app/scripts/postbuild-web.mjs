@@ -22,9 +22,10 @@ const head = `
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Költségkövető" />
     <style>
-      /* PWA: a kivágás (notch) mögötti sáv a fejléc színét kapja */
+      /* PWA: a kivágás (notch) mögötti sáv a fejléc színét kapja.
+         Felső padding NINCS — a fejléc (safe-area-context) maga kezeli
+         az insetet, a body-padding duplázná. */
       html, body { background-color: #1F4E5F; }
-      body { padding-top: env(safe-area-inset-top); box-sizing: border-box; }
     </style>
   </head>`;
 html = html.replace('</head>', head);
