@@ -9,7 +9,7 @@ import { fetchView } from '../lib/repo';
 import { store } from '../lib/store';
 import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
-import { Site, Expense, Attendance, Invoice, UserBalance } from '../lib/types';
+import { Site, Expense, Attendance, Invoice, UserBalance, Profile, ShareChangeRequest } from '../lib/types';
 import { useAuth } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
@@ -64,6 +64,14 @@ function DashboardInner() {
   const invoices = useTable<Invoice>('invoices');
 
   const balances = useOnlineView<UserBalance[]>('balances', () => fetchView('v_user_balances'), []);
+
+  // részesedés-módosítási javaslat, ami az én jóváhagyásomra vár
+  const profiles = useTable<Profile>('profiles');
+  const shareRequests = useTable<ShareChangeRequest>('share_change_requests');
+  const me = session?.user.id;
+  const myProfile = profiles.find((p) => p.id === me);
+  const awaitingMyApproval = shareRequests.find((r) =>
+    r.status === 'pending' && r.proposed_by !== me && !!myProfile && !myProfile.is_admin);
   // az összegek alapból rejtettek — a fenti szem ikon fedi fel mindet
   const [showBalance, setShowBalance] = useState(false);
   const mask = (n: number) => (showBalance ? ft(n) : '••• Ft');
@@ -87,6 +95,16 @@ function DashboardInner() {
 
   return (
     <Screen>
+      {awaitingMyApproval ? (
+        <Card style={{ borderColor: C.primary, backgroundColor: C.warnBg }}>
+          <Sub style={{ fontWeight: '700', color: C.text }}>
+            🤝 {profiles.find((p) => p.id === awaitingMyApproval.proposed_by)?.display_name ?? 'A partnered'} részesedés-módosítást
+            javasolt — a te jóváhagyásod kell.
+          </Sub>
+          <Btn title="Megnézem és döntök" small onPress={() => router.push('/settings')} />
+        </Card>
+      ) : null}
+
       {sync.pendingOps > 0 ? (
         <Card style={{ backgroundColor: C.warnBg, borderColor: C.accent }}>
           <Sub style={{ color: C.warning }}>
