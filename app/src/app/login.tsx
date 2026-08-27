@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, Alert } from 'react-native';
+import { View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Card, Title, Sub, Input, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
+import { notify } from '../lib/dialogs';
 
 export default function Login() {
   const { signIn, signUp } = useAuth();
@@ -23,6 +25,23 @@ export default function Login() {
     setBusy(false);
     if (err) setError(err);
     else router.replace('/');
+  };
+
+  /** Elfelejtett jelszó: visszaállító link küldése e-mailben */
+  const forgotPassword = async () => {
+    const em = email.trim();
+    if (!em) {
+      setError('Add meg fent az e-mail címed, és küldünk jelszó-visszaállító linket.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.auth.resetPasswordForEmail(em, {
+      ...(typeof window !== 'undefined' ? { redirectTo: `${window.location.origin}/jelszo` } : {}),
+    });
+    setBusy(false);
+    if (err) setError('Nem sikerült elküldeni a levelet. Ellenőrizd az e-mail címet, és próbáld újra.');
+    else notify('Levél elküldve 📧', `Jelszó-visszaállító linket küldtünk ide: ${em}\n\nKattints a levélben lévő linkre, és add meg az új jelszavad.`);
   };
 
   /** Fejlesztői gyors-belépés: ha a tesztfiók még nincs, létrehozza. */
@@ -65,6 +84,10 @@ export default function Login() {
             kind="ghost"
             onPress={() => setMode(mode === 'login' ? 'register' : 'login')}
           />
+          {mode === 'login' ? (
+            <Btn title="Elfelejtett jelszó?" kind="ghost" small disabled={busy}
+              onPress={() => void forgotPassword()} />
+          ) : null}
         </Card>
 
         {__DEV__ ? (
