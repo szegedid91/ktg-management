@@ -6,7 +6,11 @@ const path = new URL('../dist/index.html', import.meta.url).pathname;
 let html = readFileSync(path, 'utf8');
 
 html = html.replace('<html lang="en">', '<html lang="hu">');
-html = html.replace('shrink-to-fit=no', 'shrink-to-fit=no, viewport-fit=cover');
+// zoom-tiltás (app-szerű viselkedés) + notch-kezelés
+html = html.replace(
+  'shrink-to-fit=no',
+  'maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover',
+);
 
 const head = `
     <link rel="manifest" href="/manifest.json" />

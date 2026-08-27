@@ -233,7 +233,8 @@ export const st = {
     return {
       backgroundColor: C.inputBg, borderWidth: 1, borderColor: C.border,
       borderRadius: S.radiusSm, paddingHorizontal: S.md, paddingVertical: 10,
-      fontSize: 15, color: C.text, minHeight: 42, justifyContent: 'center',
+      // 16px: iOS Safari 16 alatt fókuszkor automatikusan rázoomol a mezőre
+      fontSize: 16, color: C.text, minHeight: 42, justifyContent: 'center',
     };
   },
   get label(): TextStyle {
