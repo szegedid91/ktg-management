@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
-import { Screen, Card, Input, Btn, Picker } from '../../ui/kit';
+import { Screen, Card, Input, Btn, Picker, Sub, Body } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
 import { insertRow } from '../../lib/repo';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
@@ -16,6 +16,8 @@ export default function NewInvoice() {
   const settings = useTable<AppSettings>('app_settings')[0];
   const payDays = settings ? Number(settings.default_payment_days) || 8 : 8;
 
+  // adott terület oldaláról indítva a számla oda kerül — nincs átválasztás
+  const fixedSite = siteId ? sites.find((s) => s.id === siteId) ?? null : null;
   const [site, setSite] = useState<string | null>(siteId ?? null);
   const [date, setDate] = useState(todayISO());
   const [invoicedAt, setInvoicedAt] = useState(todayISO());
@@ -51,7 +53,14 @@ export default function NewInvoice() {
   return (
     <Screen>
       <Card>
-        <Picker label="Építkezés *" items={sites} selectedId={site} getId={(s) => s.id} getLabel={(s) => s.name} onSelect={setSite} />
+        {fixedSite ? (
+          <>
+            <Sub>Építkezés</Sub>
+            <Body style={{ fontWeight: '700' }}>🏗️ {fixedSite.name}</Body>
+          </>
+        ) : (
+          <Picker label="Építkezés *" items={sites} selectedId={site} getId={(s) => s.id} getLabel={(s) => s.name} onSelect={setSite} />
+        )}
         <Input label="Megnevezés" value={title} onChangeText={setTitle} placeholder="pl. 1. részszámla" />
         <Input label="Teljesítés dátuma (ÉÉÉÉ-HH-NN)" value={date} onChangeText={setDate} />
         <Input label="Számlázva dátum (ÉÉÉÉ-HH-NN)" value={invoicedAt} onChangeText={setInvoicedAt} />
