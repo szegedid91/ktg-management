@@ -48,6 +48,9 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ title: 'Kezdőlap', headerLeft: () => null }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="meghivo" options={{ headerShown: false }} />
+        <Stack.Screen name="task/new" options={{ title: 'Új feladat' }} />
+        <Stack.Screen name="task/[id]" options={{ title: 'Feladat' }} />
         <Stack.Screen name="megerosites" options={{ title: 'E-mail megerősítés' }} />
         <Stack.Screen name="jelszo" options={{ title: 'Új jelszó' }} />
         <Stack.Screen name="more" options={{ title: 'Több' }} />

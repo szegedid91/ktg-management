@@ -6,8 +6,10 @@ import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useAuth } from '../lib/auth';
+import { useTable } from '../lib/hooks';
 import { C, S } from '../ui/theme';
 import { todayISO } from '../lib/format';
+import { Profile } from '../lib/types';
 
 const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: string }[] = [
   { icon: '🏠', label: 'Kezdőlap', action: () => router.navigate('/'), activePrefix: '/' },
@@ -20,7 +22,11 @@ const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: s
 export function BottomBar() {
   const { session } = useAuth();
   const pathname = usePathname();
+  const profiles = useTable<Profile>('profiles');
   if (!session) return null;
+  // munkavállalói fiók: csak a saját kezdőlap + a Több (kijelentkezés)
+  const isWorker = !!profiles.find((p) => p.id === session.user.id)?.worker_id;
+  const items = isWorker ? ITEMS.filter((i) => i.label === 'Kezdőlap' || i.label === 'Több') : ITEMS;
 
   return (
     <View
@@ -36,7 +42,7 @@ export function BottomBar() {
           : 6,
       }}
     >
-      {ITEMS.map((item) => {
+      {items.map((item) => {
         const active = item.activePrefix === '/'
           ? pathname === '/'
           : item.activePrefix ? pathname.startsWith(item.activePrefix) : false;

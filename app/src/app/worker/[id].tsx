@@ -7,7 +7,10 @@ import { C, S } from '../../ui/theme';
 import { useRow, useTable } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow, callRpc } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
-import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings } from '../../lib/types';
+import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings, WorkerTask, TaskAssignee, WorkSession } from '../../lib/types';
+import { InviteCard } from '../../components/InviteCard';
+import { isActiveTask, TASK_STATUS_LABEL, fmtHours, sessionHours } from '../../lib/tasks';
+import { hdt } from '../../lib/format';
 import { Comments } from '../../components/Comments';
 import { CallButton } from '../workers/index';
 import { WorkerForm, workerToForm, formToRow, validateWorkerForm, WorkerFormValues } from '../../components/WorkerForm';
@@ -16,6 +19,11 @@ import { notify, confirmDialog } from '../../lib/dialogs';
 export default function WorkerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const worker = useRow<Worker>('workers', id);
+  const myTasks = useTable<TaskAssignee>('task_assignees').filter((a) => a.worker_id === id).map((a) => a.task_id);
+  const tasks = useTable<WorkerTask>('worker_tasks').filter((t) => myTasks.includes(t.id))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === id)
+    .sort((a, b) => b.started_at.localeCompare(a.started_at));
   const attendance = useTable<Attendance>('attendance').filter((a) => a.worker_id === id);
   const sites = useTable<Site>('sites');
   const profiles = useTable<Profile>('profiles');
@@ -217,6 +225,35 @@ export default function WorkerDetail() {
       </Card>
 
       <Comments entityType="worker" entityId={worker.id} />
+
+      <InviteCard workerId={worker.id} workerName={worker.name} />
+
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <H2>🛠️ Feladatok ({tasks.filter(isActiveTask).length} aktív)</H2>
+          <Btn title="+ Feladat" small kind="secondary" onPress={() => router.push(`/task/new?workerId=${worker.id}`)} />
+        </View>
+        {tasks.length === 0 ? <Sub>Még nincs kiadott feladat.</Sub> : null}
+        {tasks.slice(0, 15).map((t) => (
+          <View key={t.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+            <View style={{ flex: 1 }}>
+              <Body style={{ fontWeight: '600' }}>{t.code ? `${t.code} · ` : ''}{t.title}</Body>
+              <Sub>{TASK_STATUS_LABEL[t.status]}</Sub>
+            </View>
+            <Btn title="Megnyit" kind="ghost" small onPress={() => router.push(`/task/${t.id}`)} />
+          </View>
+        ))}
+      </Card>
+
+      <Card>
+        <H2>⏱ Munkaidő (saját rögzítés)</H2>
+        {sessions.length === 0 ? <Sub>A munkavállaló még nem rögzített munkaidőt az appban.</Sub> : null}
+        {sessions.slice(0, 10).map((s) => (
+          <Sub key={s.id}>
+            {hdt(s.started_at)} → {s.ended_at ? hdt(s.ended_at) : 'folyamatban'} · {fmtHours(sessionHours(s))}
+          </Sub>
+        ))}
+      </Card>
     </Screen>
   );
 }

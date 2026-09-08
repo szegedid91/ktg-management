@@ -23,7 +23,7 @@ export default function Settings() {
   const myProfile = profiles.find((p) => p.id === me);
   // az admin nem üzleti partner: a részesedés-kártyán nem szerepel;
   // a hozzáférés-kezelés az adminé (amíg nincs admin: mindenkié)
-  const partners = profiles.filter((p) => !p.is_admin);
+  const partners = profiles.filter((p) => !p.is_admin && !p.worker_id);
   const canManageAccess = !!myProfile?.is_admin || !profiles.some((p) => p.is_admin);
 
   // részesedés-módosítási javaslatok (a másik fél beleegyezése kell)
@@ -213,7 +213,7 @@ export default function Settings() {
             <Sub>Jóváhagyás után az új arány annak napjától érvényes — a korábbi tételek a régi arányban maradnak.</Sub>
             {pendingReq.proposed_by === me ? (
               <Btn title="Javaslat visszavonása" kind="ghost" onPress={() => void decideShares(pendingReq.id, false)} />
-            ) : myProfile && !myProfile.is_admin ? (
+            ) : myProfile && !myProfile.is_admin && !myProfile.worker_id ? (
               <View style={{ flexDirection: 'row', gap: S.md }}>
                 <View style={{ flex: 1 }}><Btn title="Elutasítom" kind="ghost" onPress={() => void decideShares(pendingReq.id, false)} /></View>
                 <View style={{ flex: 1 }}><Btn title="Jóváhagyom ✓" onPress={() => void decideShares(pendingReq.id, true)} /></View>

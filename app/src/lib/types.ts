@@ -16,6 +16,8 @@ export interface Profile {
   email: string | null;
   /** admin: hozzáférést kezel, de nem szerepel az elszámolásban */
   is_admin: boolean;
+  /** munkavállalói fiók: a hozzá tartozó munkavállaló — csak a sajátját látja */
+  worker_id: string | null;
   profit_share_percent: number;
   push_token: string | null;
   notify_comments: boolean;
@@ -266,12 +268,69 @@ export interface ShareChangeRequest {
   deleted_at: string | null;
 }
 
+export type TaskStatus = 'assigned' | 'acknowledged' | 'done' | 'failed' | 'cancelled';
+
+/** Kiadott feladat (kód, cím, helyszín); több munkavállalóra osztható */
+export interface WorkerTask extends BaseRow {
+  site_id: string | null;
+  code: string | null;
+  title: string;
+  details: string | null;
+  status: TaskStatus;
+  acknowledged_at: string | null;
+  done_at: string | null;
+  fail_reason: string | null;
+  fail_photo_path: string | null;
+  /** amennyiért a feladatot kiszámlázzuk (nettó) */
+  invoice_net: number | null;
+  quote_requested: boolean;
+  quote_amount: number | null;
+  quote_note: string | null;
+  quote_submitted_at: string | null;
+  quote_accepted_at: string | null;
+  quote_accepted_by: string | null;
+}
+
+export interface TaskAssignee {
+  id: string;
+  task_id: string;
+  worker_id: string;
+  acknowledged_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/** Munkavállaló által rögzített anyagköltség fotós bizonylattal;
+ *  resale_net = amennyiért a partner továbbszámlázza (üres = beárazandó) */
+export interface TaskMaterial extends BaseRow {
+  task_id: string;
+  worker_id: string | null;
+  amount: number;
+  note: string | null;
+  photo_path: string;
+  resale_net: number | null;
+  resale_by: string | null;
+  resale_at: string | null;
+}
+
+/** Munkaidő: mikor kezdte / fejezte be (feladathoz köthető) */
+export interface WorkSession extends BaseRow {
+  worker_id: string;
+  site_id: string | null;
+  task_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  note: string | null;
+}
+
 // A szinkronizálható táblák nevei
 export const SYNC_TABLES = [
   'profiles', 'app_settings', 'expense_categories', 'sites', 'external_people',
   'workers', 'expenses', 'expense_photos', 'attendance', 'comments',
   'invoices', 'settlements', 'equipment', 'equipment_moves',
   'profit_share_history', 'share_change_requests',
+  'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

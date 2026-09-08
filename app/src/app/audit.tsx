@@ -19,6 +19,7 @@ const TABLE_LABELS: Record<string, string> = {
   comments: 'Komment', invoices: 'Számla', settlements: 'Elszámolás',
   equipment: 'Eszköz', equipment_moves: 'Eszközmozgatás', profiles: 'Profil',
   app_settings: 'Beállítások', expense_categories: 'Kategória',
+  worker_tasks: 'Feladat', task_materials: 'Anyagköltség', work_sessions: 'Munkaidő',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -264,6 +265,9 @@ export default function Audit() {
       case 'app_settings':
       case 'profiles': return '/settings';
       case 'expense_photos': return d.expense_id ? `/expense/${d.expense_id}` : null;
+      case 'worker_tasks': return `/task/${r.record_id}`;
+      case 'task_materials':
+      case 'work_sessions': return d.task_id ? `/task/${d.task_id}` : d.worker_id ? `/worker/${d.worker_id}` : null;
       case 'comments': {
         const map: Record<string, string> = {
           site: `/site/${d.entity_id}`, expense: `/expense/${d.entity_id}`,

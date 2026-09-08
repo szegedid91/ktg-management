@@ -8,8 +8,14 @@ import { ft, todayISO, hd } from '../lib/format';
 import { store } from '../lib/store';
 import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
-import { Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory } from '../lib/types';
+import {
+  Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory,
+  WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Worker,
+} from '../lib/types';
 import { computeBalances } from '../lib/balances';
+import { isActiveTask } from '../lib/tasks';
+import { TaskTile } from '../components/TaskTile';
+import { WorkerHome } from '../components/WorkerHome';
 import { useAuth } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
@@ -68,10 +74,16 @@ function DashboardInner() {
   const settlements = useTable<Settlement>('settlements');
   const shareHistory = useTable<ProfitShareHistory>('profit_share_history');
   const shareRequests = useTable<ShareChangeRequest>('share_change_requests');
+  // feladatok a kezdőlapi csempékhez
+  const tasks = useTable<WorkerTask>('worker_tasks');
+  const assignees = useTable<TaskAssignee>('task_assignees');
+  const materials = useTable<TaskMaterial>('task_materials');
+  const sessions = useTable<WorkSession>('work_sessions');
+  const workers = useTable<Worker>('workers');
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
   const awaitingMyApproval = shareRequests.find((r) =>
-    r.status === 'pending' && r.proposed_by !== me && !!myProfile && !myProfile.is_admin);
+    r.status === 'pending' && r.proposed_by !== me && !!myProfile && !myProfile.is_admin && !myProfile.worker_id);
   // az összegek alapból rejtettek — a fenti szem ikon fedi fel mindet
   const [showBalance, setShowBalance] = useState(false);
   const mask = (n: number) => (showBalance ? ft(n) : '••• Ft');
@@ -97,6 +109,13 @@ function DashboardInner() {
       .find((b) => b.user_id === session?.user.id),
     [profiles, expenses, attendance, invoices, settlements, shareHistory, session?.user.id],
   );
+
+  const activeTasks = tasks.filter(isActiveTask).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const unpricedMaterials = materials.filter((m) => m.resale_net == null);
+  const runningTaskIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id));
+
+  // munkavállalói fiók: saját, szűkített kezdőlap
+  if (myProfile?.worker_id) return <WorkerHome profile={myProfile} />;
 
   return (
     <Screen>
@@ -175,6 +194,38 @@ function DashboardInner() {
           )
         ) : <Sub>Egyenleg betöltése…</Sub>}
       </Card>
+
+      <View style={{ gap: S.sm }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <H2>🛠️ Aktív feladatok ({activeTasks.length})</H2>
+          <Btn title="+ Új feladat" small kind="secondary" onPress={() => router.push('/task/new')} />
+        </View>
+        {activeTasks.length === 0 ? <Sub>Nincs kiadott, folyamatban lévő feladat.</Sub> : null}
+        {activeTasks.map((t) => (
+          <TaskTile key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
+            materials={materials.filter((m) => m.task_id === t.id)} workers={workers} profiles={profiles} sites={sites}
+            running={runningTaskIds.has(t.id)} />
+        ))}
+      </View>
+
+      {unpricedMaterials.length > 0 ? (
+        <Card style={{ borderColor: C.accent, backgroundColor: C.warnBg }}>
+          <H2>📦 Beárazandó anyagköltségek ({unpricedMaterials.length})</H2>
+          <Sub>A munkavállalók rögzítették, de még nincs megadva, mennyiért számlázod tovább.</Sub>
+          {unpricedMaterials.map((m) => {
+            const t = tasks.find((x) => x.id === m.task_id);
+            return (
+              <Pressable key={m.id} onPress={() => router.push(`/task/${m.task_id}`)}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                <Text style={{ color: C.text, flex: 1 }} numberOfLines={1}>
+                  {t?.code ? `${t.code} · ` : ''}{t?.title ?? 'feladat'}{m.note ? ` — ${m.note}` : ''}
+                </Text>
+                <Text style={{ fontWeight: '800', color: C.text }}>{ft(m.amount)}</Text>
+              </Pressable>
+            );
+          })}
+        </Card>
+      ) : null}
 
       <MenuGrid />
 

@@ -55,7 +55,9 @@ async function rollbackOp(op: OutboxOp): Promise<void> {
   if (op.kind === 'update' && op.table && op.id) targets.push({ table: op.table, id: op.id });
   if (op.kind === 'rpc') {
     const table: SyncTable = op.fn === 'mark_invoice_paid' ? 'invoices'
-      : op.fn === 'delete_site' ? 'sites' : 'attendance';
+      : op.fn === 'delete_site' ? 'sites'
+      : (op.fn === 'worker_task_action' || op.fn === 'accept_task_quote') ? 'worker_tasks'
+      : 'attendance';
     const ids: string[] = op.args?.p_ids ?? (op.args?.p_id ? [op.args.p_id] : []);
     ids.forEach((id) => targets.push({ table, id }));
   }

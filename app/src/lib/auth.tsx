@@ -29,7 +29,8 @@ interface AuthCtx {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (email: string, password: string, displayName: string) => Promise<string | null>;
+  /** inviteToken: munkavállalói meghívó — a zárt regisztráció kapuján átenged */
+  signUp: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<string | null>;
   signOut: () => Promise<void>;
 }
 
@@ -59,8 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         stopSyncLoop();
         stopRealtime();
-        // kijelentkezés után vissza a belépőre, bárhol is járt
-        import('expo-router').then((m) => m.router.replace('/login')).catch(() => {});
+        // kijelentkezés után vissza a belépőre — kivéve a bejelentkezés
+        // nélkül is elérhető oldalakon (meghívó, megerősítés, jelszócsere)
+        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        const isPublic = ['/login', '/meghivo', '/megerosites', '/jelszo'].some((p) => path.startsWith(p));
+        if (!isPublic) import('expo-router').then((m) => m.router.replace('/login')).catch(() => {});
       }
     });
 
@@ -79,11 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error ? hunAuthError(error.message) : null;
   };
 
-  const signUp = async (email: string, password: string, displayName: string) => {
+  const signUp = async (email: string, password: string, displayName: string, inviteToken?: string) => {
     const { error } = await supabase.auth.signUp({
       email, password,
       options: {
-        data: { display_name: displayName },
+        data: { display_name: displayName, ...(inviteToken ? { invite_token: inviteToken } : {}) },
         // a megerősítő link a saját "sikeres megerősítés" oldalunkra hozzon
         ...(typeof window !== 'undefined'
           ? { emailRedirectTo: `${window.location.origin}/megerosites` }

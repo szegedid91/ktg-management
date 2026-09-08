@@ -30,7 +30,7 @@ export function computeBalances(
   settlements: Settlement[],
   history: ProfitShareHistory[],
 ): LocalBalance[] {
-  const partners = profiles.filter((p) => !p.is_admin);
+  const partners = profiles.filter((p) => !p.is_admin && !p.worker_id);
 
   // a felhasználó részesedése adott napon (a módosítások nem visszamenőlegesek)
   const shareAt = (uid: string, date: string): number => {

@@ -108,7 +108,7 @@ export default function SettlementScreen() {
     // az „igazságos rész” a tétel napján érvényes részesedéssel
     const items: { amount: number; date: string }[] = [];
 
-    const stats = profiles.filter((p) => !p.is_admin).map((p) => {
+    const stats = profiles.filter((p) => !p.is_admin && !p.worker_id).map((p) => {
       const expItems = expenses
         .filter((e) => e.paid_by === p.id && inPeriod(e.expense_date) && siteOk(e.site_id));
       const exp = expItems.reduce((s, e) => s + Number(e.net_amount), 0);
@@ -302,7 +302,7 @@ export default function SettlementScreen() {
             <Sub>Én ({name(me)}) utaltam:</Sub>
             <Picker
               label="Kinek"
-              items={profiles.filter((p) => p.id !== me && !p.is_admin)}
+              items={profiles.filter((p) => p.id !== me && !p.is_admin && !p.worker_id)}
               selectedId={toUser}
               getId={(p) => p.id}
               getLabel={(p) => p.display_name}

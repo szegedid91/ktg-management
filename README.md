@@ -154,3 +154,19 @@ supabase/
 - Expo Go-ban a push nem elérhető — EAS build kell hozzá.
 - A „Bruttó nézet" kapcsoló a kimutatásokban még nincs bekötve (a
   nettó+ÁFA oszlopok mindenhol megvannak hozzá).
+
+## Munkavállalói fiókok, feladatok, munkaidő (2026-09)
+
+- **Meghívás**: a munkavállaló oldalán „Meghívás az appba” → link (megosztás/másolás)
+  vagy QR-kód. A `/meghivo?token=…` oldalon regisztrál; a token a zárt regisztráció
+  kapuján átengedi, és a fiókot a munkavállalóhoz köti (`profiles.worker_id`).
+- **Jogosultság**: munkavállalói fiók csak a saját jelenlétét, feladatait,
+  munkaidejét és anyagköltségeit látja — pénzügyi táblákat nem (RLS `fn_is_partner()`).
+- **Feladatok**: több munkavállalóra osztható (`task_assignees`), visszaigazolás
+  fejenként, kész / nem sikerült (kötelező indok + fotó), ajánlatkérés → ajánlat →
+  elfogadás, anyagköltség fotóval → partner beárazza a továbbszámlázást,
+  kiszámlázott érték → haszon. Munkaidő: `work_sessions` (kezdés/befejezés, feladathoz köthető).
+- Feladat-fotók: `tasks` storage bucket (privát).
+- Helyi fejlesztés: ha egy másik projekt Supabase-stackje fut az 54321/54322 portokon,
+  a Ktg stack nem indul mellé — a kliens ilyenkor ideiglenesen a felhőre köthető
+  (`cp .env.production .env`, majd vissza).
