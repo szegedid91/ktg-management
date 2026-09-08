@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Card, Title, Sub, Input, Btn } from '../ui/kit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Screen, Card, Title, Sub, Input, Btn, Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
+
+// szándékosan NEM 'ktg:' előtaggal: a kijelentkezés/fiókváltás takarítása ne törölje
+const QUICK_KEY = 'quick-accounts';
 
 export default function Login() {
   const { session, signIn, signUp } = useAuth();
@@ -22,6 +26,18 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Gyors belépés: ezen az eszközön elmentett fiókok (teszteléshez) —
+  // a jelszó csak a készülék tárolójában van, a kódba nem kerül.
+  const [quick, setQuick] = useState<{ email: string; password: string }[]>([]);
+  const [remember, setRemember] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(QUICK_KEY).then((raw) => { if (raw) setQuick(JSON.parse(raw)); }).catch(() => {});
+  }, []);
+  const saveQuick = async (list: { email: string; password: string }[]) => {
+    setQuick(list);
+    try { await AsyncStorage.setItem(QUICK_KEY, JSON.stringify(list)); } catch { /* tárolóhiba */ }
+  };
+
   const submit = async () => {
     setBusy(true);
     setError(null);
@@ -29,7 +45,19 @@ export default function Login() {
       ? await signIn(email.trim(), password)
       : await signUp(email.trim(), password, name.trim() || email.split('@')[0]);
     setBusy(false);
-    if (err) setError(err);
+    if (err) { setError(err); return; }
+    if (remember && email.trim()) {
+      await saveQuick([...quick.filter((q) => q.email !== email.trim()), { email: email.trim(), password }]);
+    }
+    router.replace('/');
+  };
+
+  const quickLoginSaved = async (q: { email: string; password: string }) => {
+    setBusy(true);
+    setError(null);
+    const err = await signIn(q.email, q.password);
+    setBusy(false);
+    if (err) setError(`${q.email}: ${err}`);
     else router.replace('/');
   };
 
@@ -79,6 +107,10 @@ export default function Login() {
           ) : null}
           <Input label="Email" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
           <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" />
+          {mode === 'login' ? (
+            <Check checked={remember} onToggle={() => setRemember(!remember)}
+              label="Mentés gyors belépésként ezen az eszközön" sub="Egy gombbal lépsz be vele legközelebb (teszteléshez)" />
+          ) : null}
           {error ? <Text style={{ color: C.danger, fontSize: 13 }}>{error}</Text> : null}
           <Btn
             title={busy ? '…' : mode === 'login' ? 'Belépés' : 'Regisztráció'}
@@ -95,6 +127,21 @@ export default function Login() {
               onPress={() => void forgotPassword()} />
           ) : null}
         </Card>
+
+        {quick.length > 0 ? (
+          <Card style={{ borderColor: C.primary }}>
+            <Sub>⚡ Gyors belépés (ezen az eszközön mentett fiókok)</Sub>
+            {quick.map((q) => (
+              <View key={q.email} style={{ flexDirection: 'row', gap: S.sm, alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Btn title={`👤 ${q.email}`} kind="secondary" disabled={busy} onPress={() => void quickLoginSaved(q)} />
+                </View>
+                <Btn title="✕" kind="ghost" small disabled={busy}
+                  onPress={() => void saveQuick(quick.filter((x) => x.email !== q.email))} />
+              </View>
+            ))}
+          </Card>
+        ) : null}
 
         {__DEV__ ? (
           <Card style={{ borderColor: C.accent }}>
