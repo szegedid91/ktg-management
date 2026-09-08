@@ -245,6 +245,7 @@ export default function TaskDetail() {
         ) : null}
       </Card>
 
+      {isWorker && !acked ? null : (
       <Card>
         <H2>⏱ Munkaidő</H2>
         {timing?.startedAt ? (
@@ -265,13 +266,12 @@ export default function TaskDetail() {
           </View>
         ) : null}
         {isWorker && myAssignment && active ? (
-          !acked
-            ? <Sub style={{ color: C.warning }}>⚠️ Előbb fogadd el a feladatot, utána indítható a munkaidő.</Sub>
-            : openSession
-              ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
-              : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
+          openSession
+            ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
+            : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
         ) : null}
       </Card>
+      )}
 
       {/* ---------- ajánlat ---------- */}
       {task.quote_requested || task.quote_amount != null ? (
@@ -327,6 +327,7 @@ export default function TaskDetail() {
       ) : null}
 
       {/* ---------- anyagköltségek ---------- */}
+      {isWorker && !acked ? null : (
       <Card>
         <H2>📦 Anyagköltségek</H2>
         {materials.length === 0 ? <Sub>Nincs rögzített anyagköltség.</Sub> : null}
@@ -359,10 +360,7 @@ export default function TaskDetail() {
         {materials.length > 0 ? (
           <KV k="Anyag összesen (beszerzés)" v={ft(mat.cost)} strong />
         ) : null}
-        {isWorker && myAssignment && active && !acked ? (
-          <Sub style={{ color: C.warning }}>⚠️ Anyagköltséget a feladat elfogadása után rögzíthetsz.</Sub>
-        ) : null}
-        {isWorker && myAssignment && active && acked ? (
+        {isWorker && myAssignment && active ? (
           !matOpen ? (
             <Btn title="+ Anyagköltség hozzáadása (fotóval)" kind="secondary" onPress={() => setMatOpen(true)} />
           ) : (
@@ -383,6 +381,7 @@ export default function TaskDetail() {
           )
         ) : null}
       </Card>
+      )}
 
       {/* ---------- partner: pénzügy ---------- */}
       {!isWorker && wage ? (
