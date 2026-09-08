@@ -1,6 +1,6 @@
 // Állandó alsó menüsor — minden képernyőn látszik (a belépőn nem).
-// A Kezdőlap/Függőben/Több oldalra visz, a +Költség és +Jelenlét
-// gombok a rögzítő űrlapokat nyitják.
+// A Kezdőlap/Függőben/Feladatok/Több oldalra visz, a +Költség a rögzítő
+// űrlapot nyitja. (Jelenlét-rögzítés az építkezéseknél.)
 
 import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
@@ -8,14 +8,13 @@ import { router, usePathname } from 'expo-router';
 import { useAuth } from '../lib/auth';
 import { useTable } from '../lib/hooks';
 import { C, S } from '../ui/theme';
-import { todayISO } from '../lib/format';
 import { Profile } from '../lib/types';
 
 const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: string }[] = [
   { icon: '🏠', label: 'Kezdőlap', action: () => router.navigate('/'), activePrefix: '/' },
   { icon: '💸', label: '+ Költség', action: () => router.push('/expense/new') },
   { icon: '⏳', label: 'Függőben', action: () => router.navigate('/pending'), activePrefix: '/pending' },
-  { icon: '👷', label: '+ Jelenlét', action: () => router.push(`/day/${todayISO()}`) },
+  { icon: '🛠️', label: 'Feladatok', action: () => router.navigate('/tasks'), activePrefix: '/tasks' },
   { icon: '☰', label: 'Több', action: () => router.navigate('/more'), activePrefix: '/more' },
 ];
 
@@ -24,9 +23,9 @@ export function BottomBar() {
   const pathname = usePathname();
   const profiles = useTable<Profile>('profiles');
   if (!session) return null;
-  // munkavállalói fiók: csak a saját kezdőlap + a Több (kijelentkezés)
+  // munkavállalói fiók: kezdőlap + feladatok + Több (kijelentkezés)
   const isWorker = !!profiles.find((p) => p.id === session.user.id)?.worker_id;
-  const items = isWorker ? ITEMS.filter((i) => i.label === 'Kezdőlap' || i.label === 'Több') : ITEMS;
+  const items = isWorker ? ITEMS.filter((i) => ['Kezdőlap', 'Feladatok', 'Több'].includes(i.label)) : ITEMS;
 
   return (
     <View

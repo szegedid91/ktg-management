@@ -8,11 +8,13 @@ import { useTable, useRow, useOnlineView } from '../../lib/hooks';
 import { callRpc, fetchView, getCurrentUserId, updateRow, markInvoicePaid, queueRpc } from '../../lib/repo';
 import { syncNow } from '../../lib/sync';
 import { ft, hd, todayISO } from '../../lib/format';
-import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals } from '../../lib/types';
+import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals, WorkerTask } from '../../lib/types';
+import { TaskGroups } from '../../components/TaskGroups';
+import { isActiveTask } from '../../lib/tasks';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
-type Tab = 'summary' | 'expenses' | 'calendar' | 'invoices' | 'equipment' | 'comments';
+type Tab = 'summary' | 'tasks' | 'expenses' | 'calendar' | 'invoices' | 'equipment' | 'comments';
 
 export default function SiteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,6 +23,7 @@ export default function SiteDetail() {
   const [costTab, setCostTab] = useState<'expenses' | 'wages'>('expenses');
   const expenses = useTable<Expense>('expenses').filter((e) => e.site_id === id);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.site_id === id);
+  const siteTasks = useTable<WorkerTask>('worker_tasks').filter((t) => t.site_id === id);
   const invoices = useTable<Invoice>('invoices').filter((i) => i.site_id === id);
   const workers = useTable<Worker>('workers');
   const categories = useTable<ExpenseCategory>('expense_categories');
@@ -89,6 +92,7 @@ export default function SiteDetail() {
         <Segmented
           options={[
             { value: 'summary', label: 'Összesítés' },
+            { value: 'tasks', label: `Feladatok (${siteTasks.filter(isActiveTask).length})` },
             { value: 'expenses', label: `Költségek (${expenses.length})` },
             { value: 'calendar', label: 'Naptár' },
             { value: 'invoices', label: `Számlák (${invoices.length})` },
@@ -102,6 +106,7 @@ export default function SiteDetail() {
 
       {tab === 'summary' ? (
         <>
+          {!closed ? <Btn title="👷 + Jelenlét rögzítése (ma)" kind="secondary" onPress={() => router.push(`/day/${todayISO()}?siteId=${id}`)} /> : null}
           <Card>
             <H2>Pénzügyi összesítés (nettó)</H2>
             <KV k="Anyag- és egyéb költség" v={ft(totals.expNet)} />
@@ -138,6 +143,18 @@ export default function SiteDetail() {
               }} />
             ) : null}
           </Card>
+        </>
+      ) : null}
+
+      {tab === 'tasks' ? (
+        <>
+          {!closed ? (
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              <View style={{ flex: 1 }}><Btn title="+ Feladat" kind="secondary" onPress={() => router.push(`/task/new?siteId=${id}`)} /></View>
+              <View style={{ flex: 1 }}><Btn title="+ Jelenlét" kind="secondary" onPress={() => router.push(`/day/${todayISO()}?siteId=${id}`)} /></View>
+            </View>
+          ) : null}
+          <TaskGroups tasks={siteTasks} mode="status" />
         </>
       ) : null}
 

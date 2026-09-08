@@ -5,7 +5,7 @@ import { Screen, Card, H2, Sub, Btn, Row, Body, Money, Badge, Empty, Segmented }
 import { C } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
-import { ft } from '../lib/format';
+import { ft, todayISO } from '../lib/format';
 import { Site, SiteTotals, Expense } from '../lib/types';
 
 export default function Sites() {
@@ -34,6 +34,7 @@ export default function Sites() {
         value={filter}
         onChange={setFilter}
       />
+      <Btn title="👷 + Jelenlét rögzítése (ma)" kind="secondary" onPress={() => router.push(`/day/${todayISO()}`)} />
       {commonExpenses.length > 0 ? (
         <Row onPress={() => router.push('/expenses/common')}>
           <View style={{ flex: 1 }}>
