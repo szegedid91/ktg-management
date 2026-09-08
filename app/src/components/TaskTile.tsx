@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { C, S } from '../ui/theme';
 import { ft } from '../lib/format';
 import { WorkerTask, TaskAssignee, TaskMaterial, Worker, Profile, Site } from '../lib/types';
+import { wname } from '../lib/tasks';
 
 const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
@@ -18,7 +19,7 @@ export function TaskTile({ task, assignees, materials, workers, profiles, sites,
   task: WorkerTask; assignees: TaskAssignee[]; materials: TaskMaterial[];
   workers: Worker[]; profiles: Profile[]; sites: Site[]; running?: boolean;
 }) {
-  const names = assignees.map((a) => workers.find((w) => w.id === a.worker_id)?.name ?? '?');
+  const names = assignees.map((a) => wname(workers.find((w) => w.id === a.worker_id)));
   const acked = assignees.filter((a) => a.acknowledged_at).length;
   const creator = profiles.find((p) => p.id === task.created_by)?.display_name ?? '?';
   const site = sites.find((s) => s.id === task.site_id);

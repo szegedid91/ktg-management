@@ -3,6 +3,12 @@
 
 import { TaskMaterial, TaskStatus, Worker, WorkerTask, WorkSession } from './types';
 
+/** Munkavállaló megjelenített neve: becenév, ha van. */
+export function wname(w: { name: string; nickname?: string | null } | undefined | null): string {
+  if (!w) return '?';
+  return w.nickname?.trim() ? w.nickname.trim() : w.name;
+}
+
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   assigned: 'Kiadva — visszaigazolásra vár',
   acknowledged: 'Visszaigazolva — folyamatban',

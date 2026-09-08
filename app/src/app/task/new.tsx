@@ -10,6 +10,7 @@ import { insertRow } from '../../lib/repo';
 import { parseAmount } from '../../lib/format';
 import { notify } from '../../lib/dialogs';
 import { Site, Worker } from '../../lib/types';
+import { wname } from '../../lib/tasks';
 
 export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
@@ -69,7 +70,7 @@ export default function NewTask() {
         <Sub>Több munkavállaló is kijelölhető — mindegyik külön igazolja vissza.</Sub>
         {workers.map((w) => (
           <Check key={w.id} checked={chosen.has(w.id)} onToggle={() => toggle(w.id)}
-            label={w.name} sub={w.trade ?? undefined} />
+            label={wname(w)} sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />
         ))}
         {workers.length === 0 ? <Sub>Nincs munkavállaló felvéve.</Sub> : null}
       </Card>

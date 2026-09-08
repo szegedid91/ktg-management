@@ -111,7 +111,8 @@ export default function WorkerDetail() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: worker.name }} />
+      <Stack.Screen options={{ title: worker.nickname ? `${worker.name} „${worker.nickname}”` : worker.name }} />
+      <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} />
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <H2>{worker.name}</H2>
@@ -226,7 +227,6 @@ export default function WorkerDetail() {
 
       <Comments entityType="worker" entityId={worker.id} />
 
-      <InviteCard workerId={worker.id} workerName={worker.name} />
 
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

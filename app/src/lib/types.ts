@@ -76,6 +76,8 @@ export type AttendanceBasis = PayBasis | 'presence';
 
 export interface Worker extends BaseRow {
   name: string;
+  /** becenév — listákban/csempéken ezt mutatjuk, ha meg van adva */
+  nickname: string | null;
   phones: string[];
   email: string | null;
   company_name: string | null;

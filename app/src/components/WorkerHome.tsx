@@ -7,7 +7,7 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt } from '../lib/format';
-import { isActiveTask, fmtHours, sessionHours } from '../lib/tasks';
+import { isActiveTask, fmtHours, sessionHours, wname } from '../lib/tasks';
 import { TaskTile } from './TaskTile';
 import {
   Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Site, Attendance,
@@ -97,7 +97,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         ))}
       </Card>
       <Text style={{ fontSize: 11, color: C.sub, textAlign: 'center' }}>
-        Bejelentkezve: {profile.display_name} · {workers.find((w) => w.id === wid)?.name ?? ''}
+        Bejelentkezve: {profile.display_name} · {wname(workers.find((w) => w.id === wid))}
       </Text>
     </Screen>
   );

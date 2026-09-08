@@ -13,7 +13,7 @@ import { ft, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, uploadTaskPhoto, taskPhotoUrl, PickedPhoto } from '../../lib/photo';
 import {
-  TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask,
+  TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, wname,
 } from '../../lib/tasks';
 import {
   WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Worker, Site, Profile,
@@ -71,7 +71,7 @@ export default function TaskDetail() {
 
   const site = sites.find((s) => s.id === task.site_id);
   const creator = profiles.find((p) => p.id === task.created_by)?.display_name ?? '?';
-  const workerName = (wid: string) => workers.find((w) => w.id === wid)?.name ?? '?';
+  const workerName = (wid: string) => wname(workers.find((w) => w.id === wid));
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
   const openSession = sessions.find((s) => !s.ended_at && s.worker_id === myWorkerId);
   const active = isActiveTask(task);
@@ -359,7 +359,7 @@ export default function TaskDetail() {
             <>
               {wage.parts.map((p) => (
                 <KV key={p.worker.id}
-                  k={`${p.worker.name} · ${p.basis === 'hourly' ? `${fmtHours(p.hours)} × ${ft(p.worker.hourly_rate ?? 0)}/ó` : p.basis === 'daily' ? `napi ${ft(p.worker.daily_rate ?? 0)}` : `projekt ${ft(p.worker.project_rate ?? 0)}`}`}
+                  k={`${wname(p.worker)} · ${p.basis === 'hourly' ? `${fmtHours(p.hours)} × ${ft(p.worker.hourly_rate ?? 0)}/ó` : p.basis === 'daily' ? `napi ${ft(p.worker.daily_rate ?? 0)}` : `projekt ${ft(p.worker.project_rate ?? 0)}`}`}
                   v={ft(p.amount)} />
               ))}
               <KV k="Bérköltség eddig (idő alapján)" v={ft(wage.total)} strong />

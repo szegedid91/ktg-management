@@ -29,7 +29,7 @@ export default function Workers() {
   const [q, setQ] = useState('');
 
   const filtered = workers
-    .filter((w) => w.name.toLowerCase().includes(q.toLowerCase()))
+    .filter((w) => `${w.name} ${w.nickname ?? ''}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
 
   return (
@@ -39,7 +39,7 @@ export default function Workers() {
       {filtered.map((w) => (
         <Row key={w.id} onPress={() => router.push(`/worker/${w.id}`)}>
           <View style={{ flex: 1 }}>
-            <Body style={{ fontWeight: '700' }}>{w.name}</Body>
+            <Body style={{ fontWeight: '700' }}>{w.name}{w.nickname ? ` „${w.nickname}”` : ''}</Body>
             <Sub>
               {w.trade ? `${w.trade} · ` : ''}
               {w.worker_type === 'company' ? 'céges' : 'magánszemély'}

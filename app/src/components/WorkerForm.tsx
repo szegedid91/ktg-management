@@ -16,6 +16,7 @@ export const COMMON_TRADES = [
 
 export interface WorkerFormValues {
   name: string;
+  nickname: string;
   kind: 'general' | 'specialist';
   trade: string;
   phones: string;
@@ -42,7 +43,7 @@ export interface WorkerFormValues {
 
 export function emptyWorkerForm(): WorkerFormValues {
   return {
-    name: '', kind: 'general', trade: '',
+    name: '', nickname: '', kind: 'general', trade: '',
     phones: '', email: '', company_name: '', tax_number: '', hq_address: '',
     bank_account: '', note: '', worker_type: 'individual', is_vat_payer: false, vat_rate: '27',
     default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '',
@@ -53,7 +54,7 @@ export function emptyWorkerForm(): WorkerFormValues {
 
 export function workerToForm(w: Worker): WorkerFormValues {
   return {
-    name: w.name, kind: w.trade ? 'specialist' : 'general', trade: w.trade ?? '',
+    name: w.name, nickname: w.nickname ?? '', kind: w.trade ? 'specialist' : 'general', trade: w.trade ?? '',
     phones: w.phones.join(', '), email: w.email ?? '',
     company_name: w.company_name ?? '', tax_number: w.tax_number ?? '', hq_address: w.hq_address ?? '',
     bank_account: '', note: w.note ?? '', worker_type: w.worker_type,
@@ -88,6 +89,7 @@ export function validateWorkerForm(f: WorkerFormValues): string | null {
 export function formToRow(f: WorkerFormValues): Partial<Worker> {
   return {
     name: f.name.trim(),
+    nickname: f.nickname.trim() || null,
     trade: f.kind === 'specialist' ? (f.trade.trim() || null) : null,
     phones: f.phones.split(',').map((p) => p.trim()).filter(Boolean),
     email: f.email.trim() || null,
@@ -121,6 +123,7 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
     <View style={{ gap: S.md }}>
       <Card>
         <Input label="Név *" value={value.name} onChangeText={(t) => set({ name: t })} autoCapitalize="words" />
+        <Input label="Becenév" value={value.nickname} onChangeText={(t) => set({ nickname: t })} placeholder="pl. Marci — ezt mutatjuk a listákban" autoCapitalize="words" />
         <Segmented
           label="Munkakör"
           options={[
