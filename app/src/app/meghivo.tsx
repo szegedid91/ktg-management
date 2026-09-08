@@ -12,7 +12,6 @@ export default function Invite() {
   const { token } = useLocalSearchParams<{ token?: string }>();
   const { session, signUp, signOut } = useAuth();
   const [name, setName] = useState('');
-  const [nickname, setNickname] = useState('');
   const [phone, setPhone] = useState('');
   const [trade, setTrade] = useState('');
   const [email, setEmail] = useState('');
@@ -27,7 +26,7 @@ export default function Invite() {
     setBusy(true);
     setError(null);
     const err = await signUp(email.trim(), password, name.trim(), token,
-      { nickname: nickname.trim(), phone: phone.trim(), trade: trade.trim() });
+      { phone: phone.trim(), trade: trade.trim() });
     setBusy(false);
     if (err) { setError(err); return; }
     setDone(true);
@@ -69,7 +68,6 @@ export default function Invite() {
           <Card>
             <Sub>A fő felhasználók meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.</Sub>
             <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
-            <Input label="Becenév" value={nickname} onChangeText={setNickname} placeholder="pl. Marci (így látnak a listákban)" autoCapitalize="words" />
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
             <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
