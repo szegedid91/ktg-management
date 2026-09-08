@@ -60,7 +60,7 @@ export default function TaskDetail() {
   const [quoteNote, setQuoteNote] = useState('');
   const [failOpen, setFailOpen] = useState(false);
   const [failReason, setFailReason] = useState('');
-  const [failPhoto, setFailPhoto] = useState<PickedPhoto | null>(null);
+  const [failPhotos, setFailPhotos] = useState<PickedPhoto[]>([]);
   const [matOpen, setMatOpen] = useState(false);
   const [matAmount, setMatAmount] = useState('');
   const [matNote, setMatNote] = useState('');
@@ -124,16 +124,16 @@ export default function TaskDetail() {
   const submitFail = async () => {
     if (failReason.trim().length < 3) { notify('Kötelező indoklás', 'Írd le, miért nem tudtad megcsinálni a feladatot.'); return; }
     setBusy(true);
-    let photoPath: string | null = null;
-    try {
-      if (failPhoto) photoPath = await uploadTaskPhoto(failPhoto.base64, `${task.id}/fail`);
-    } catch {
-      notify('Fotó', 'A fotót nem sikerült feltölteni (internet?) — az indoklás fotó nélkül megy.');
+    const paths: string[] = [];
+    let fails = 0;
+    for (const ph of failPhotos) {
+      try { paths.push(await uploadTaskPhoto(ph.base64, `${task.id}/fail`)); } catch { fails++; }
     }
+    if (fails) notify('Fotó', `${fails} fotót nem sikerült feltölteni (internet?) — az indoklás nélkülük megy.`);
     setBusy(false);
     if (openSession) stopWork();
-    queueRpc('worker_task_action', { p_id: task.id, p_action: 'fail', p_reason: failReason.trim(), p_photo_path: photoPath }, [
-      { table: 'worker_tasks', id: task.id, patch: { status: 'failed', done_at: nowISO(), fail_reason: failReason.trim(), fail_photo_path: photoPath } },
+    queueRpc('worker_task_action', { p_id: task.id, p_action: 'fail', p_reason: failReason.trim(), p_photo_paths: paths }, [
+      { table: 'worker_tasks', id: task.id, patch: { status: 'failed', done_at: nowISO(), fail_reason: failReason.trim(), fail_photo_path: paths[0] ?? null, fail_photo_paths: paths } },
     ]);
     setFailOpen(false);
   };
@@ -195,7 +195,7 @@ export default function TaskDetail() {
   const pick = async (fromCamera: boolean, target: 'fail' | 'mat') => {
     const p = await pickPhoto(fromCamera);
     if (!p) return;
-    if (target === 'fail') setFailPhoto(p); else setMatPhoto(p);
+    if (target === 'fail') setFailPhotos((ps) => [...ps, p]); else setMatPhoto(p);
   };
 
   return (
@@ -240,7 +240,13 @@ export default function TaskDetail() {
           <View style={{ backgroundColor: C.dangerBg, padding: S.md, borderRadius: 8, gap: 4 }}>
             <Body style={{ fontWeight: '700', color: C.danger }}>⚠️ Nem sikerült — indok:</Body>
             <Body>{task.fail_reason}</Body>
-            {task.fail_photo_path ? <Btn title="📷 Fotó megnyitása" kind="ghost" small onPress={() => void openPhoto(task.fail_photo_path!)} /> : null}
+            {(task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []).length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                {(task.fail_photo_paths?.length ? task.fail_photo_paths : [task.fail_photo_path!]).map((ph, i) => (
+                  <Btn key={ph} title={`📷 Fotó ${i + 1}`} kind="ghost" small onPress={() => void openPhoto(ph)} />
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : null}
       </Card>
@@ -308,13 +314,18 @@ export default function TaskDetail() {
                 <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" onPress={() => setFailOpen(true)} />
               ) : (
                 <View style={{ gap: S.sm }}>
-                  <Sub>Kötelező leírni, miért nem sikerült. Fotót is csatolhatsz.</Sub>
+                  <Sub>Kötelező leírni, miért nem sikerült. Több fotót is csatolhatsz.</Sub>
                   <Input label="Indoklás *" value={failReason} onChangeText={setFailReason} multiline placeholder="pl. hiányzik az anyag / nem lehetett bejutni…" />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'fail')} /></View>
                     <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'fail')} /></View>
                   </View>
-                  {failPhoto ? <Sub>✓ fotó csatolva</Sub> : null}
+                  {failPhotos.length > 0 ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Sub>✓ {failPhotos.length} fotó csatolva</Sub>
+                      <Btn title="Törlés" kind="ghost" small onPress={() => setFailPhotos([])} />
+                    </View>
+                  ) : null}
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setFailOpen(false)} /></View>
                     <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Küldés'} kind="danger" onPress={() => void submitFail()} disabled={busy || failReason.trim().length < 3} /></View>
