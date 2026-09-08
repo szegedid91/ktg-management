@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Screen, Card, Title, Sub, Input, Btn, Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
+import { EyeToggle } from '../components/EyeToggle';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
 
@@ -22,6 +23,7 @@ export default function Login() {
   }, [session]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +108,8 @@ export default function Login() {
             <Input label="Név" value={name} onChangeText={setName} placeholder="Hogyan szólítsunk?" autoCapitalize="words" />
           ) : null}
           <Input label="Email" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
-          <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" />
+          <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
+              right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
           {mode === 'login' ? (
             <Check checked={remember} onToggle={() => setRemember(!remember)}
               label="Mentés gyors belépésként ezen az eszközön" sub="Egy gombbal lépsz be vele legközelebb (teszteléshez)" />

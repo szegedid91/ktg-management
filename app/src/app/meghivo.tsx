@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, Title, Sub, Input, Btn, Body } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
+import { EyeToggle } from '../components/EyeToggle';
 
 export default function Invite() {
   const { token } = useLocalSearchParams<{ token?: string }>();
@@ -16,6 +17,7 @@ export default function Invite() {
   const [trade, setTrade] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -71,7 +73,8 @@ export default function Invite() {
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
             <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
-            <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" />
+            <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
+              right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
             {error ? <Text style={{ color: C.danger, fontSize: 13 }}>{error}</Text> : null}
             <Btn title={busy ? '…' : 'Regisztráció'} onPress={() => void submit()} disabled={busy || !email || !name.trim() || password.length < 6} />
           </Card>
