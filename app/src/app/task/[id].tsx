@@ -77,6 +77,8 @@ export default function TaskDetail() {
   const active = isActiveTask(task);
   // a munkavállaló csak visszaigazolás után indíthat munkát / rögzíthet anyagot
   const acked = !!myAssignment?.acknowledged_at;
+  // késznek csak akkor jelölhető, ha a munkavállaló el is kezdte (van munkaideje rajta)
+  const startedByMe = sessions.some((s) => s.worker_id === myWorkerId);
   const nowISO = () => new Date().toISOString();
 
   const openPhoto = async (path: string) => {
@@ -147,7 +149,7 @@ export default function TaskDetail() {
       const path = await uploadTaskPhoto(matPhoto.base64, `${task.id}/material`);
       insertRow('task_materials', { task_id: task.id, worker_id: myWorkerId, amount, note: matNote.trim() || null, photo_path: path, resale_net: null });
       setMatOpen(false); setMatAmount(''); setMatNote(''); setMatPhoto(null);
-      notify('Anyagköltség rögzítve 📦', 'A fő felhasználók értesítést kapnak, és beárazzák a továbbszámlázást.');
+      notify('Anyagköltség rögzítve 📦', 'A fő felhasználók értesítést kapnak róla.');
     } catch {
       notify('Hiba', 'A fotó feltöltéséhez internet kell — próbáld újra kapcsolattal.');
     } finally {
@@ -309,7 +311,9 @@ export default function TaskDetail() {
             <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
           ) : (
             <>
-              <Btn title="Kész ✔" onPress={() => void markDone()} />
+              {startedByMe
+                ? <Btn title="Kész ✔" onPress={() => void markDone()} />
+                : <Sub style={{ color: C.warning }}>A feladat akkor jelölhető késznek, ha előtte elindítottad rajta a munkát (⏱ Munkaidő).</Sub>}
               {!failOpen ? (
                 <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" onPress={() => setFailOpen(true)} />
               ) : (
@@ -363,9 +367,7 @@ export default function TaskDetail() {
                   <Btn title="Mentés" small onPress={() => saveResale(m)} disabled={!resaleDraft[m.id]} />
                 </View>
               )
-            ) : (
-              <Sub>{m.resale_net != null ? 'beárazva' : 'beárazásra vár'}</Sub>
-            )}
+            ) : null}
           </View>
         ))}
         {materials.length > 0 ? (
