@@ -29,6 +29,10 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const active = myTasks.filter(isActiveTask).sort((a, b) => (a.status === 'assigned' ? -1 : 1) - (b.status === 'assigned' ? -1 : 1));
   const closed = myTasks.filter((t) => !isActiveTask(t)).sort((a, b) => (b.done_at ?? b.updated_at).localeCompare(a.done_at ?? a.updated_at)).slice(0, 5);
   const openSession = sessions.find((s) => !s.ended_at);
+  // munkaidő csak akkor, ha van legalább egy elfogadott, futó feladata
+  // (vagy épp nyitott munkamenete, amit be kell tudnia fejezni)
+  const acceptedActive = active.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at));
+  const showWorkTime = acceptedActive.length > 0 || !!openSession;
   const nowISO = () => new Date().toISOString();
 
   const todayHours = useMemo(() => {
@@ -40,6 +44,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
 
   return (
     <Screen>
+      {showWorkTime ? (
       <Card style={{ borderColor: openSession ? C.success : C.border }}>
         <H2>⏱ Munkaidő</H2>
         {openSession ? (
@@ -57,6 +62,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         )}
         <Sub>Ma összesen: {fmtHours(todayHours)}</Sub>
       </Card>
+      ) : null}
 
       <View style={{ gap: S.sm }}>
         <H2>🛠️ Feladataim ({active.length})</H2>
