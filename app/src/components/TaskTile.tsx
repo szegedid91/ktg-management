@@ -12,7 +12,7 @@ const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
 };
 const STATUS_SHORT: Record<string, string> = {
-  assigned: 'visszaigazolásra vár', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva',
+  assigned: 'elfogadásra vár', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva',
 };
 
 export function TaskTile({ task, assignees, materials, workers, profiles, sites, running }: {
@@ -43,7 +43,7 @@ export function TaskTile({ task, assignees, materials, workers, profiles, sites,
       </View>
       <Text style={{ fontSize: 12, color: color, fontWeight: '700' }}>
         {STATUS_SHORT[task.status]}{task.status === 'assigned' && assignees.length > 1 ? ` (${acked}/${assignees.length})` : ''}
-        {task.quote_requested && !task.quote_accepted_at ? ' · ajánlat' + (task.quote_amount != null ? ' elfogadásra vár' : 'ra vár') : ''}
+        {task.quote_requested && !task.quote_accepted_at ? (task.quote_amount != null ? ' · ajánlat elfogadásra vár' : ' · ajánlatra vár') : ''}
       </Text>
       <Text style={{ fontSize: 12, color: C.sub }}>👷 {names.join(', ') || '—'}</Text>
       <Text style={{ fontSize: 12, color: C.sub }}>Kiadta: {creator}{site ? ` · 📍 ${site.name}` : ''}</Text>

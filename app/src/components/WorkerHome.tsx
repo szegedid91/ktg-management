@@ -67,7 +67,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
             running={!!openSession && openSession.task_id === t.id} />
         ))}
         {active.some((t) => t.status === 'assigned') ? (
-          <Sub style={{ color: C.warning }}>⚠️ Van visszaigazolatlan feladatod — nyisd meg, és nyomd meg a „Megkaptam" gombot.</Sub>
+          <Sub style={{ color: C.warning }}>⚠️ Van el nem fogadott feladatod — nyisd meg, és fogadd el.</Sub>
         ) : null}
       </View>
 

@@ -68,7 +68,7 @@ export default function NewTask() {
     notify(quote ? 'Ajánlatkérés kiküldve 💬' : 'Feladat kiadva 🛠️',
       quote
         ? 'A munkavállaló(k) értesítést kapnak, és az appban adnak ajánlatot — azt neked kell elfogadnod.'
-        : 'A munkavállaló(k) értesítést kapnak, és az appban igazolják vissza, hogy megkapták.');
+        : 'A munkavállaló(k) értesítést kapnak, és az appban fogadják el a feladatot.');
     smartBack();
   };
 
@@ -101,7 +101,7 @@ export default function NewTask() {
 
       <Card>
         <H2>Kinek?</H2>
-        <Sub>Több munkavállaló is kijelölhető — mindegyik külön igazolja vissza.</Sub>
+        <Sub>Több munkavállaló is kijelölhető — mindegyik külön fogadja el.</Sub>
         {workers.map((w) => (
           <Check key={w.id} checked={chosen.has(w.id)} onToggle={() => toggle(w.id)}
             label={wname(w)} sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />

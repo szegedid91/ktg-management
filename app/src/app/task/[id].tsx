@@ -93,7 +93,7 @@ export default function TaskDetail() {
       { table: 'task_assignees', id: myAssignment.id, patch: { acknowledged_at: nowISO() } },
       ...(othersPending || task.status !== 'assigned' ? [] : [{ table: 'worker_tasks' as const, id: task.id, patch: { status: 'acknowledged', acknowledged_at: nowISO() } }]),
     ]);
-    notify('Visszaigazolva ✅', 'A kiadó értesítést kap, hogy megkaptad és csinálod.');
+    notify('Feladat elfogadva ✅', 'A kiadó értesítést kap, hogy elfogadtad a feladatot.');
   };
 
   const sendQuote = () => {
@@ -218,7 +218,7 @@ export default function TaskDetail() {
             <Body key={a.id}>
               👷 {workerName(a.worker_id)}
               <Text style={{ color: a.acknowledged_at ? C.success : C.warning }}>
-                {a.acknowledged_at ? `  ✓ visszaigazolta ${hdt(a.acknowledged_at)}` : '  — még nem igazolta vissza'}
+                {a.acknowledged_at ? `  ✓ elfogadta ${hdt(a.acknowledged_at)}` : '  — még nem fogadta el'}
               </Text>
             </Body>
           ))}
@@ -266,7 +266,7 @@ export default function TaskDetail() {
         ) : null}
         {isWorker && myAssignment && active ? (
           !acked
-            ? <Sub style={{ color: C.warning }}>⚠️ Előbb igazold vissza a feladatot („Megkaptam, értettem, csinálom”), utána indítható a munkaidő.</Sub>
+            ? <Sub style={{ color: C.warning }}>⚠️ Előbb fogadd el a feladatot, utána indítható a munkaidő.</Sub>
             : openSession
               ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
               : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
@@ -281,7 +281,7 @@ export default function TaskDetail() {
             <>
               <KV k="Ajánlati ár" v={ft(task.quote_amount)} strong />
               {task.quote_note ? <Sub>{task.quote_note}</Sub> : null}
-              <Sub>{task.quote_accepted_at ? `✅ Elfogadva ${hdt(task.quote_accepted_at)}` : 'Elfogadásra vár'}</Sub>
+              <Sub>{task.quote_accepted_at ? `✅ Ajánlat elfogadva ${hdt(task.quote_accepted_at)}` : 'Az ajánlat elfogadásra vár'}</Sub>
               {!isWorker && !task.quote_accepted_at ? <Btn title="Ajánlat elfogadása ✅" onPress={() => void acceptQuote()} /> : null}
             </>
           ) : isWorker && myAssignment ? (
@@ -300,7 +300,7 @@ export default function TaskDetail() {
         <Card style={{ borderColor: C.accent }}>
           <H2>Teendőid</H2>
           {!myAssignment.acknowledged_at ? (
-            <Btn title="Megkaptam, értettem, csinálom ✅" onPress={acknowledge} />
+            <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
           ) : (
             <>
               <Btn title="Kész ✔" onPress={() => void markDone()} />
@@ -360,7 +360,7 @@ export default function TaskDetail() {
           <KV k="Anyag összesen (beszerzés)" v={ft(mat.cost)} strong />
         ) : null}
         {isWorker && myAssignment && active && !acked ? (
-          <Sub style={{ color: C.warning }}>⚠️ Anyagköltséget a feladat visszaigazolása után rögzíthetsz.</Sub>
+          <Sub style={{ color: C.warning }}>⚠️ Anyagköltséget a feladat elfogadása után rögzíthetsz.</Sub>
         ) : null}
         {isWorker && myAssignment && active && acked ? (
           !matOpen ? (

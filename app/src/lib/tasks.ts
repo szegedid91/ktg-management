@@ -10,8 +10,8 @@ export function wname(w: { name: string; nickname?: string | null } | undefined 
 }
 
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
-  assigned: 'Kiadva — visszaigazolásra vár',
-  acknowledged: 'Visszaigazolva — folyamatban',
+  assigned: 'Kiadva — elfogadásra vár',
+  acknowledged: 'Elfogadva — folyamatban',
   done: 'Kész',
   failed: 'Nem sikerült',
   cancelled: 'Visszavonva',
