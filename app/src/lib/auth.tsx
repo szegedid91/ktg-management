@@ -30,7 +30,8 @@ interface AuthCtx {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
   /** inviteToken: munkavállalói meghívó — a zárt regisztráció kapuján átenged */
-  signUp: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<string | null>;
+  signUp: (email: string, password: string, displayName: string, inviteToken?: string,
+    extra?: { nickname?: string; phone?: string; trade?: string }) => Promise<string | null>;
   signOut: () => Promise<void>;
 }
 
@@ -83,11 +84,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error ? hunAuthError(error.message) : null;
   };
 
-  const signUp = async (email: string, password: string, displayName: string, inviteToken?: string) => {
+  const signUp = async (email: string, password: string, displayName: string, inviteToken?: string,
+    extra?: { nickname?: string; phone?: string; trade?: string }) => {
     const { error } = await supabase.auth.signUp({
       email, password,
       options: {
-        data: { display_name: displayName, ...(inviteToken ? { invite_token: inviteToken } : {}) },
+        data: { display_name: displayName, ...(inviteToken ? { invite_token: inviteToken } : {}), ...(extra ?? {}) },
         // a megerősítő link a saját "sikeres megerősítés" oldalunkra hozzon
         ...(typeof window !== 'undefined'
           ? { emailRedirectTo: `${window.location.origin}/megerosites` }

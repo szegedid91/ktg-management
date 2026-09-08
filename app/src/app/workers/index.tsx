@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Linking, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Input, Row, Body, Sub, Btn, Empty, Badge } from '../../ui/kit';
+import { InviteCard } from '../../components/InviteCard';
 import { C } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { Worker } from '../../lib/types';
@@ -34,6 +35,7 @@ export default function Workers() {
 
   return (
     <Screen>
+      <InviteCard />
       <Input value={q} onChangeText={setQ} placeholder="Keresés név szerint…" />
       {filtered.length === 0 ? <Empty text="Nincs munkavállaló." /> : null}
       {filtered.map((w) => (

@@ -11,6 +11,9 @@ export default function Invite() {
   const { token } = useLocalSearchParams<{ token?: string }>();
   const { session, signUp, signOut } = useAuth();
   const [name, setName] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [phone, setPhone] = useState('');
+  const [trade, setTrade] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +24,8 @@ export default function Invite() {
     if (!token) return;
     setBusy(true);
     setError(null);
-    const err = await signUp(email.trim(), password, name.trim(), token);
+    const err = await signUp(email.trim(), password, name.trim(), token,
+      { nickname: nickname.trim(), phone: phone.trim(), trade: trade.trim() });
     setBusy(false);
     if (err) { setError(err); return; }
     setDone(true);
@@ -61,12 +65,15 @@ export default function Invite() {
           </Card>
         ) : (
           <Card>
-            <Sub>A fő felhasználók meghívtak az appba. Add meg az adataid, és a fiókod a munkavállalói profilodhoz kapcsolódik.</Sub>
-            <Input label="Név" value={name} onChangeText={setName} placeholder="Teljes név" autoCapitalize="words" />
+            <Sub>A fő felhasználók meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.</Sub>
+            <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
+            <Input label="Becenév" value={nickname} onChangeText={setNickname} placeholder="pl. Marci (így látnak a listákban)" autoCapitalize="words" />
+            <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
+            <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
             <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" />
             {error ? <Text style={{ color: C.danger, fontSize: 13 }}>{error}</Text> : null}
-            <Btn title={busy ? '…' : 'Regisztráció'} onPress={() => void submit()} disabled={busy || !email || password.length < 6} />
+            <Btn title={busy ? '…' : 'Regisztráció'} onPress={() => void submit()} disabled={busy || !email || !name.trim() || password.length < 6} />
           </Card>
         )}
       </View>
