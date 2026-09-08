@@ -285,6 +285,8 @@ export interface WorkerTask extends BaseRow {
   fail_photo_path: string | null;
   /** amennyiért a feladatot kiszámlázzuk (nettó) */
   invoice_net: number | null;
+  /** a kiadó által csatolt fotók (tárolóbeli útvonalak) */
+  photo_paths: string[];
   quote_requested: boolean;
   quote_amount: number | null;
   quote_note: string | null;

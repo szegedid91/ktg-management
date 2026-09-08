@@ -75,6 +75,8 @@ export default function TaskDetail() {
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
   const openSession = sessions.find((s) => !s.ended_at && s.worker_id === myWorkerId);
   const active = isActiveTask(task);
+  // a munkavállaló csak visszaigazolás után indíthat munkát / rögzíthet anyagot
+  const acked = !!myAssignment?.acknowledged_at;
   const nowISO = () => new Date().toISOString();
 
   const openPhoto = async (path: string) => {
@@ -175,6 +177,21 @@ export default function TaskDetail() {
     updateRow('worker_tasks', task.id, { status: 'cancelled' });
   };
 
+  const addTaskPhoto = async () => {
+    const fromCamera = await confirmDialog('Fotó csatolása', 'Honnan?', 'Kamera');
+    const p = await pickPhoto(fromCamera);
+    if (!p) return;
+    setBusy(true);
+    try {
+      const path = await uploadTaskPhoto(p.base64, `${task.id}/brief`);
+      updateRow('worker_tasks', task.id, { photo_paths: [...(task.photo_paths ?? []), path] });
+    } catch {
+      notify('Hiba', 'A fotó feltöltéséhez internet kell.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pick = async (fromCamera: boolean, target: 'fail' | 'mat') => {
     const p = await pickPhoto(fromCamera);
     if (!p) return;
@@ -206,6 +223,19 @@ export default function TaskDetail() {
             </Body>
           ))}
         </View>
+        {(task.photo_paths ?? []).length > 0 || !isWorker ? (
+          <View style={{ gap: 4 }}>
+            <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+              {(task.photo_paths ?? []).map((ph, i) => (
+                <Btn key={ph} title={`Fotó ${i + 1}`} kind="ghost" small onPress={() => void openPhoto(ph)} />
+              ))}
+              {!isWorker && active ? (
+                <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
+              ) : null}
+            </View>
+          </View>
+        ) : null}
         {task.fail_reason ? (
           <View style={{ backgroundColor: C.dangerBg, padding: S.md, borderRadius: 8, gap: 4 }}>
             <Body style={{ fontWeight: '700', color: C.danger }}>⚠️ Nem sikerült — indok:</Body>
@@ -235,9 +265,11 @@ export default function TaskDetail() {
           </View>
         ) : null}
         {isWorker && myAssignment && active ? (
-          openSession
-            ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
-            : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
+          !acked
+            ? <Sub style={{ color: C.warning }}>⚠️ Előbb igazold vissza a feladatot („Megkaptam, értettem, csinálom”), utána indítható a munkaidő.</Sub>
+            : openSession
+              ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
+              : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
         ) : null}
       </Card>
 
@@ -327,7 +359,10 @@ export default function TaskDetail() {
         {materials.length > 0 ? (
           <KV k="Anyag összesen (beszerzés)" v={ft(mat.cost)} strong />
         ) : null}
-        {isWorker && myAssignment && active ? (
+        {isWorker && myAssignment && active && !acked ? (
+          <Sub style={{ color: C.warning }}>⚠️ Anyagköltséget a feladat visszaigazolása után rögzíthetsz.</Sub>
+        ) : null}
+        {isWorker && myAssignment && active && acked ? (
           !matOpen ? (
             <Btn title="+ Anyagköltség hozzáadása (fotóval)" kind="secondary" onPress={() => setMatOpen(true)} />
           ) : (

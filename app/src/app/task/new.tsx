@@ -2,13 +2,15 @@
 
 import React, { useState } from 'react';
 import { View } from 'react-native';
+import { S } from '../../ui/theme';
 import { useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Input, Btn, Picker, Check } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
-import { insertRow } from '../../lib/repo';
+import { insertRow, newId } from '../../lib/repo';
 import { parseAmount } from '../../lib/format';
 import { notify } from '../../lib/dialogs';
+import { pickPhoto, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { Site, Worker } from '../../lib/types';
 import { wname } from '../../lib/tasks';
 
@@ -25,6 +27,12 @@ export default function NewTask() {
   const [quote, setQuote] = useState(false);
   const [invoice, setInvoice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
+
+  const addPhoto = async (fromCamera: boolean) => {
+    const p = await pickPhoto(fromCamera);
+    if (p) setPhotos((ps) => [...ps, p]);
+  };
 
   const toggle = (id: string) => {
     const next = new Set(chosen);
@@ -32,11 +40,20 @@ export default function NewTask() {
     setChosen(next);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!title.trim()) { notify('Hiba', 'Adj címet a feladatnak.'); return; }
     if (chosen.size === 0) { notify('Hiba', 'Válassz legalább egy munkavállalót.'); return; }
     setSaving(true);
-    const taskId = insertRow('worker_tasks', {
+    // a fotók előre mennek fel (internet kell); ha nem sikerül, a feladat
+    // fotó nélkül is kimegy
+    const taskId = newId();
+    const paths: string[] = [];
+    let photoFails = 0;
+    for (const ph of photos) {
+      try { paths.push(await uploadTaskPhoto(ph.base64, `${taskId}/brief`)); } catch { photoFails++; }
+    }
+    insertRow('worker_tasks', {
+      id: taskId,
       title: title.trim(),
       code: code.trim() || null,
       details: details.trim() || null,
@@ -44,8 +61,10 @@ export default function NewTask() {
       status: 'assigned',
       quote_requested: quote,
       invoice_net: invoice.trim() ? parseAmount(invoice) : null,
+      photo_paths: paths,
     });
     for (const wid of chosen) insertRow('task_assignees', { task_id: taskId, worker_id: wid });
+    if (photoFails) notify('Fotó', `${photoFails} fotót nem sikerült feltölteni (internet?) — a feladat nélkülük ment ki.`);
     notify(quote ? 'Ajánlatkérés kiküldve 💬' : 'Feladat kiadva 🛠️',
       quote
         ? 'A munkavállaló(k) értesítést kapnak, és az appban adnak ajánlatot — azt neked kell elfogadnod.'
@@ -63,6 +82,21 @@ export default function NewTask() {
         <Picker label="Helyszín (építkezés)" items={sites} selectedId={site} getId={(s) => s.id}
           getLabel={(s) => s.address ? `${s.name} — ${s.address}` : s.name} onSelect={setSite}
           allowNull nullLabel="— nincs helyszín —" />
+      </Card>
+
+      <Card>
+        <H2>📷 Fotók a feladathoz</H2>
+        <Sub>Pl. a hiba, a helyszín vagy a rajz — a munkavállaló a feladat oldalán nyitja meg.</Sub>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}><Btn title="📷 Fotózás" kind="ghost" small onPress={() => void addPhoto(true)} /></View>
+          <View style={{ flex: 1 }}><Btn title="🖼 Galériából" kind="ghost" small onPress={() => void addPhoto(false)} /></View>
+        </View>
+        {photos.length > 0 ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Sub>✓ {photos.length} fotó csatolva</Sub>
+            <Btn title="Törlés" kind="ghost" small onPress={() => setPhotos([])} />
+          </View>
+        ) : null}
       </Card>
 
       <Card>
@@ -84,7 +118,7 @@ export default function NewTask() {
       </Card>
 
       <View style={{ paddingBottom: 8 }}>
-        <Btn title={quote ? 'Ajánlatkérés kiküldése' : 'Feladat kiadása'} onPress={save} disabled={saving} />
+        <Btn title={saving ? '…' : quote ? 'Ajánlatkérés kiküldése' : 'Feladat kiadása'} onPress={() => void save()} disabled={saving} />
       </View>
     </Screen>
   );
