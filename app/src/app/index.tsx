@@ -10,7 +10,7 @@ import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
 import {
   Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory,
-  WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Worker,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker,
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
 import { isActiveTask } from '../lib/tasks';
@@ -78,6 +78,7 @@ function DashboardInner() {
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
   const materials = useTable<TaskMaterial>('task_materials');
+  const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const me = session?.user.id;
@@ -111,7 +112,7 @@ function DashboardInner() {
   );
 
   const activeTasks = tasks.filter(isActiveTask).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const unpricedMaterials = materials.filter((m) => m.resale_net == null);
+  const unpricedMaterials = materials.filter((m) => !pricing.some((p) => p.material_id === m.id));
   const runningTaskIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id));
 
   // munkavállalói fiók: saját, szűkített kezdőlap
@@ -203,7 +204,7 @@ function DashboardInner() {
         {activeTasks.length === 0 ? <Sub>Nincs kiadott, folyamatban lévő feladat.</Sub> : null}
         {activeTasks.map((t) => (
           <TaskTile key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
-            materials={materials.filter((m) => m.task_id === t.id)} workers={workers} profiles={profiles} sites={sites}
+            materials={materials.filter((m) => m.task_id === t.id)} pricing={pricing} workers={workers} profiles={profiles} sites={sites}
             running={runningTaskIds.has(t.id)} />
         ))}
       </View>

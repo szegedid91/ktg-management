@@ -16,7 +16,7 @@ import {
   TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, wname,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Worker, Site, Profile,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, WorkSession, Worker, Site, Profile,
 } from '../../lib/types';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -32,6 +32,9 @@ export default function TaskDetail() {
   const profiles = useTable<Profile>('profiles');
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.task_id === id);
   const materials = useTable<TaskMaterial>('task_materials').filter((m) => m.task_id === id);
+  // csak-partner táblák: munkavállalónál üresek
+  const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
+  const finance = useTable<TaskFinance>('task_finance').find((f) => f.task_id === id);
   const me = getCurrentUserId();
   const myProfile = profiles.find((p) => p.id === me);
   const myWorkerId = myProfile?.worker_id ?? null;
@@ -50,8 +53,8 @@ export default function TaskDetail() {
   );
   const timing = useMemo(() => (task ? taskTiming(task, sessions, now) : null), [task, sessions, now]);
   const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions, now) : null), [task, assigneeWorkers, sessions, now]);
-  const mat = useMemo(() => materialTotals(materials), [materials]);
-  const profit = task && wage ? taskProfit(task, wage.total, materials) : null;
+  const mat = useMemo(() => materialTotals(materials, pricing), [materials, pricing]);
+  const profit = task && wage ? taskProfit(finance?.invoice_net, wage.total, materials, pricing) : null;
 
   // űrlap-állapotok
   const [invoiceStr, setInvoiceStr] = useState<string | null>(null);
@@ -147,7 +150,7 @@ export default function TaskDetail() {
     setBusy(true);
     try {
       const path = await uploadTaskPhoto(matPhoto.base64, `${task.id}/material`);
-      insertRow('task_materials', { task_id: task.id, worker_id: myWorkerId, amount, note: matNote.trim() || null, photo_path: path, resale_net: null });
+      insertRow('task_materials', { task_id: task.id, worker_id: myWorkerId, amount, note: matNote.trim() || null, photo_path: path });
       setMatOpen(false); setMatAmount(''); setMatNote(''); setMatPhoto(null);
       notify('Anyagköltség rögzítve 📦', 'A fő felhasználók értesítést kapnak róla.');
     } catch {
@@ -160,12 +163,16 @@ export default function TaskDetail() {
   // ---------- partneri műveletek ----------
   const saveInvoice = () => {
     const v = (invoiceStr ?? '').trim();
-    updateRow('worker_tasks', task.id, { invoice_net: v ? parseAmount(v) : null });
+    const val = v ? parseAmount(v) : null;
+    if (finance) updateRow('task_finance', finance.id, { invoice_net: val });
+    else insertRow('task_finance', { task_id: task.id, invoice_net: val });
     setInvoiceStr(null);
   };
   const saveResale = (m: TaskMaterial) => {
     const v = parseAmount(resaleDraft[m.id] ?? '');
-    updateRow('task_materials', m.id, { resale_net: v, resale_by: me, resale_at: nowISO() });
+    const existing = mat.priceOf(m);
+    if (existing) updateRow('task_material_pricing', existing.id, { resale_net: v, resale_by: me, resale_at: nowISO() });
+    else insertRow('task_material_pricing', { material_id: m.id, resale_net: v, resale_by: me, resale_at: nowISO() });
     setResaleDraft((d) => { const n = { ...d }; delete n[m.id]; return n; });
   };
   const acceptQuote = async () => {
@@ -354,10 +361,10 @@ export default function TaskDetail() {
             </View>
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {!isWorker ? (
-              m.resale_net != null && resaleDraft[m.id] === undefined ? (
+              mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Sub>Továbbszámlázva: <Text style={{ fontWeight: '700', color: C.text }}>{ft(m.resale_net)}</Text> · haszon {ft(Number(m.resale_net) - Number(m.amount))}</Sub>
-                  <Btn title="Módosít" kind="ghost" small onPress={() => setResaleDraft((d) => ({ ...d, [m.id]: String(m.resale_net) }))} />
+                  <Sub>Továbbszámlázva: <Text style={{ fontWeight: '700', color: C.text }}>{ft(mat.priceOf(m)!.resale_net)}</Text> · haszon {ft(Number(mat.priceOf(m)!.resale_net) - Number(m.amount))}</Sub>
+                  <Btn title="Módosít" kind="ghost" small onPress={() => setResaleDraft((d) => ({ ...d, [m.id]: String(mat.priceOf(m)!.resale_net) }))} />
                 </View>
               ) : (
                 <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
@@ -417,8 +424,8 @@ export default function TaskDetail() {
           <Divider />
           {invoiceStr === null ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Body>Kiszámlázott érték: <Text style={{ fontWeight: '800' }}>{task.invoice_net != null ? ft(task.invoice_net) : '— nincs megadva'}</Text></Body>
-              <Btn title={task.invoice_net != null ? 'Módosít' : 'Megad'} kind="ghost" small onPress={() => setInvoiceStr(task.invoice_net != null ? String(task.invoice_net) : '')} />
+              <Body>Kiszámlázott érték: <Text style={{ fontWeight: '800' }}>{finance?.invoice_net != null ? ft(finance.invoice_net) : '— nincs megadva'}</Text></Body>
+              <Btn title={finance?.invoice_net != null ? 'Módosít' : 'Megad'} kind="ghost" small onPress={() => setInvoiceStr(finance?.invoice_net != null ? String(finance.invoice_net) : '')} />
             </View>
           ) : (
             <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>

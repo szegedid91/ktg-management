@@ -60,9 +60,9 @@ export default function NewTask() {
       site_id: site,
       status: 'assigned',
       quote_requested: quote,
-      invoice_net: invoice.trim() ? parseAmount(invoice) : null,
       photo_paths: paths,
     });
+    if (invoice.trim()) insertRow('task_finance', { task_id: taskId, invoice_net: parseAmount(invoice) });
     for (const wid of chosen) insertRow('task_assignees', { task_id: taskId, worker_id: wid });
     if (photoFails) notify('Fotó', `${photoFails} fotót nem sikerült feltölteni (internet?) — a feladat nélkülük ment ki.`);
     notify(quote ? 'Ajánlatkérés kiküldve 💬' : 'Feladat kiadva 🛠️',

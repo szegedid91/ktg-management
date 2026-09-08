@@ -284,8 +284,6 @@ export interface WorkerTask extends BaseRow {
   fail_reason: string | null;
   fail_photo_path: string | null;
   fail_photo_paths: string[];
-  /** amennyiért a feladatot kiszámlázzuk (nettó) */
-  invoice_net: number | null;
   /** a kiadó által csatolt fotók (tárolóbeli útvonalak) */
   photo_paths: string[];
   quote_requested: boolean;
@@ -314,9 +312,29 @@ export interface TaskMaterial extends BaseRow {
   amount: number;
   note: string | null;
   photo_path: string;
-  resale_net: number | null;
-  resale_by: string | null;
-  resale_at: string | null;
+}
+
+/** Feladat pénzügye — csak a fő felhasználók látják (a munkavállaló nem) */
+export interface TaskFinance {
+  id: UUID;
+  task_id: UUID;
+  /** amennyiért a feladatot kiszámlázzuk (nettó) */
+  invoice_net: number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/** Anyagköltség továbbszámlázási ára — csak a fő felhasználók látják */
+export interface TaskMaterialPricing {
+  id: UUID;
+  material_id: UUID;
+  resale_net: number;
+  resale_by: UUID | null;
+  resale_at: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 /** Munkaidő: mikor kezdte / fejezte be (feladathoz köthető) */
@@ -336,6 +354,7 @@ export const SYNC_TABLES = [
   'invoices', 'settlements', 'equipment', 'equipment_moves',
   'profit_share_history', 'share_change_requests',
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
+  'task_finance', 'task_material_pricing',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

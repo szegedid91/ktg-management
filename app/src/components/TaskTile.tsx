@@ -5,7 +5,7 @@ import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { C, S } from '../ui/theme';
 import { ft } from '../lib/format';
-import { WorkerTask, TaskAssignee, TaskMaterial, Worker, Profile, Site } from '../lib/types';
+import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, Worker, Profile, Site } from '../lib/types';
 import { wname } from '../lib/tasks';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -15,8 +15,8 @@ const STATUS_SHORT: Record<string, string> = {
   assigned: 'elfogadásra vár', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva',
 };
 
-export function TaskTile({ task, assignees, materials, workers, profiles, sites, running }: {
-  task: WorkerTask; assignees: TaskAssignee[]; materials: TaskMaterial[];
+export function TaskTile({ task, assignees, materials, pricing = [], workers, profiles, sites, running }: {
+  task: WorkerTask; assignees: TaskAssignee[]; materials: TaskMaterial[]; pricing?: TaskMaterialPricing[];
   workers: Worker[]; profiles: Profile[]; sites: Site[]; running?: boolean;
 }) {
   const names = assignees.map((a) => wname(workers.find((w) => w.id === a.worker_id)));
@@ -24,7 +24,7 @@ export function TaskTile({ task, assignees, materials, workers, profiles, sites,
   const creator = profiles.find((p) => p.id === task.created_by)?.display_name ?? '?';
   const site = sites.find((s) => s.id === task.site_id);
   const matCost = materials.reduce((s, m) => s + Number(m.amount), 0);
-  const unpriced = materials.filter((m) => m.resale_net == null).length;
+  const unpriced = materials.filter((m) => !pricing.some((p) => p.material_id === m.id)).length;
   const color = STATUS_COLOR[task.status] ?? C.sub;
   return (
     <Pressable

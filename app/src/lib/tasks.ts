@@ -1,7 +1,7 @@
 // Feladat-számítások a lokális tükörből: munkaidő, bérköltség (idő- vagy
 // ajánlat-alapú), anyagköltség/továbbszámlázás, haszon.
 
-import { TaskMaterial, TaskStatus, Worker, WorkerTask, WorkSession } from './types';
+import { TaskMaterial, TaskMaterialPricing, TaskStatus, Worker, WorkerTask, WorkSession } from './types';
 
 /** Munkavállaló megjelenített neve: becenév, ha van. */
 export function wname(w: { name: string; nickname?: string | null } | undefined | null): string {
@@ -79,17 +79,19 @@ export function taskWageCost(
   return { total: parts.reduce((s, p) => s + p.amount, 0), parts };
 }
 
-export function materialTotals(materials: TaskMaterial[]) {
+/** Anyag összesítés; a beárazás külön (csak-partner) táblából jön. */
+export function materialTotals(materials: TaskMaterial[], pricing: TaskMaterialPricing[] = []) {
+  const priceOf = (m: TaskMaterial) => pricing.find((p) => p.material_id === m.id) ?? null;
   const cost = materials.reduce((s, m) => s + Number(m.amount), 0);
-  const priced = materials.filter((m) => m.resale_net != null);
-  const unpriced = materials.filter((m) => m.resale_net == null);
-  const resale = priced.reduce((s, m) => s + Number(m.resale_net), 0);
-  return { cost, resale, unpriced, priced };
+  const priced = materials.filter((m) => priceOf(m));
+  const unpriced = materials.filter((m) => !priceOf(m));
+  const resale = priced.reduce((s, m) => s + Number(priceOf(m)!.resale_net), 0);
+  return { cost, resale, unpriced, priced, priceOf };
 }
 
 /** Haszon = kiszámlázott + továbbszámlázott anyag − bér − anyag beszerzési ár */
-export function taskProfit(task: WorkerTask, wage: number, materials: TaskMaterial[]): number | null {
-  if (task.invoice_net == null) return null;
-  const m = materialTotals(materials);
-  return Number(task.invoice_net) + m.resale - wage - m.cost;
+export function taskProfit(invoiceNet: number | null | undefined, wage: number, materials: TaskMaterial[], pricing: TaskMaterialPricing[]): number | null {
+  if (invoiceNet == null) return null;
+  const m = materialTotals(materials, pricing);
+  return Number(invoiceNet) + m.resale - wage - m.cost;
 }
