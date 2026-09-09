@@ -39,7 +39,7 @@ export function getCurrentUserId(): string | null {
 }
 
 // táblák, amelyeknek nincs created_by oszlopa (a comments author_id-t használ)
-const NO_CREATED_BY = new Set<SyncTable>(['comments', 'task_assignees', 'task_finance', 'task_material_pricing']);
+const NO_CREATED_BY = new Set<SyncTable>(['comments', 'task_assignees', 'task_finance', 'task_material_pricing', 'notification_queue']);
 
 /** Új rekord: lokálisan azonnal él, outboxon át szinkronizál */
 export function insertRow<T extends Record<string, any>>(table: SyncTable, values: Partial<T>): string {

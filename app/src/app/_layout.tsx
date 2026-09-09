@@ -4,6 +4,7 @@ import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthProvider } from '../lib/auth';
 import { DialogHost } from '../components/DialogHost';
+import { HeaderBell } from '../components/HeaderBell';
 import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
@@ -44,6 +45,7 @@ export default function RootLayout() {
           headerTitleStyle: { fontWeight: '700' },
           contentStyle: { backgroundColor: C.bg },
           headerLeft: () => <HeaderBack />,
+          headerRight: () => <HeaderBell />,
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Kezdőlap', headerLeft: () => null }} />
@@ -51,6 +53,7 @@ export default function RootLayout() {
         <Stack.Screen name="meghivo" options={{ headerShown: false }} />
         <Stack.Screen name="task/new" options={{ title: 'Új feladat' }} />
         <Stack.Screen name="tasks" options={{ title: 'Feladatok' }} />
+        <Stack.Screen name="notifications" options={{ title: 'Értesítések' }} />
         <Stack.Screen name="task/[id]" options={{ title: 'Feladat' }} />
         <Stack.Screen name="megerosites" options={{ title: 'E-mail megerősítés' }} />
         <Stack.Screen name="jelszo" options={{ title: 'Új jelszó' }} />

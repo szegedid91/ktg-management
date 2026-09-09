@@ -270,6 +270,21 @@ export interface ShareChangeRequest {
   deleted_at: string | null;
 }
 
+/** Alkalmazáson belüli értesítés (a harang alatt) — csak a címzett látja */
+export interface AppNotification {
+  id: number;
+  kind: string;
+  recipient: UUID;
+  title: string;
+  body: string;
+  payload: Record<string, any> | null;
+  created_at: string;
+  sent_at: string | null;
+  read_at: string | null;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
 export type TaskStatus = 'assigned' | 'acknowledged' | 'done' | 'failed' | 'cancelled';
 
 /** Kiadott feladat (kód, cím, helyszín); több munkavállalóra osztható */
@@ -356,7 +371,7 @@ export const SYNC_TABLES = [
   'invoices', 'settlements', 'equipment', 'equipment_moves',
   'profit_share_history', 'share_change_requests',
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
-  'task_finance', 'task_material_pricing',
+  'task_finance', 'task_material_pricing', 'notification_queue',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];
