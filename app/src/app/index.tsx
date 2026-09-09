@@ -14,7 +14,7 @@ import {
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
 import { isActiveTask } from '../lib/tasks';
-import { TaskBoard } from '../components/TaskBoard';
+import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
 import { useAuth } from '../lib/auth';
 
@@ -115,6 +115,34 @@ function DashboardInner() {
   const unpricedMaterials = materials.filter((m) => !pricing.some((p) => p.material_id === m.id));
   const runningTaskIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id));
 
+  // ---- teendő-dashboard ----
+  const today = todayISO();
+  const pendingTasks = activeTasks.filter((t) => t.status === 'assigned');
+  const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
+  const quoteTasks = activeTasks.filter((t) => t.quote_requested && !t.quote_accepted_at && t.quote_amount != null);
+  const failedRecent = tasks.filter((t) => t.status === 'failed' && (t.done_at ?? t.updated_at) >= new Date(Date.now() - 14 * 864e5).toISOString());
+  const runningCount = activeTasks.filter((t) => runningTaskIds.has(t.id)).length;
+  const unpricedSum = unpricedMaterials.reduce((s, m) => s + Number(m.amount), 0);
+  const overdueInvoices = invoices.filter((i) => !i.paid_at && i.due_date && i.due_date < today);
+  const overdueSum = overdueInvoices.reduce((s, i) => s + Number(i.net_amount), 0);
+  const unpaidWageCount = attendance.filter((a) => a.pay_basis !== 'presence' && !a.paid_at).length;
+  const todos = [
+    pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
+      detail: pendingPrio ? `ebből ${pendingPrio} prioritásos ⚡` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
+    quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,
+      detail: `összesen ${ft(quoteTasks.reduce((s, t) => s + Number(t.quote_amount ?? 0), 0))}`, color: C.primary, href: '/tasks?filter=quote' } : null,
+    unpricedMaterials.length ? { key: 'unpriced', icon: '📦', title: 'Beárazandó anyagköltség', count: unpricedMaterials.length,
+      detail: `összértéke ${ft(unpricedSum)} — add meg, mennyiért számlázod tovább`, color: C.warning, href: '/tasks?filter=unpriced' } : null,
+    failedRecent.length ? { key: 'failed', icon: '⚠️', title: 'Nem sikerült feladat (14 nap)', count: failedRecent.length,
+      detail: 'nézd meg az indoklást és a fotókat', color: C.danger, href: '/tasks?filter=failed' } : null,
+    runningCount ? { key: 'running', icon: '●', title: 'Épp folyik a munka', count: runningCount,
+      detail: 'feladaton indított munkaidő', color: C.success, href: '/tasks?filter=running' } : null,
+    unpaidWageCount ? { key: 'wages', icon: '👷', title: 'Kifizetetlen bér', count: unpaidWageCount,
+      detail: `összesen ${ft(stats.unpaidWages)}`, color: '#B7791F', href: '/pending' } : null,
+    overdueInvoices.length ? { key: 'overdue', icon: '🧾', title: 'Lejárt, be nem folyt számla', count: overdueInvoices.length,
+      detail: `összesen ${ft(overdueSum)} nettó`, color: C.danger, href: '/invoices' } : null,
+  ].filter(Boolean) as { key: string; icon: string; title: string; count: number; detail: string; color: string; href: string }[];
+
   // munkavállalói fiók: saját, szűkített kezdőlap
   if (myProfile?.worker_id) return <WorkerHome profile={myProfile} />;
 
@@ -198,31 +226,15 @@ function DashboardInner() {
 
       <View style={{ gap: S.sm }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <H2>🛠️ Aktív feladatok ({activeTasks.length})</H2>
+          <H2>📌 Teendők</H2>
           <Btn title="+ Új feladat" small kind="secondary" onPress={() => router.push('/task/new')} />
         </View>
-        {activeTasks.length === 0 ? <Sub>Nincs kiadott, folyamatban lévő feladat.</Sub> : <TaskBoard tasks={activeTasks} />}
+        {todos.length === 0 ? <Sub>Nincs teendő — minden rendben. ✅</Sub> : null}
+        {todos.map((t) => <Todo key={t.key} icon={t.icon} title={t.title} count={t.count} detail={t.detail} color={t.color} href={t.href} />)}
+        <Pressable onPress={() => router.navigate('/tasks')} style={{ alignSelf: 'flex-end' }}>
+          <Text style={{ color: C.primary, fontWeight: '700' }}>Minden feladat ({activeTasks.length} aktív) ›</Text>
+        </Pressable>
       </View>
-
-      {unpricedMaterials.length > 0 ? (
-        <Card style={{ borderColor: C.accent, backgroundColor: C.warnBg }}>
-          <H2>📦 Beárazandó anyagköltségek ({unpricedMaterials.length})</H2>
-          <Sub>A munkavállalók rögzítették, de még nincs megadva, mennyiért számlázod tovább.</Sub>
-          {unpricedMaterials.slice(0, 8).map((m) => {
-            const t = tasks.find((x) => x.id === m.task_id);
-            return (
-              <Pressable key={m.id} onPress={() => router.push(`/task/${m.task_id}`)}
-                style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-                <Text style={{ color: C.text, flex: 1 }} numberOfLines={1}>
-                  {t?.code ? `${t.code} · ` : ''}{t?.title ?? 'feladat'}{m.note ? ` — ${m.note}` : ''}
-                </Text>
-                <Text style={{ fontWeight: '800', color: C.text }}>{ft(m.amount)}</Text>
-              </Pressable>
-            );
-          })}
-          {unpricedMaterials.length > 8 ? <Btn title={`Mind a ${unpricedMaterials.length} megnézése`} kind="ghost" small onPress={() => router.push('/tasks')} /> : null}
-        </Card>
-      ) : null}
 
       <MenuGrid />
 

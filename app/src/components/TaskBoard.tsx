@@ -13,7 +13,8 @@ import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, Site,
 } from '../lib/types';
 
-type Filter = 'active' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'done' | 'failed' | 'all';
+export type BoardFilter = 'active' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'done' | 'failed' | 'all';
+type Filter = BoardFilter;
 const PAGE = 25;
 
 function Chip({ label, count, color, on, onPress }: { label: string; count: number; color?: string; on: boolean; onPress: () => void }) {
@@ -28,7 +29,7 @@ function Chip({ label, count, color, on, onPress }: { label: string; count: numb
   );
 }
 
-export function TaskBoard({ tasks, includeClosed = false }: { tasks: WorkerTask[]; includeClosed?: boolean }) {
+export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'active' }: { tasks: WorkerTask[]; includeClosed?: boolean; initialFilter?: BoardFilter }) {
   const assignees = useTable<TaskAssignee>('task_assignees');
   const materials = useTable<TaskMaterial>('task_materials');
   const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
@@ -36,7 +37,7 @@ export function TaskBoard({ tasks, includeClosed = false }: { tasks: WorkerTask[
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
 
-  const [filter, setFilter] = useState<Filter>('active');
+  const [filter, setFilter] = useState<Filter>(initialFilter);
   const [q, setQ] = useState('');
   const [siteId, setSiteId] = useState<string | null>(null);
   const [workerId, setWorkerId] = useState<string | null>(null);
@@ -54,6 +55,8 @@ export function TaskBoard({ tasks, includeClosed = false }: { tasks: WorkerTask[
     acknowledged: active.filter((t) => t.status === 'acknowledged').length,
     running: active.filter((t) => running.has(t.id)).length,
     unpriced: tasks.filter((t) => unpricedTaskIds.has(t.id)).length,
+    priority: active.filter((t) => t.priority > 0).length,
+    quote: active.filter((t) => t.quote_requested && !t.quote_accepted_at).length,
     done: tasks.filter((t) => t.status === 'done').length,
     failed: tasks.filter((t) => t.status === 'failed').length,
     all: tasks.length,
@@ -69,6 +72,8 @@ export function TaskBoard({ tasks, includeClosed = false }: { tasks: WorkerTask[
           case 'acknowledged': return t.status === 'acknowledged';
           case 'running': return running.has(t.id);
           case 'unpriced': return unpricedTaskIds.has(t.id);
+          case 'priority': return isActiveTask(t) && t.priority > 0;
+          case 'quote': return isActiveTask(t) && !!t.quote_requested && !t.quote_accepted_at;
           case 'done': return t.status === 'done';
           case 'failed': return t.status === 'failed';
           default: return true;
@@ -82,7 +87,7 @@ export function TaskBoard({ tasks, includeClosed = false }: { tasks: WorkerTask[
         const site = sites.find((s) => s.id === t.site_id)?.name ?? '';
         return `${t.code ?? ''} ${t.title} ${t.details ?? ''} ${names} ${site}`.toLowerCase().includes(needle);
       })
-      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+      .sort((a, b) => (b.priority - a.priority) || b.updated_at.localeCompare(a.updated_at));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, workers, sites]);
 
@@ -106,6 +111,8 @@ export function TaskBoard({ tasks, includeClosed = false }: { tasks: WorkerTask[
         <Chip label="Elfogadásra vár" count={counts.assigned} color={STATUS_COLOR.assigned} on={filter === 'assigned'} onPress={() => { setFilter('assigned'); setLimit(PAGE); }} />
         <Chip label="Folyamatban" count={counts.acknowledged} color={STATUS_COLOR.acknowledged} on={filter === 'acknowledged'} onPress={() => { setFilter('acknowledged'); setLimit(PAGE); }} />
         <Chip label="● Fut a munka" count={counts.running} color={C.success} on={filter === 'running'} onPress={() => { setFilter('running'); setLimit(PAGE); }} />
+        {counts.priority > 0 ? <Chip label="⚡ Prioritás" count={counts.priority} color={C.danger} on={filter === 'priority'} onPress={() => { setFilter('priority'); setLimit(PAGE); }} /> : null}
+        {counts.quote > 0 ? <Chip label="💬 Ajánlat" count={counts.quote} color={C.primary} on={filter === 'quote'} onPress={() => { setFilter('quote'); setLimit(PAGE); }} /> : null}
         {counts.unpriced > 0 ? <Chip label="📦 Beárazandó" count={counts.unpriced} color={C.warning} on={filter === 'unpriced'} onPress={() => { setFilter('unpriced'); setLimit(PAGE); }} /> : null}
         {includeClosed ? (
           <>

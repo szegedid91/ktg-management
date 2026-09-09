@@ -26,6 +26,7 @@ export default function NewTask() {
   const [site, setSite] = useState<string | null>(siteId ?? null);
   const [chosen, setChosen] = useState<Set<string>>(new Set(workerId ? [workerId] : []));
   const [quote, setQuote] = useState(false);
+  const [priority, setPriority] = useState(false);
   const [invoice, setInvoice] = useState('');
   const [saving, setSaving] = useState(false);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
@@ -60,6 +61,7 @@ export default function NewTask() {
       details: details.trim() || null,
       site_id: site,
       status: 'assigned',
+      priority: priority ? 1 : 0,
       quote_requested: quote,
       photo_paths: paths,
     });
@@ -80,6 +82,7 @@ export default function NewTask() {
         <Input label="Feladat címe *" value={title} onChangeText={setTitle} placeholder="pl. Csempézés a fürdőben" />
         <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
         <Input label="Részletek" value={details} onChangeText={setDetails} placeholder="Mit, hol, mivel…" multiline />
+        <Check checked={priority} onToggle={() => setPriority(!priority)} label="⚡ Prioritásos (sürgős) feladat" sub="A listák elején, kiemelve jelenik meg." />
         <Picker label="Helyszín (építkezés)" items={sites} selectedId={site} getId={(s) => s.id}
           getLabel={(s) => s.address ? `${s.name} — ${s.address}` : s.name} onSelect={setSite}
           allowNull nullLabel="— nincs helyszín —" />

@@ -294,6 +294,8 @@ export interface WorkerTask extends BaseRow {
   title: string;
   details: string | null;
   status: TaskStatus;
+  /** 1 = prioritásos (sürgős) */
+  priority: number;
   acknowledged_at: string | null;
   done_at: string | null;
   fail_reason: string | null;

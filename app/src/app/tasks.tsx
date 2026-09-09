@@ -3,15 +3,16 @@
 
 import React from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Btn, Sub } from '../ui/kit';
 import { useTable } from '../lib/hooks';
 import { getCurrentUserId } from '../lib/repo';
 import { WorkerTaskList } from '../components/WorkerTaskList';
-import { TaskBoard } from '../components/TaskBoard';
+import { TaskBoard, BoardFilter } from '../components/TaskBoard';
 import { WorkerTask, TaskAssignee, Profile } from '../lib/types';
 
 export default function Tasks() {
+  const { filter } = useLocalSearchParams<{ filter?: string }>();
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
   const profiles = useTable<Profile>('profiles');
@@ -34,7 +35,7 @@ export default function Tasks() {
         <Sub>Szűrj állapotra, helyszínre, emberre — vagy keress.</Sub>
         <Btn title="+ Feladat" kind="secondary" small onPress={() => router.push('/task/new')} />
       </View>
-      <TaskBoard tasks={tasks} includeClosed />
+      <TaskBoard tasks={tasks} includeClosed initialFilter={(filter as BoardFilter) || 'active'} />
     </Screen>
   );
 }

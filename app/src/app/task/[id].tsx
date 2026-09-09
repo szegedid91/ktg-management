@@ -262,6 +262,7 @@ export default function TaskDetail() {
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />
+          {task.priority ? <Badge text="⚡ prioritás" color={C.danger} /> : null}
           {task.quote_requested && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
         </View>
         <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
@@ -277,8 +278,10 @@ export default function TaskDetail() {
             <PhotoThumbs paths={task.photo_paths ?? []}
               onRemoveRemote={!isWorker && active ? (ph) => void removeTaskPhoto(ph) : undefined} />
             {!isWorker && active ? (
-              <View style={{ flexDirection: 'row' }}>
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
+                <Btn title={task.priority ? '⚡ Prioritás levétele' : '⚡ Prioritásos'} kind="ghost" small
+                  onPress={() => updateRow('worker_tasks', task.id, { priority: task.priority ? 0 : 1 })} />
               </View>
             ) : null}
           </View>
