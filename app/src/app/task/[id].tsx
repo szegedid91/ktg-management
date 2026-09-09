@@ -3,7 +3,7 @@
 // munkaidő, kész / nem sikerült indokkal+fotóval, anyagköltség fotóval).
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Linking } from 'react-native';
+import { View, Text, Linking, Pressable } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -18,6 +18,23 @@ import {
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, WorkSession, Worker, Site, Profile,
 } from '../../lib/types';
+
+/** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
+function Section({ title, summary, defaultOpen = false, accent, children }: {
+  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card style={accent ? { borderColor: C.primary } : undefined}>
+      <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+        <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{title}</Text>
+        <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }} numberOfLines={1}>{summary ?? ''}</Text>
+        <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
+      </Pressable>
+      {open ? children : null}
+    </Card>
+  );
+}
 
 const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
@@ -221,17 +238,8 @@ export default function TaskDetail() {
         <Divider />
         <KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} />
         <KV k="Kiadta" v={creator} />
-        <View style={{ gap: 2 }}>
-          <Sub>Kiosztva</Sub>
-          {assignees.map((a) => (
-            <Body key={a.id}>
-              👷 {workerName(a.worker_id)}
-              <Text style={{ color: a.acknowledged_at ? C.success : C.warning }}>
-                {a.acknowledged_at ? `  ✓ elfogadta ${hdt(a.acknowledged_at)}` : '  — még nem fogadta el'}
-              </Text>
-            </Body>
-          ))}
-        </View>
+        <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '—'} />
+        {assignees.some((a) => !a.acknowledged_at) ? <Sub>⏳ = még nem fogadta el · ✓ = elfogadta</Sub> : null}
         {(task.photo_paths ?? []).length > 0 || !isWorker ? (
           <View style={{ gap: 4 }}>
             <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
@@ -261,8 +269,8 @@ export default function TaskDetail() {
       </Card>
 
       {isWorker && !acked ? null : (
-      <Card>
-        <H2>⏱ Munkaidő</H2>
+      <Section title="⏱ Munkaidő" defaultOpen={isWorker}
+        summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
         {timing?.startedAt ? (
           <>
             <KV k="Kezdés" v={hdt(timing.startedAt)} />
@@ -285,7 +293,7 @@ export default function TaskDetail() {
             ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
             : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
         ) : null}
-      </Card>
+      </Section>
       )}
 
       {/* ---------- ajánlat ---------- */}
@@ -350,8 +358,8 @@ export default function TaskDetail() {
 
       {/* ---------- anyagköltségek ---------- */}
       {isWorker && !acked ? null : (
-      <Card>
-        <H2>📦 Anyagköltségek</H2>
+      <Section title="📦 Anyagköltség" defaultOpen={isWorker || mat.unpriced.length > 0}
+        summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {materials.length === 0 ? <Sub>Nincs rögzített anyagköltség.</Sub> : null}
         {materials.map((m) => (
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
@@ -400,13 +408,13 @@ export default function TaskDetail() {
             </View>
           )
         ) : null}
-      </Card>
+      </Section>
       )}
 
       {/* ---------- partner: pénzügy ---------- */}
       {!isWorker && wage ? (
-        <Card style={{ borderColor: C.primary }}>
-          <H2>💰 Bér, számlázás, haszon</H2>
+        <Section title="💰 Pénzügy" accent defaultOpen={finance?.invoice_net == null}
+          summary={profit == null ? `bér ${ft(wage.total)} · nincs kiszámlázott érték` : `haszon ${ft(profit)}`}>
           {task.quote_amount != null && task.quote_accepted_at ? (
             <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wage.total)} strong />
           ) : (
@@ -441,7 +449,7 @@ export default function TaskDetail() {
           </View>
           <Sub>Haszon = kiszámlázott + továbbszámlázott anyag − bérköltség − anyag beszerzési ára.</Sub>
           {active ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
-        </Card>
+        </Section>
       ) : null}
     </Screen>
   );
