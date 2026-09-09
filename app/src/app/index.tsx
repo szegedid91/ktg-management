@@ -14,7 +14,7 @@ import {
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
 import { isActiveTask } from '../lib/tasks';
-import { TaskTile } from '../components/TaskTile';
+import { TaskBoard } from '../components/TaskBoard';
 import { WorkerHome } from '../components/WorkerHome';
 import { useAuth } from '../lib/auth';
 
@@ -201,19 +201,14 @@ function DashboardInner() {
           <H2>🛠️ Aktív feladatok ({activeTasks.length})</H2>
           <Btn title="+ Új feladat" small kind="secondary" onPress={() => router.push('/task/new')} />
         </View>
-        {activeTasks.length === 0 ? <Sub>Nincs kiadott, folyamatban lévő feladat.</Sub> : null}
-        {activeTasks.map((t) => (
-          <TaskTile key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
-            materials={materials.filter((m) => m.task_id === t.id)} pricing={pricing} workers={workers} profiles={profiles} sites={sites}
-            running={runningTaskIds.has(t.id)} />
-        ))}
+        {activeTasks.length === 0 ? <Sub>Nincs kiadott, folyamatban lévő feladat.</Sub> : <TaskBoard tasks={activeTasks} />}
       </View>
 
       {unpricedMaterials.length > 0 ? (
         <Card style={{ borderColor: C.accent, backgroundColor: C.warnBg }}>
           <H2>📦 Beárazandó anyagköltségek ({unpricedMaterials.length})</H2>
           <Sub>A munkavállalók rögzítették, de még nincs megadva, mennyiért számlázod tovább.</Sub>
-          {unpricedMaterials.map((m) => {
+          {unpricedMaterials.slice(0, 8).map((m) => {
             const t = tasks.find((x) => x.id === m.task_id);
             return (
               <Pressable key={m.id} onPress={() => router.push(`/task/${m.task_id}`)}
@@ -225,6 +220,7 @@ function DashboardInner() {
               </Pressable>
             );
           })}
+          {unpricedMaterials.length > 8 ? <Btn title={`Mind a ${unpricedMaterials.length} megnézése`} kind="ghost" small onPress={() => router.push('/tasks')} /> : null}
         </Card>
       ) : null}
 

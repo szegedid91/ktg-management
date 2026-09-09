@@ -8,6 +8,7 @@ import { Screen, Btn, Sub } from '../ui/kit';
 import { useTable } from '../lib/hooks';
 import { getCurrentUserId } from '../lib/repo';
 import { TaskGroups } from '../components/TaskGroups';
+import { TaskBoard } from '../components/TaskBoard';
 import { WorkerTask, TaskAssignee, Profile } from '../lib/types';
 
 export default function Tasks() {
@@ -30,10 +31,10 @@ export default function Tasks() {
   return (
     <Screen>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Sub>Aktív feladatok helyszín szerint, alul a lezártak.</Sub>
+        <Sub>Szűrj állapotra, helyszínre, emberre — vagy keress.</Sub>
         <Btn title="+ Feladat" kind="secondary" small onPress={() => router.push('/task/new')} />
       </View>
-      <TaskGroups tasks={tasks} mode="site" />
+      <TaskBoard tasks={tasks} includeClosed />
     </Screen>
   );
 }
