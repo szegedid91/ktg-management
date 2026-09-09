@@ -112,6 +112,19 @@ async function pushOutbox(): Promise<boolean> {
   return true;
 }
 
+/** A profiloknak nincs „törölve” jelölése: a Supabase-ben törölt fiók sora
+ *  egyszerűen eltűnik, amiről a növekményes lehúzás nem értesül. Ezért a
+ *  profilokat minden körben összevetjük a szerver teljes listájával, és ami
+ *  ott már nincs, azt helyben is töröljük (a tábla kicsi, ez olcsó). */
+async function reconcileProfiles(): Promise<void> {
+  const { data, error } = await supabase.from('profiles').select('id');
+  if (error || !data) return;
+  const alive = new Set(data.map((r: any) => String(r.id)));
+  for (const row of store.getAll('profiles') as any[]) {
+    if (!alive.has(String(row.id))) store.removeLocal('profiles', String(row.id));
+  }
+}
+
 async function pullTable(table: SyncTable): Promise<void> {
   const cursor = store.getCursor(table);
   const page = 1000;
@@ -152,6 +165,7 @@ export async function syncNow(): Promise<void> {
     if (pushed) {
       for (const table of SYNC_TABLES) {
         await pullTable(table);
+        if (table === 'profiles') await reconcileProfiles();
       }
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
