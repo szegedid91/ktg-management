@@ -86,7 +86,7 @@ export default function TaskDetail() {
   const [matOpen, setMatOpen] = useState(false);
   const [matAmount, setMatAmount] = useState('');
   const [matNote, setMatNote] = useState('');
-  const [matPhoto, setMatPhoto] = useState<PickedPhoto | null>(null);
+  const [matPhotos, setMatPhotos] = useState<PickedPhoto[]>([]);
   const [busy, setBusy] = useState(false);
 
   if (!task) return <Screen><Empty text="Feladat nem található (szinkronizálás folyamatban?)" /></Screen>;
@@ -117,7 +117,7 @@ export default function TaskDetail() {
       { table: 'task_assignees', id: myAssignment.id, patch: { acknowledged_at: nowISO() } },
       ...(othersPending || task.status !== 'assigned' ? [] : [{ table: 'worker_tasks' as const, id: task.id, patch: { status: 'acknowledged', acknowledged_at: nowISO() } }]),
     ]);
-    notify('Feladat elfogadva ✅', 'A kiadó értesítést kap, hogy elfogadtad a feladatot.');
+    notify('Feladat elfogadva ✅', 'Mostantól indíthatod rajta a munkaidőt.');
   };
 
   const sendQuote = () => {
@@ -127,7 +127,7 @@ export default function TaskDetail() {
       { table: 'worker_tasks', id: task.id, patch: { quote_amount: amount, quote_note: quoteNote.trim() || null, quote_submitted_at: nowISO(), quote_accepted_at: null } },
     ]);
     setQuoteAmount(''); setQuoteNote('');
-    notify('Ajánlat elküldve 💬', 'A fő felhasználó értesítést kap; elfogadás után jelez.');
+    notify('Ajánlat elküldve 💬', 'Elfogadás után az appban látod.');
   };
 
   const startWork = () => {
@@ -138,7 +138,7 @@ export default function TaskDetail() {
   };
 
   const markDone = async () => {
-    if (!await confirmDialog('Feladat kész', 'Jelzed a kiadónak, hogy elkészültél a feladattal?', 'Kész ✔')) return;
+    if (!await confirmDialog('Feladat kész', 'Késznek jelölöd a feladatot?', 'Kész ✔')) return;
     if (openSession) stopWork();
     queueRpc('worker_task_action', { p_id: task.id, p_action: 'done' }, [
       { table: 'worker_tasks', id: task.id, patch: { status: 'done', done_at: nowISO() } },
@@ -165,13 +165,14 @@ export default function TaskDetail() {
   const submitMaterial = async () => {
     const amount = parseAmount(matAmount);
     if (amount <= 0) { notify('Hiba', 'Adj meg összeget.'); return; }
-    if (!matPhoto) { notify('Fotó kötelező', 'Anyagköltséghez a számla/blokk fotója kötelező.'); return; }
+    if (matPhotos.length === 0) { notify('Fotó kötelező', 'Anyagköltséghez a számla/blokk fotója kötelező.'); return; }
     setBusy(true);
     try {
-      const path = await uploadTaskPhoto(matPhoto.base64, `${task.id}/material`);
-      insertRow('task_materials', { task_id: task.id, worker_id: myWorkerId, amount, note: matNote.trim() || null, photo_path: path });
-      setMatOpen(false); setMatAmount(''); setMatNote(''); setMatPhoto(null);
-      notify('Anyagköltség rögzítve 📦', 'A fő felhasználók értesítést kapnak róla.');
+      const paths: string[] = [];
+      for (const ph of matPhotos) paths.push(await uploadTaskPhoto(ph.base64, `${task.id}/material`));
+      insertRow('task_materials', { task_id: task.id, worker_id: myWorkerId, amount, note: matNote.trim() || null, photo_path: paths[0], photo_paths: paths });
+      setMatOpen(false); setMatAmount(''); setMatNote(''); setMatPhotos([]);
+      notify('Anyagköltség rögzítve 📦', `${ft(amount)} · ${paths.length} fotóval.`);
     } catch {
       notify('Hiba', 'A fotó feltöltéséhez internet kell — próbáld újra kapcsolattal.');
     } finally {
@@ -229,7 +230,7 @@ export default function TaskDetail() {
   const pick = async (fromCamera: boolean, target: 'fail' | 'mat') => {
     const p = await pickPhoto(fromCamera);
     if (!p) return;
-    if (target === 'fail') setFailPhotos((ps) => [...ps, p]); else setMatPhoto(p);
+    if (target === 'fail') setFailPhotos((ps) => [...ps, p]); else setMatPhotos((ps) => [...ps, p]);
   };
 
   return (
@@ -362,7 +363,7 @@ export default function TaskDetail() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
             </View>
-            <PhotoThumbs paths={[m.photo_path]} />
+            <PhotoThumbs paths={m.photo_paths?.length ? m.photo_paths : [m.photo_path]} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {!isWorker ? (
               mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
@@ -396,10 +397,10 @@ export default function TaskDetail() {
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>
               </View>
-              {matPhoto ? <PhotoThumbs local={[matPhoto]} onRemoveLocal={() => setMatPhoto(null)} /> : <Sub style={{ color: C.warning }}>még nincs fotó</Sub>}
+              {matPhotos.length ? <PhotoThumbs local={matPhotos} onRemoveLocal={(i) => setMatPhotos((ps) => ps.filter((_, j) => j !== i))} /> : <Sub style={{ color: C.warning }}>még nincs fotó (több is csatolható)</Sub>}
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setMatOpen(false)} /></View>
-                <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || !matPhoto} /></View>
+                <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || matPhotos.length === 0} /></View>
               </View>
             </View>
           )

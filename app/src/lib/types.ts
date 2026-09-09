@@ -312,6 +312,8 @@ export interface TaskMaterial extends BaseRow {
   amount: number;
   note: string | null;
   photo_path: string;
+  /** több fotó; az első = photo_path */
+  photo_paths: string[];
 }
 
 /** Feladat pénzügye — csak a fő felhasználók látják (a munkavállaló nem) */
