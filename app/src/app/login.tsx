@@ -28,14 +28,20 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Gyors belépés: ezen az eszközön elmentett fiókok (teszteléshez) —
-  // a jelszó csak a készülék tárolójában van, a kódba nem kerül.
-  const [quick, setQuick] = useState<{ email: string; password: string }[]>([]);
+  // Gyors belépés: ezen az eszközön megjegyzett e-mail címek — jelszót
+  // SOHA nem tárolunk, azt minden belépéskor be kell írni.
+  const [quick, setQuick] = useState<{ email: string }[]>([]);
   const [remember, setRemember] = useState(false);
   useEffect(() => {
-    AsyncStorage.getItem(QUICK_KEY).then((raw) => { if (raw) setQuick(JSON.parse(raw)); }).catch(() => {});
+    AsyncStorage.getItem(QUICK_KEY).then((raw) => {
+      if (!raw) return;
+      // korábbi verzió jelszót is mentett: azt itt eldobjuk, csak az e-mail marad
+      const list = (JSON.parse(raw) as any[]).map((q) => ({ email: String(q.email) }));
+      setQuick(list);
+      AsyncStorage.setItem(QUICK_KEY, JSON.stringify(list)).catch(() => {});
+    }).catch(() => {});
   }, []);
-  const saveQuick = async (list: { email: string; password: string }[]) => {
+  const saveQuick = async (list: { email: string }[]) => {
     setQuick(list);
     try { await AsyncStorage.setItem(QUICK_KEY, JSON.stringify(list)); } catch { /* tárolóhiba */ }
   };
@@ -49,18 +55,16 @@ export default function Login() {
     setBusy(false);
     if (err) { setError(err); return; }
     if (remember && email.trim()) {
-      await saveQuick([...quick.filter((q) => q.email !== email.trim()), { email: email.trim(), password }]);
+      await saveQuick([...quick.filter((q) => q.email !== email.trim()), { email: email.trim() }]);
     }
     router.replace('/');
   };
 
-  const quickLoginSaved = async (q: { email: string; password: string }) => {
-    setBusy(true);
+  // a mentett fiók csak az e-mailt tölti ki; a jelszót be kell írni
+  const pickSaved = (q: { email: string }) => {
+    setEmail(q.email);
+    setPassword('');
     setError(null);
-    const err = await signIn(q.email, q.password);
-    setBusy(false);
-    if (err) setError(`${q.email}: ${err}`);
-    else router.replace('/');
   };
 
   /** Elfelejtett jelszó: visszaállító link küldése e-mailben */
@@ -112,7 +116,7 @@ export default function Login() {
               right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
           {mode === 'login' ? (
             <Check checked={remember} onToggle={() => setRemember(!remember)}
-              label="Mentés gyors belépésként ezen az eszközön" sub="Egy gombbal lépsz be vele legközelebb (teszteléshez)" />
+              label="E-mail cím megjegyzése ezen az eszközön" sub="A jelszót nem tároljuk — azt mindig be kell írni." />
           ) : null}
           {error ? <Text style={{ color: C.danger, fontSize: 13 }}>{error}</Text> : null}
           <Btn
@@ -133,11 +137,11 @@ export default function Login() {
 
         {quick.length > 0 ? (
           <Card style={{ borderColor: C.primary }}>
-            <Sub>⚡ Gyors belépés (ezen az eszközön mentett fiókok)</Sub>
+            <Sub>⚡ Megjegyzett fiókok — koppints, majd írd be a jelszót</Sub>
             {quick.map((q) => (
               <View key={q.email} style={{ flexDirection: 'row', gap: S.sm, alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Btn title={`👤 ${q.email}`} kind="secondary" disabled={busy} onPress={() => void quickLoginSaved(q)} />
+                  <Btn title={`👤 ${q.email}`} kind="secondary" disabled={busy} onPress={() => pickSaved(q)} />
                 </View>
                 <Btn title="✕" kind="ghost" small disabled={busy}
                   onPress={() => void saveQuick(quick.filter((x) => x.email !== q.email))} />
