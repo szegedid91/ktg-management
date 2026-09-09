@@ -11,7 +11,7 @@ import { useTable, useRow } from '../../lib/hooks';
 import { getCurrentUserId, insertRow, updateRow, queueRpc } from '../../lib/repo';
 import { ft, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
-import { pickPhoto, uploadTaskPhoto, taskPhotoUrl, PickedPhoto } from '../../lib/photo';
+import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import {
@@ -228,9 +228,9 @@ export default function TaskDetail() {
   };
 
   const pick = async (fromCamera: boolean, target: 'fail' | 'mat') => {
-    const p = await pickPhoto(fromCamera);
-    if (!p) return;
-    if (target === 'fail') setFailPhotos((ps) => [...ps, p]); else setMatPhotos((ps) => [...ps, p]);
+    const list = await pickPhotos(fromCamera);
+    if (list.length === 0) return;
+    if (target === 'fail') setFailPhotos((ps) => [...ps, ...list]); else setMatPhotos((ps) => [...ps, ...list]);
   };
 
   return (
@@ -392,7 +392,7 @@ export default function TaskDetail() {
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />
               <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó 2 zsák" />
-              <Sub>Számla / blokk fotója kötelező:</Sub>
+              <Sub>Számla / blokk fotója kötelező — több kép is csatolható egy tételhez (a galériában egyszerre több is kijelölhető):</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>

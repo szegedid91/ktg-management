@@ -10,7 +10,7 @@ import { useTable } from '../../lib/hooks';
 import { insertRow, newId } from '../../lib/repo';
 import { parseAmount } from '../../lib/format';
 import { notify } from '../../lib/dialogs';
-import { pickPhoto, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
+import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { Site, Worker } from '../../lib/types';
 import { wname } from '../../lib/tasks';
@@ -31,8 +31,8 @@ export default function NewTask() {
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
 
   const addPhoto = async (fromCamera: boolean) => {
-    const p = await pickPhoto(fromCamera);
-    if (p) setPhotos((ps) => [...ps, p]);
+    const list = await pickPhotos(fromCamera);
+    if (list.length) setPhotos((ps) => [...ps, ...list]);
   };
 
   const toggle = (id: string) => {
