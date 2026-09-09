@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Screen, Card, H2, Sub, Body, Btn, Input, Picker, Empty, Badge } from '../ui/kit';
+import { removeStoragePaths } from '../lib/photo';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, softDeleteRow, getCurrentUserId } from '../lib/repo';
@@ -109,7 +110,7 @@ export default function EquipmentScreen() {
                   {eq.created_by === getCurrentUserId() ? (
                     <Btn title="🗑️ Törlés" kind="ghost" small onPress={() => {
                       void confirmDialog('Eszköz törlése', `Biztosan törlöd? (${eq.name})`, 'Törlés', true).then((ok) => {
-                        if (ok) softDeleteRow('equipment', eq.id);
+                        if (ok) { void removeStoragePaths('equipment', [eq.photo_path]); softDeleteRow('equipment', eq.id); }
                       });
                     }} />
                   ) : null}

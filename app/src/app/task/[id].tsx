@@ -8,10 +8,11 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useRow } from '../../lib/hooks';
-import { getCurrentUserId, insertRow, updateRow, queueRpc } from '../../lib/repo';
+import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow } from '../../lib/repo';
+import { smartBack } from '../../lib/nav';
 import { ft, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
-import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, PickedPhoto } from '../../lib/photo';
+import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import {
@@ -206,6 +207,27 @@ export default function TaskDetail() {
     updateRow('worker_tasks', task.id, { status: 'cancelled' });
   };
 
+  const materialPhotos = (m: TaskMaterial) => (m.photo_paths?.length ? m.photo_paths : m.photo_path ? [m.photo_path] : []);
+
+  const deleteMaterial = async (m: TaskMaterial) => {
+    if (!await confirmDialog('Anyagköltség törlése', `${ft(m.amount)}${m.note ? ` — ${m.note}` : ''}\n\nA hozzá tartozó fotók is törlődnek a tárolóból.`, 'Törlés', true)) return;
+    void removeStoragePaths('tasks', materialPhotos(m));
+    softDeleteRow('task_materials', m.id);
+  };
+
+  const deleteTask = async () => {
+    if (!await confirmDialog('Feladat törlése', 'A feladat és minden hozzá tartozó fotó (kiadott, nem sikerült, anyagköltség) törlődik. Ez nem vonható vissza.', 'Törlés', true)) return;
+    const paths = [
+      ...(task.photo_paths ?? []),
+      ...(task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []),
+      ...materials.flatMap(materialPhotos),
+    ];
+    void removeStoragePaths('tasks', paths);
+    materials.forEach((m) => softDeleteRow('task_materials', m.id));
+    softDeleteRow('worker_tasks', task.id);
+    smartBack();
+  };
+
   const removeTaskPhoto = async (path: string) => {
     if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót a feladatról?', 'Törlés', true)) return;
     updateRow('worker_tasks', task.id, { photo_paths: (task.photo_paths ?? []).filter((p) => p !== path) });
@@ -362,8 +384,9 @@ export default function TaskDetail() {
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
+              {!isWorker ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
-            <PhotoThumbs paths={m.photo_paths?.length ? m.photo_paths : [m.photo_path]} />
+            <PhotoThumbs paths={materialPhotos(m)} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {!isWorker ? (
               mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
@@ -445,7 +468,10 @@ export default function TaskDetail() {
             </Text>
           </View>
           <Sub>Haszon = kiszámlázott + továbbszámlázott anyag − bérköltség − anyag beszerzési ára.</Sub>
-          {active ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            {active ? <View style={{ flex: 1 }}><Btn title="Visszavonás" kind="ghost" small onPress={() => void cancelTask()} /></View> : null}
+            <View style={{ flex: 1 }}><Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} /></View>
+          </View>
         </Section>
       ) : null}
     </Screen>

@@ -8,6 +8,7 @@ import { useRow, useTable } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
+import { removeStoragePaths } from '../../lib/photo';
 import { Expense, ExpensePhoto, Site, ExpenseCategory, Profile } from '../../lib/types';
 import { Comments } from '../../components/Comments';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
@@ -101,7 +102,11 @@ export default function ExpenseDetail() {
               <View style={{ flex: 1 }}>
                 <Btn title="Törlés" kind="danger" small onPress={() => {
                   void confirmDialog('Törlés', 'Biztosan törlöd ezt a költséget?', 'Törlés', true).then((ok) => {
-                    if (ok) { softDeleteRow('expenses', expense.id); smartBack(); }
+                    if (ok) {
+                      void removeStoragePaths('receipts', photos.map((p) => p.storage_path));
+                      photos.forEach((p) => softDeleteRow('expense_photos', p.id));
+                      softDeleteRow('expenses', expense.id); smartBack();
+                    }
                   });
                 }} />
               </View>

@@ -34,3 +34,11 @@ export async function taskPhotoUrl(path: string): Promise<string | null> {
   const { data } = await supabase.storage.from('tasks').createSignedUrl(path, 3600);
   return data?.signedUrl ?? null;
 }
+
+/** Fájlok törlése a tárolóból — a tétel törlésekor hívjuk; hiba esetén
+ *  (offline, jog) csendben továbbmegy, a rekord törlése attól még megtörténik. */
+export async function removeStoragePaths(bucket: 'tasks' | 'receipts' | 'equipment', paths: (string | null | undefined)[]): Promise<void> {
+  const list = paths.filter((p): p is string => !!p);
+  if (list.length === 0) return;
+  try { await supabase.storage.from(bucket).remove(list); } catch { /* best effort */ }
+}
