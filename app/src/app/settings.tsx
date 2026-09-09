@@ -10,6 +10,7 @@ import { parseAmount, hd } from '../lib/format';
 import { AppSettings, Profile, ExpenseCategory, ShareChangeRequest } from '../lib/types';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { PercentSlider } from '../components/PercentSlider';
+import { PartnerAccountCard } from '../components/PartnerAccountCard';
 
 function RateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
@@ -164,6 +165,7 @@ export default function Settings() {
 
   return (
     <Screen>
+      <PartnerAccountCard />
       <Card>
         <H2>🌗 Megjelenés</H2>
         <Segmented
