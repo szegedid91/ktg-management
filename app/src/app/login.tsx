@@ -84,18 +84,14 @@ export default function Login() {
     else notify('Levél elküldve 📧', `Jelszó-visszaállító linket küldtünk ide: ${em}\n\nKattints a levélben lévő linkre, és add meg az új jelszavad.`);
   };
 
-  /** Fejlesztői gyors-belépés: ha a tesztfiók még nincs, létrehozza. */
-  const quickLogin = async (qEmail: string, qName: string) => {
+  /** Fejlesztői gyors-belépés — CSAK helyi fejlesztésben (__DEV__), a
+   *  seed.sql tesztfiókjaival. Élesben nem létezik. */
+  const quickLogin = async (qEmail: string) => {
     setBusy(true);
     setError(null);
-    const pw = 'teszt1234';
-    let err = await signIn(qEmail, pw);
-    if (err) {
-      err = await signUp(qEmail, pw, qName);
-      if (!err) err = await signIn(qEmail, pw);
-    }
+    const err = await signIn(qEmail, 'teszt1234');
     setBusy(false);
-    if (err) setError(err);
+    if (err) setError(`${qEmail}: ${err} — fut a helyi Supabase (supabase start + db reset)?`);
     else router.replace('/');
   };
 
@@ -152,15 +148,19 @@ export default function Login() {
 
         {__DEV__ ? (
           <Card style={{ borderColor: C.accent }}>
-            <Sub>🧪 Teszt-belépés (csak fejlesztői módban látszik)</Sub>
-            <View style={{ flexDirection: 'row', gap: S.md }}>
-              <View style={{ flex: 1 }}>
-                <Btn title="👤 Dani" kind="secondary" disabled={busy}
-                  onPress={() => void quickLogin('dani@teszt.hu', 'Dani')} />
+            <Sub>🧪 Teszt-belépés egy kattintással (csak helyi fejlesztésben látszik; jelszó: teszt1234)</Sub>
+            <View style={{ flexDirection: 'row', gap: S.sm, flexWrap: 'wrap' }}>
+              <View style={{ flex: 1, minWidth: 120 }}>
+                <Btn title="👑 Admin" kind="secondary" disabled={busy} onPress={() => void quickLogin('admin@teszt.hu')} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Btn title="👤 Anna" kind="secondary" disabled={busy}
-                  onPress={() => void quickLogin('anna@teszt.hu', 'Anna')} />
+              <View style={{ flex: 1, minWidth: 120 }}>
+                <Btn title="👤 Dani (partner)" kind="secondary" disabled={busy} onPress={() => void quickLogin('dani@teszt.hu')} />
+              </View>
+              <View style={{ flex: 1, minWidth: 120 }}>
+                <Btn title="👤 Anna (partner)" kind="secondary" disabled={busy} onPress={() => void quickLogin('anna@teszt.hu')} />
+              </View>
+              <View style={{ flex: 1, minWidth: 120 }}>
+                <Btn title="👷 Marci (munkavállaló)" kind="secondary" disabled={busy} onPress={() => void quickLogin('marci@teszt.hu')} />
               </View>
             </View>
           </Card>
