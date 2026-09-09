@@ -8,7 +8,7 @@ import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt } from '../lib/format';
 import { isActiveTask, fmtHours, sessionHours, wname } from '../lib/tasks';
-import { TaskTile } from './TaskTile';
+import { WorkerTaskList } from './WorkerTaskList';
 import {
   Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Site, Attendance,
 } from '../lib/types';
@@ -66,26 +66,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
 
       <View style={{ gap: S.sm }}>
         <H2>🛠️ Feladataim ({active.length})</H2>
-        {active.length === 0 ? <Empty text="Nincs aktív feladatod." /> : null}
-        {active.map((t) => (
-          <TaskTile key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
-            materials={materials.filter((m) => m.task_id === t.id)} workers={workers} profiles={profiles} sites={sites}
-            running={!!openSession && openSession.task_id === t.id} />
-        ))}
-        {active.some((t) => t.status === 'assigned') ? (
-          <Sub style={{ color: C.warning }}>⚠️ Van el nem fogadott feladatod — nyisd meg, és fogadd el.</Sub>
-        ) : null}
+        <WorkerTaskList tasks={myTasks} showClosed={closed.length > 0} />
       </View>
-
-      {closed.length > 0 ? (
-        <View style={{ gap: S.sm }}>
-          <H2>Lezárt feladatok</H2>
-          {closed.map((t) => (
-            <TaskTile key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
-              materials={materials.filter((m) => m.task_id === t.id)} workers={workers} profiles={profiles} sites={sites} />
-          ))}
-        </View>
-      ) : null}
 
       <Card>
         <H2>📅 Napjaim</H2>

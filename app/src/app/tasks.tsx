@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { Screen, Btn, Sub } from '../ui/kit';
 import { useTable } from '../lib/hooks';
 import { getCurrentUserId } from '../lib/repo';
-import { TaskGroups } from '../components/TaskGroups';
+import { WorkerTaskList } from '../components/WorkerTaskList';
 import { TaskBoard } from '../components/TaskBoard';
 import { WorkerTask, TaskAssignee, Profile } from '../lib/types';
 
@@ -22,8 +22,8 @@ export default function Tasks() {
     const mine = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === myWorkerId));
     return (
       <Screen>
-        <Sub>A neked kiadott feladatok, állapot szerint.</Sub>
-        <TaskGroups tasks={mine} mode="status" />
+        <Sub>A neked kiadott feladatok.</Sub>
+        <WorkerTaskList tasks={mine} showClosed />
       </Screen>
     );
   }
