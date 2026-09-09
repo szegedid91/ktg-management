@@ -22,8 +22,8 @@ export default function Tasks() {
     const mine = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === myWorkerId));
     return (
       <Screen>
-        <Sub>A neked kiadott feladatok.</Sub>
-        <WorkerTaskList tasks={mine} showClosed />
+        <Sub>A folyamatban lévő feladataid — az elfogadásra várók a kezdőlapon.</Sub>
+        <WorkerTaskList tasks={mine} showClosed initialFilter="acknowledged" />
       </Screen>
     );
   }

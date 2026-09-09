@@ -24,13 +24,13 @@ function Chip({ label, count, color, on, onPress }: { label: string; count?: num
   );
 }
 
-export function WorkerTaskList({ tasks, showClosed = false }: { tasks: WorkerTask[]; showClosed?: boolean }) {
+export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null }: { tasks: WorkerTask[]; showClosed?: boolean; initialFilter?: Filter | null }) {
   const assignees = useTable<TaskAssignee>('task_assignees');
   const materials = useTable<TaskMaterial>('task_materials');
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
-  const [filter, setFilter] = useState<Filter | null>(null);
+  const [filter, setFilter] = useState<Filter | null>(initialFilter);
   const [siteId, setSiteId] = useState<string | null>(null);
 
   const running = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));

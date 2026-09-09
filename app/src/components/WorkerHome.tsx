@@ -9,9 +9,10 @@ import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt } from '../lib/format';
 import { isActiveTask, fmtHours, sessionHours, wname } from '../lib/tasks';
-import { WorkerTaskList } from './WorkerTaskList';
+import { TaskRow } from './TaskRow';
+import { router } from 'expo-router';
 import {
-  Profile, Worker, WorkerTask, TaskAssignee, WorkSession, Site, Attendance,
+  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Site, Attendance,
 } from '../lib/types';
 
 export function WorkerHome({ profile }: { profile: Profile }) {
@@ -20,15 +21,25 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const sites = useTable<Site>('sites');
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
+  const materials = useTable<TaskMaterial>('task_materials');
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === wid);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.worker_id === wid);
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
+  const [closedOpen, setClosedOpen] = useState(false);
+  const [closedLimit, setClosedLimit] = useState(10);
 
   const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid).map((a) => a.task_id));
   const myTasks = tasks.filter((t) => myTaskIds.has(t.id));
   const active = myTasks.filter(isActiveTask);
-  const hasClosed = myTasks.some((t) => !isActiveTask(t));
+  const pending = active.filter((t) => t.status === 'assigned').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const inProgress = active.filter((t) => t.status === 'acknowledged');
+  const closedTasks = myTasks.filter((t) => !isActiveTask(t)).sort((a, b) => (b.done_at ?? b.updated_at).localeCompare(a.done_at ?? a.updated_at));
+  const runningIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
+  const row = (t: WorkerTask) => (
+    <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
+      materials={materials.filter((m) => m.task_id === t.id)} workers={workers} sites={sites} running={runningIds.has(t.id)} />
+  );
   const openSession = sessions.find((s) => !s.ended_at);
   // munkaidő csak akkor, ha van legalább egy elfogadott, futó feladata
   // (vagy épp nyitott munkamenete, amit be kell tudnia fejezni)
@@ -68,9 +79,32 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       ) : null}
 
       <View style={{ gap: S.sm }}>
-        <H2>🛠️ Feladataim ({active.length})</H2>
-        <WorkerTaskList tasks={myTasks} showClosed={hasClosed} />
+        <H2>⏳ Elfogadásra váró feladatok ({pending.length})</H2>
+        {pending.length === 0 ? <Sub>Nincs elfogadásra váró feladatod.</Sub> : null}
+        <View style={{ gap: 6 }}>{pending.map(row)}</View>
+        {pending.length > 0 ? <Sub style={{ color: C.warning }}>Nyisd meg, és fogadd el — utána a Feladatok fülön folytatod.</Sub> : null}
+        <Pressable onPress={() => router.navigate('/tasks')}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1, borderColor: C.border, padding: S.md }}>
+          <Text style={{ fontWeight: '700', color: C.text, flex: 1 }}>🔧 Folyamatban lévő feladataim ({inProgress.length})</Text>
+          <Text style={{ color: C.sub }}>Feladatok ›</Text>
+        </Pressable>
       </View>
+
+      {closedTasks.length > 0 ? (
+        <Card style={{ paddingVertical: S.sm }}>
+          <Pressable onPress={() => setClosedOpen(!closedOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+            <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>✔️ Lezárt feladatok</Text>
+            <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }}>{closedTasks.length} db</Text>
+            <Text style={{ color: C.sub, fontSize: 16 }}>{closedOpen ? '▾' : '▸'}</Text>
+          </Pressable>
+          {closedOpen ? (
+            <View style={{ gap: 6, paddingTop: 4 }}>
+              {closedTasks.slice(0, closedLimit).map(row)}
+              {closedTasks.length > closedLimit ? <Btn title={`Több (${closedTasks.length - closedLimit})`} kind="ghost" small onPress={() => setClosedLimit(closedLimit + 30)} /> : null}
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card style={{ paddingVertical: S.sm }}>
         <Pressable onPress={() => setDaysOpen(!daysOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
