@@ -8,6 +8,9 @@ import { syncNow } from '../lib/sync';
 import { hdt } from '../lib/format';
 import { APP_VERSION } from '../lib/version';
 import { notify, confirmDialog } from '../lib/dialogs';
+import { useTable } from '../lib/hooks';
+import { Profile } from '../lib/types';
+import { WorkerAccountCard } from '../components/WorkerAccountCard';
 
 const ITEMS: { label: string; icon: string; href: string }[] = [
   { label: 'Munkavállalók', icon: '👷', href: '/workers' },
@@ -22,10 +25,13 @@ const ITEMS: { label: string; icon: string; href: string }[] = [
 export default function More() {
   const { session, signOut } = useAuth();
   const sync = useSyncStatus();
+  // munkavállalói fiók: nincs Beállítások/menü — csak a saját alapadatok
+  const isWorker = !!useTable<Profile>('profiles').find((p) => p.id === session?.user.id)?.worker_id;
 
   return (
     <Screen>
-      {ITEMS.map((i) => (
+      {isWorker ? <WorkerAccountCard /> : null}
+      {(isWorker ? [] : ITEMS).map((i) => (
         <Row key={i.href} onPress={() => router.push(i.href as any)}>
           <Text style={{ fontSize: 20 }}>{i.icon}</Text>
           <Body style={{ fontWeight: '600', flex: 1 }}>{i.label}</Body>
