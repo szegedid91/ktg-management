@@ -11,6 +11,7 @@ import { insertRow, newId } from '../../lib/repo';
 import { parseAmount } from '../../lib/format';
 import { notify } from '../../lib/dialogs';
 import { pickPhoto, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
+import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { Site, Worker } from '../../lib/types';
 import { wname } from '../../lib/tasks';
 
@@ -91,12 +92,7 @@ export default function NewTask() {
           <View style={{ flex: 1 }}><Btn title="📷 Fotózás" kind="ghost" small onPress={() => void addPhoto(true)} /></View>
           <View style={{ flex: 1 }}><Btn title="🖼 Galériából" kind="ghost" small onPress={() => void addPhoto(false)} /></View>
         </View>
-        {photos.length > 0 ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Sub>✓ {photos.length} fotó csatolva</Sub>
-            <Btn title="Törlés" kind="ghost" small onPress={() => setPhotos([])} />
-          </View>
-        ) : null}
+        <PhotoThumbs local={photos} onRemoveLocal={(i) => setPhotos((ps) => ps.filter((_, j) => j !== i))} />
       </Card>
 
       <Card>

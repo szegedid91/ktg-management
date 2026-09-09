@@ -12,6 +12,8 @@ import { getCurrentUserId, insertRow, updateRow, queueRpc } from '../../lib/repo
 import { ft, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, uploadTaskPhoto, taskPhotoUrl, PickedPhoto } from '../../lib/photo';
+import { PhotoThumbs } from '../../components/PhotoThumbs';
+import { supabase } from '../../lib/supabase';
 import {
   TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, wname,
 } from '../../lib/tasks';
@@ -203,6 +205,12 @@ export default function TaskDetail() {
     updateRow('worker_tasks', task.id, { status: 'cancelled' });
   };
 
+  const removeTaskPhoto = async (path: string) => {
+    if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót a feladatról?', 'Törlés', true)) return;
+    updateRow('worker_tasks', task.id, { photo_paths: (task.photo_paths ?? []).filter((p) => p !== path) });
+    supabase.storage.from('tasks').remove([path]).catch(() => {});
+  };
+
   const addTaskPhoto = async () => {
     const fromCamera = await confirmDialog('Fotó csatolása', 'Honnan?', 'Kamera');
     const p = await pickPhoto(fromCamera);
@@ -243,27 +251,20 @@ export default function TaskDetail() {
         {(task.photo_paths ?? []).length > 0 || !isWorker ? (
           <View style={{ gap: 4 }}>
             <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-              {(task.photo_paths ?? []).map((ph, i) => (
-                <Btn key={ph} title={`Fotó ${i + 1}`} kind="ghost" small onPress={() => void openPhoto(ph)} />
-              ))}
-              {!isWorker && active ? (
+            <PhotoThumbs paths={task.photo_paths ?? []}
+              onRemoveRemote={!isWorker && active ? (ph) => void removeTaskPhoto(ph) : undefined} />
+            {!isWorker && active ? (
+              <View style={{ flexDirection: 'row' }}>
                 <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
-              ) : null}
-            </View>
+              </View>
+            ) : null}
           </View>
         ) : null}
         {task.fail_reason ? (
           <View style={{ backgroundColor: C.dangerBg, padding: S.md, borderRadius: 8, gap: 4 }}>
             <Body style={{ fontWeight: '700', color: C.danger }}>⚠️ Nem sikerült — indok:</Body>
             <Body>{task.fail_reason}</Body>
-            {(task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []).length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-                {(task.fail_photo_paths?.length ? task.fail_photo_paths : [task.fail_photo_path!]).map((ph, i) => (
-                  <Btn key={ph} title={`📷 Fotó ${i + 1}`} kind="ghost" small onPress={() => void openPhoto(ph)} />
-                ))}
-              </View>
-            ) : null}
+            <PhotoThumbs paths={task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []} />
           </View>
         ) : null}
       </Card>
@@ -339,12 +340,7 @@ export default function TaskDetail() {
                     <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'fail')} /></View>
                     <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'fail')} /></View>
                   </View>
-                  {failPhotos.length > 0 ? (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Sub>✓ {failPhotos.length} fotó csatolva</Sub>
-                      <Btn title="Törlés" kind="ghost" small onPress={() => setFailPhotos([])} />
-                    </View>
-                  ) : null}
+                  <PhotoThumbs local={failPhotos} onRemoveLocal={(i) => setFailPhotos((ps) => ps.filter((_, j) => j !== i))} />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setFailOpen(false)} /></View>
                     <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Küldés'} kind="danger" onPress={() => void submitFail()} disabled={busy || failReason.trim().length < 3} /></View>
@@ -365,8 +361,8 @@ export default function TaskDetail() {
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
-              <Btn title="📷" kind="ghost" small onPress={() => void openPhoto(m.photo_path)} />
             </View>
+            <PhotoThumbs paths={[m.photo_path]} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {!isWorker ? (
               mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
@@ -400,7 +396,7 @@ export default function TaskDetail() {
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>
               </View>
-              {matPhoto ? <Sub>✓ fotó csatolva</Sub> : <Sub style={{ color: C.warning }}>még nincs fotó</Sub>}
+              {matPhoto ? <PhotoThumbs local={[matPhoto]} onRemoveLocal={() => setMatPhoto(null)} /> : <Sub style={{ color: C.warning }}>még nincs fotó</Sub>}
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setMatOpen(false)} /></View>
                 <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || !matPhoto} /></View>
