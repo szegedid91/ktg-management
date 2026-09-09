@@ -1,9 +1,9 @@
 // Értesítések: olvasatlanok kiemelve; koppintásra a tételre ugrik és
 // olvasottnak jelöl; „Mind olvasott” gomb.
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Sub, Empty } from '../ui/kit';
+import { Screen, Sub, Btn, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { updateRow } from '../lib/repo';
@@ -25,31 +25,24 @@ function targetOf(n: AppNotification): string | null {
 }
 
 export default function Notifications() {
-  const all = [...useTable<AppNotification>('notification_queue')]
+  // csak az olvasatlanok látszanak; koppintásra olvasott lesz és eltűnik
+  const notes = [...useTable<AppNotification>('notification_queue')]
+    .filter((n) => !n.read_at)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  // Megnyitáskor minden olvasatlan azonnal olvasott lesz (a harang jelvénye
-  // eltűnik), de ebben a megnyitásban még látszanak; a korábban olvasottak nem.
-  const shown = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    const now = new Date().toISOString();
-    for (const n of all) {
-      if (!n.read_at) {
-        shown.current.add(n.id);
-        updateRow('notification_queue', String(n.id), { read_at: now });
-      }
-    }
-  });
-  const notes = all.filter((n) => !n.read_at || shown.current.has(n.id));
+  const markRead = (n: AppNotification) => updateRow('notification_queue', String(n.id), { read_at: new Date().toISOString() });
 
   return (
     <Screen>
-      <Sub>{notes.length ? `${notes.length} új értesítés — megnyitva olvasottnak számít.` : 'Nincs új értesítésed.'}</Sub>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Sub>{notes.length ? `${notes.length} olvasatlan — koppintásra olvasott lesz.` : 'Nincs új értesítésed.'}</Sub>
+        {notes.length > 1 ? <Btn title="Mind olvasott" kind="ghost" small onPress={() => notes.forEach(markRead)} /> : null}
+      </View>
       {notes.length === 0 ? <Empty text="Nincs új értesítés." /> : null}
       <View style={{ gap: 6 }}>
         {notes.slice(0, 200).map((n) => {
           const to = targetOf(n);
           return (
-            <Pressable key={n.id} onPress={() => { if (to) router.push(to as any); }}
+            <Pressable key={n.id} onPress={() => { markRead(n); if (to) router.push(to as any); }}
               style={({ pressed }) => ({
                 backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1,
                 borderColor: C.border, padding: S.md, gap: 2, opacity: pressed ? 0.8 : 1,
