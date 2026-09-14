@@ -78,6 +78,7 @@ export default function DayView() {
       ? commissionAmount(amt, w.commission_mode, w.commission_value != null ? Number(w.commission_value) : null, w.commission_unit, basis as any, basis === 'hourly' ? parseAmount(hours) : null, mult)
       : 0;
     insertRow('attendance', {
+      source: 'manual',
       work_date: date,
       site_id: site,
       worker_id: workerId,
@@ -112,6 +113,7 @@ export default function DayView() {
       const isProject = a.pay_basis === 'project';
       const w = workers.find((x) => x.id === a.worker_id);
       insertRow('attendance', {
+        source: 'manual',
         work_date: date,
         site_id: site,
         worker_id: a.worker_id,
@@ -148,6 +150,7 @@ export default function DayView() {
       ? commissionAmount(amt, w.commission_mode, w.commission_value != null ? Number(w.commission_value) : null, w.commission_unit, b as any, h, 1)
       : 0;
     insertRow('attendance', {
+      source: 'manual',
       work_date: date, site_id: site, worker_id: w.id,
       pay_basis: b, hours: h, day_multiplier: 1,
       applied_rate: rate, amount: amt, commission_amount: comm,
@@ -300,7 +303,7 @@ export default function DayView() {
         {dayRowsForSite.map((a) => (
           <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <Body style={{ fontWeight: '700', flex: 1 }}>{workerName(a.worker_id)}</Body>
-            <Sub>{!site ? siteName(a.site_id) + ' · ' : ''}{basisLabel(a)}</Sub>
+            <Sub>{!site ? siteName(a.site_id) + ' · ' : ''}{basisLabel(a)}{a.source === 'session' ? ' · ⏱ munkaidőből' : a.source === 'task' ? ' · 💬 ajánlat' : ''}</Sub>
             {a.created_by === me ? (
               <Text onPress={() => softDeleteRow('attendance', a.id)} style={{ color: C.danger, fontSize: 16 }} accessibilityLabel="Bejegyzés törlése">🗑️</Text>
             ) : null}

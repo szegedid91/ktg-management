@@ -3,7 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Card, H2, Sub, Btn, Badge, Empty } from '../ui/kit';
+import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
@@ -29,6 +29,11 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const [daysLimit, setDaysLimit] = useState(7);
   const [closedOpen, setClosedOpen] = useState(false);
   const [closedLimit, setClosedLimit] = useState(10);
+  // bejelentkezés egy építkezésen (feladat nélkül): helyszínt kell választani,
+  // mert a bér a munkaidő alapján, építkezésenként számolódik
+  const [startOpen, setStartOpen] = useState(false);
+  const [startSite, setStartSite] = useState<string | null>(null);
+  const activeSites = sites.filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu'));
 
   const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid).map((a) => a.task_id));
   const myTasks = tasks.filter((t) => myTaskIds.has(t.id));
@@ -51,8 +56,17 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   // munkaidő csak akkor, ha van legalább egy elfogadott, futó feladata
   // (vagy épp nyitott munkamenete, amit be kell tudnia fejezni)
   const acceptedActive = active.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at));
-  const showWorkTime = acceptedActive.length > 0 || !!openSession;
+  const showWorkTime = true; // bejelentkezni feladat nélkül is lehet egy építkezésen
   const nowISO = () => new Date().toISOString();
+  const startAt = (siteId: string) => {
+    insertRow('work_sessions', { worker_id: wid, task_id: null, site_id: siteId, started_at: nowISO(), ended_at: null, note: null });
+    setStartOpen(false); setStartSite(null);
+  };
+  const onStart = () => {
+    if (activeSites.length === 1) { startAt(activeSites[0].id); return; }
+    setStartSite(activeSites[0]?.id ?? null);
+    setStartOpen(true);
+  };
 
   const todayHours = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -79,9 +93,21 @@ export function WorkerHome({ profile }: { profile: Profile }) {
             </View>
             {openSession
               ? <Btn title="⏹ Befejezés" kind="danger" small onPress={() => updateRow('work_sessions', openSession.id, { ended_at: nowISO() })} />
-              : <Btn title="▶ Kezdés" kind="secondary" small
-                  onPress={() => insertRow('work_sessions', { worker_id: wid, task_id: null, site_id: null, started_at: nowISO(), ended_at: null, note: null })} />}
+              : <Btn title="▶ Kezdés" kind="secondary" small onPress={onStart} />}
           </View>
+          {startOpen && !openSession ? (
+            <View style={{ gap: S.sm, paddingTop: S.sm }}>
+              {activeSites.length === 0
+                ? <Sub style={{ color: C.warning }}>Nincs aktív építkezés, ahová be tudnál jelentkezni — kérdezd meg a fő felhasználókat.</Sub>
+                : <Picker label="Melyik építkezésen dolgozol?" items={activeSites} selectedId={startSite} getId={(s) => s.id}
+                    getLabel={(s) => `${s.name}${s.address ? ` · ${s.address}` : ''}`} onSelect={setStartSite} placeholder="Válassz építkezést…" />}
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setStartOpen(false)} /></View>
+                <View style={{ flex: 1 }}><Btn title="▶ Bejelentkezés" small disabled={!startSite} onPress={() => startSite && startAt(startSite)} /></View>
+              </View>
+              <Sub>A béred a munkaidőd alapján számolódik (órabér vagy napidíj), építkezésenként és naponta.</Sub>
+            </View>
+          ) : null}
         </Card>
       ) : null}
 
@@ -144,6 +170,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 <Text style={{ color: C.text, fontWeight: '600', flex: 1 }} numberOfLines={1}>
                   {hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '—'}
                 </Text>
+                {a.source === 'session' || a.source === 'task' ? <Text style={{ fontSize: 11, color: C.sub }}>{a.source === 'task' ? '💬' : '⏱'}</Text> : null}
                 {a.pay_basis !== 'presence' ? (
                   <>
                     <Text style={{ color: C.text, fontWeight: '700' }}>{ft(Number(a.amount) - Number(a.commission_amount))}</Text>

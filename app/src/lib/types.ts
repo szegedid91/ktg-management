@@ -143,6 +143,10 @@ export interface Attendance extends BaseRow {
   commission_paid_by: UUID | null;
   commission_paid_note: string | null;
   note: string | null;
+  /** manual = partner rögzítette; session = munkaidőből automatikusan;
+   *  task = fix áras (elfogadott ajánlatos) feladat készre jelentésekor */
+  source: 'manual' | 'session' | 'task';
+  task_id: UUID | null;
 }
 
 export interface Comment {

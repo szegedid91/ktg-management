@@ -266,6 +266,7 @@ export default function WorkerDetail() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
                 {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
+                {a.source === 'session' ? ' · ⏱' : a.source === 'task' ? ' · 💬' : ''}
               </Sub>
               <Text style={{ fontSize: 13, fontWeight: '600', color: a.paid_at ? C.success : C.text }}>
                 {ft(Number(a.amount) - Number(a.commission_amount))}{a.paid_at ? ' ✓' : ''}

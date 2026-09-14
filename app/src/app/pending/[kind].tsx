@@ -82,6 +82,8 @@ export default function PendingScreen() {
         detail = a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
           : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
           : 'projektdíj';
+        if (a.source === 'session') detail += ' · ⏱ munkaidőből';
+        else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
         const ep = externals.find((x) => x.id === a.referrer_external_id);
