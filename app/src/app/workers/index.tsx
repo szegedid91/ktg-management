@@ -29,13 +29,29 @@ export default function Workers() {
   const workers = useTable<Worker>('workers');
   const [q, setQ] = useState('');
 
+  const pending = workers.filter((w) => !w.approved_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const filtered = workers
+    .filter((w) => !!w.approved_at)
     .filter((w) => `${w.name} ${w.nickname ?? ''}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
 
   return (
     <Screen>
       <InviteCard />
+      {pending.length ? (
+        <View style={{ gap: 6 }}>
+          <Body style={{ fontWeight: '800' }}>⏳ Jóváhagyásra váró regisztráció ({pending.length})</Body>
+          {pending.map((w) => (
+            <Row key={w.id} onPress={() => router.push(`/worker/${w.id}`)} style={{ borderColor: '#B7791F', borderWidth: 1, backgroundColor: C.warnBg }}>
+              <View style={{ flex: 1 }}>
+                <Body style={{ fontWeight: '700' }}>{w.name}</Body>
+                <Sub>{w.trade ? `${w.trade} · ` : ''}{w.email ?? ''}{w.phones[0] ? ` · ${w.phones[0]}` : ''}</Sub>
+              </View>
+              <Badge text="jóváhagyás" color="#B7791F" />
+            </Row>
+          ))}
+        </View>
+      ) : null}
       <Input value={q} onChangeText={setQ} placeholder="Keresés név szerint…" />
       {filtered.length === 0 ? <Empty text="Nincs munkavállaló." /> : null}
       {filtered.map((w) => (

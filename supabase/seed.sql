@@ -65,3 +65,20 @@ insert into public.worker_tasks (id, code, title, details, site_id, status, prio
   ('20000000-0000-0000-0000-000000000002', 'F-002', 'Villanyszerelés – konyha', null, '10000000-0000-0000-0000-000000000001', 'assigned', 0, '00000000-0000-0000-0000-00000000000c');
 insert into public.task_assignees (task_id, worker_id)
 select t.id, w.id from public.worker_tasks t, public.workers w where w.email = 'marci@teszt.hu';
+
+-- függő munkavállalói regisztráció (pista@teszt.hu): jóváhagyásra vár
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+                        raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+                        confirmation_token, recovery_token, email_change_token_new, email_change,
+                        email_change_token_current, phone_change, phone_change_token, reauthentication_token, is_sso_user)
+values
+  ('00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+   'pista@teszt.hu', crypt('teszt1234', gen_salt('bf')), now(),
+   '{"provider":"email","providers":["email"]}',
+   '{"display_name":"Nagy István","phone":"+36 20 333 4444","trade":"kőműves","invite_token":"seed-invite-token"}',
+   now(), now(), '', '', '', '', '', '', '', '', false);
+insert into auth.identities (id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at)
+select gen_random_uuid(), u.id, u.id::text, 'email',
+       jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true),
+       now(), now(), now()
+from auth.users u where u.email = 'pista@teszt.hu';

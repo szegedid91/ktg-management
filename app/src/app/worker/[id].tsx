@@ -15,6 +15,7 @@ import { Comments } from '../../components/Comments';
 import { CallButton } from '../workers/index';
 import { WorkerForm, workerToForm, formToRow, validateWorkerForm, WorkerFormValues } from '../../components/WorkerForm';
 import { notify, confirmDialog } from '../../lib/dialogs';
+import { syncNow } from '../../lib/sync';
 
 export default function WorkerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -69,7 +70,53 @@ export default function WorkerDetail() {
   const rateLine = (label: string, own: number | null, globalCompany: number, globalIndividual: number) => {
     const global = worker.worker_type === 'company' ? globalCompany : globalIndividual;
     const val = own ?? global;
+    if (own == null && !global) return <KV k={label} v="nincs beállítva" />;
     return <KV k={label} v={`${ft(val)}${own == null ? ' (öröklött)' : ''}`} />;
+  };
+
+  // meghívóval regisztrált, még jóvá nem hagyott munkavállaló: a jóváhagyás
+  // előtt összefoglaljuk, milyen díjazással lép be, és rákérdezünk
+  const pendingApproval = !worker.approved_at;
+  const rateText = (own: number | null, globalCompany: number, globalIndividual: number) => {
+    const global = worker.worker_type === 'company' ? globalCompany : globalIndividual;
+    const val = own ?? global;
+    if (own == null && !global) return 'nincs beállítva (örökölné, de a Beállításokban üres)';
+    return `${ft(val)}${own == null ? ' (örökölt alapdíj)' : ''}`;
+  };
+  const approve = async () => {
+    const s = settings;
+    const lines = [
+      `Név: ${worker.name}${worker.nickname ? ` „${worker.nickname}”` : ''}`,
+      `Típus: ${worker.worker_type === 'company' ? 'céges' : 'magánszemély'}${worker.trade ? ` · ${worker.trade}` : ''}`,
+      `Jellemző elszámolás: ${worker.default_pay_basis === 'hourly' ? 'órabér' : worker.default_pay_basis === 'daily' ? 'napi díj' : worker.default_pay_basis === 'project' ? 'projektdíj' : 'nincs megadva'}`,
+      s ? `Órabér: ${rateText(worker.hourly_rate, Number(s.company_hourly_rate), Number(s.individual_hourly_rate))}` : '',
+      s ? `Napi díj: ${rateText(worker.daily_rate, Number(s.company_daily_rate), Number(s.individual_daily_rate))}` : '',
+      s ? `Projektdíj: ${rateText(worker.project_rate, Number(s.company_project_rate), Number(s.individual_project_rate))}` : '',
+      referrerName ? `Közvetítő: ${referrerName}` : 'Közvetítő: nincs',
+    ].filter(Boolean);
+    const ok = await confirmDialog(
+      'Jóváhagyás — ezzel a díjazással',
+      `${lines.join('\n')}\n\nRendben van minden? Ha módosítanál, előbb a Szerkesztés gombbal állítsd be a díjazást.`,
+      'Igen, jóváhagyom',
+    );
+    if (!ok) return;
+    try {
+      await callRpc('approve_worker', { p_worker: worker.id });
+      void syncNow(); // a szerver által állított jóváhagyás lehúzása
+      notify('Jóváhagyva', `${worker.name} mostantól be tud lépni; értesítést kapott.`);
+    } catch (e: any) {
+      notify('Hiba', String(e?.message ?? e));
+    }
+  };
+  const reject = async () => {
+    const ok = await confirmDialog('Elutasítás', `Biztosan elutasítod ${worker.name} regisztrációját? A fiókja nem fog tudni belépni.`, 'Elutasítás', true);
+    if (!ok) return;
+    try {
+      await callRpc('reject_worker', { p_worker: worker.id });
+      smartBack();
+    } catch (e: any) {
+      notify('Hiba', String(e?.message ?? e));
+    }
   };
 
   const showBank = async () => {
@@ -112,7 +159,20 @@ export default function WorkerDetail() {
   return (
     <Screen>
       <Stack.Screen options={{ title: worker.nickname ? `${worker.name} „${worker.nickname}”` : worker.name }} />
-      <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} />
+      {pendingApproval ? (
+        <Card style={{ borderColor: '#B7791F', backgroundColor: C.warnBg }}>
+          <H2>⏳ Jóváhagyásra váró regisztráció</H2>
+          <Sub>
+            {worker.name} meghívóval regisztrált{worker.email ? ` (${worker.email})` : ''}. Amíg nem hagyod jóvá, nem tud belépni.
+            Nézd át a díjazást (lent), szükség esetén szerkeszd, majd hagyd jóvá.
+          </Sub>
+          <View style={{ flexDirection: 'row', gap: S.md }}>
+            <View style={{ flex: 1 }}><Btn title="Elutasítás" kind="danger" small onPress={() => void reject()} /></View>
+            <View style={{ flex: 2 }}><Btn title="✅ Jóváhagyás" small onPress={() => void approve()} /></View>
+          </View>
+        </Card>
+      ) : null}
+      {!pendingApproval ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} /> : null}
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <H2>{worker.name}</H2>
@@ -135,7 +195,7 @@ export default function WorkerDetail() {
           {bank ? <Body>{bank}</Body> : <Btn title="Megjelenítés" kind="ghost" small onPress={() => void showBank()} />}
         </View>
         {worker.note ? <Sub>{worker.note}</Sub> : null}
-        {mine ? (
+        {mine || pendingApproval ? (
           <View style={{ flexDirection: 'row', gap: S.md }}>
             <View style={{ flex: 1 }}>
               <Btn title="Szerkesztés" kind="ghost" small onPress={() => { setForm(workerToForm(worker)); setEditing(true); }} />

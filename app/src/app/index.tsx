@@ -126,7 +126,11 @@ function DashboardInner() {
   const overdueInvoices = invoices.filter((i) => !i.paid_at && i.due_date && i.due_date < today);
   const overdueSum = overdueInvoices.reduce((s, i) => s + Number(i.net_amount), 0);
   const unpaidWageCount = attendance.filter((a) => a.pay_basis !== 'presence' && !a.paid_at).length;
+  const pendingWorkers = workers.filter((w) => !w.approved_at);
   const todos = [
+    pendingWorkers.length ? { key: 'approve', icon: '👷', title: 'Jóváhagyásra váró regisztráció', count: pendingWorkers.length,
+      detail: `${pendingWorkers.map((w) => w.name).join(', ')} — nézd át a díjazást és hagyd jóvá`, color: '#B7791F',
+      href: pendingWorkers.length === 1 ? `/worker/${pendingWorkers[0].id}` : '/workers' } : null,
     pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
       detail: pendingPrio ? `ebből ${pendingPrio} prioritásos ⚡` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
     quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,

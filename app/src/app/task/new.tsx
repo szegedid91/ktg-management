@@ -18,7 +18,7 @@ import { wname } from '../../lib/tasks';
 export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
-  const workers = [...useTable<Worker>('workers')].sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const workers = [...useTable<Worker>('workers')].filter((w) => !!w.approved_at).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
 
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');

@@ -98,6 +98,10 @@ export interface Worker extends BaseRow {
   commission_mode: 'percent' | 'fixed' | null;
   commission_value: number | null;
   commission_unit: 'hour' | 'day' | 'project' | null;
+  /** meghívóval regisztrált munkavállaló: amíg üres, egy fő felhasználó
+   *  jóváhagyására vár (nem tud belépni) */
+  approved_at: string | null;
+  approved_by: UUID | null;
 }
 
 export interface Expense extends BaseRow {

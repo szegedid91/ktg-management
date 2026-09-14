@@ -162,6 +162,9 @@ export default function Login() {
               <View style={{ flex: 1, minWidth: 120 }}>
                 <Btn title="👷 Marci (munkavállaló)" kind="secondary" disabled={busy} onPress={() => void quickLogin('marci@teszt.hu')} />
               </View>
+              <View style={{ flex: 1, minWidth: 120 }}>
+                <Btn title="⏳ Pista (függő regisztráció)" kind="secondary" disabled={busy} onPress={() => void quickLogin('pista@teszt.hu')} />
+              </View>
             </View>
           </Card>
         ) : null}

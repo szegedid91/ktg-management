@@ -15,7 +15,7 @@ export default function DayView() {
   const { date, siteId } = useLocalSearchParams<{ date: string; siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
   const allSites = useTable<Site>('sites');
-  const workers = useTable<Worker>('workers');
+  const workers = useTable<Worker>('workers').filter((w) => !!w.approved_at);
   const attendance = useTable<Attendance>('attendance');
   const settings = useTable<AppSettings>('app_settings')[0];
   const me = getCurrentUserId();
