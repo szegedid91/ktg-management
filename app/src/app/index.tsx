@@ -25,6 +25,7 @@ const MENU: { icon: string; label: string; href: string }[] = [
   { icon: '🧾', label: 'Számlák', href: '/invoices' },
   { icon: '🤝', label: 'Elszámolás', href: '/settlement' },
   { icon: '📊', label: 'Statisztika', href: '/stats' },
+  { icon: '💧', label: 'Pénzforgalom', href: '/cashflow' },
   { icon: '🔨', label: 'Eszközök', href: '/equipment' },
   { icon: '📤', label: 'Export', href: '/export' },
   { icon: '🕵️', label: 'Audit napló', href: '/audit' },

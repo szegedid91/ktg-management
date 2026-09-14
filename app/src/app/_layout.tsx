@@ -77,6 +77,7 @@ export default function RootLayout() {
         <Stack.Screen name="invoice/new" options={{ title: 'Új számla' }} />
         <Stack.Screen name="invoice/[id]" options={{ title: 'Számla' }} />
         <Stack.Screen name="stats" options={{ title: 'Statisztika' }} />
+        <Stack.Screen name="cashflow" options={{ title: 'Pénzforgalom' }} />
         <Stack.Screen name="equipment" options={{ title: 'Eszközök' }} />
         <Stack.Screen name="settings" options={{ title: 'Beállítások' }} />
         <Stack.Screen name="audit" options={{ title: 'Audit napló' }} />
