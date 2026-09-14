@@ -1,12 +1,57 @@
-// Push-értesítések kiküldése (Expo Push API) + heti összefoglaló és
-// lejárt tételek emlékeztetője.
+// Push-értesítések kiküldése (Expo Push API natívra + Web Push a PWA-ra)
+// + heti összefoglaló és lejárt tételek emlékeztetője.
 //
 // Hívások:
 //  - {job: "drain"}   → a notification_queue ürítése (app-sync után, ill. cron)
 //  - {job: "digest"}  → heti összefoglaló (pl. péntek délutáni cron)
 //  - {job: "overdue"} → N napnál régebbi kifizetetlen bér / be nem folyt számla
+//
+// Web Push: a VAPID kulcspár az app_secrets táblában ('vapid_public',
+// 'vapid_private'), csak a service role olvassa. A címzett minden élő
+// push_subscriptions sorára küldünk; 404/410 → a feliratkozás lejárt,
+// deleted_at-tal jelöljük.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import webpush from 'npm:web-push@3.6.7';
+
+const VAPID_SUBJECT = 'mailto:dnl.szegedi@gmail.com';
+
+type WebSub = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
+
+/** A bell-oldal (notifications.tsx) útvonal-logikájának tükre: a push
+ *  kattintás ugyanoda vigyen, ahová az app-beli értesítés. */
+function targetUrl(kind: string, payload: any): string {
+  const p = payload ?? {};
+  if (kind === 'worker_approved' || kind === 'worker_rejected') return '/';
+  if (p.task_id) return `/task/${p.task_id}`;
+  if (p.site_id) return `/site/${p.site_id}`;
+  if (p.worker_id) return `/worker/${p.worker_id}`;
+  if (p.expense_id) return `/expense/${p.expense_id}`;
+  if (p.request_id) return '/settings';
+  if (p.entity_type && p.entity_id) {
+    const map: Record<string, string> = { site: '/site/', expense: '/expense/', invoice: '/invoice/', worker: '/worker/' };
+    if (map[p.entity_type]) return `${map[p.entity_type]}${p.entity_id}`;
+  }
+  return '/notifications';
+}
+
+/** Web Push küldés egy feliratkozásra. Visszatérés: ok | gone (lejárt,
+ *  törlendő) | error. */
+async function sendWebPush(sub: WebSub, payload: { title: string; body: string; url: string })
+  : Promise<{ status: 'ok' | 'gone' | 'error'; error?: string }> {
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify(payload),
+      { TTL: 86400 },
+    );
+    return { status: 'ok' };
+  } catch (e: any) {
+    const code = Number(e?.statusCode);
+    if (code === 404 || code === 410) return { status: 'gone', error: `HTTP ${code}` };
+    return { status: 'error', error: String(e?.body ?? e?.message ?? e).slice(0, 300) };
+  }
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -79,13 +124,39 @@ Deno.serve(async (req) => {
       .is('sent_at', null)
       .order('created_at')
       .limit(100);
+    const rows = queue ?? [];
+
+    // Web Push: VAPID kulcsok + a címzettek élő böngésző-feliratkozásai.
+    // Kulcs nélkül (még nincs beszúrva) a web ág egyszerűen kimarad.
+    const recipients = [...new Set(rows.map((n) => n.recipient as string))];
+    let webSubs: WebSub[] = [];
+    let vapidReady = false;
+    if (recipients.length) {
+      const { data: secrets } = await supabase.from('app_secrets').select('name, value')
+        .in('name', ['vapid_public', 'vapid_private']);
+      const pub = secrets?.find((s) => s.name === 'vapid_public')?.value;
+      const priv = secrets?.find((s) => s.name === 'vapid_private')?.value;
+      if (pub && priv) {
+        webpush.setVapidDetails(VAPID_SUBJECT, pub, priv);
+        vapidReady = true;
+        const { data: subs } = await supabase.from('push_subscriptions')
+          .select('id, user_id, endpoint, p256dh, auth')
+          .in('user_id', recipients).is('deleted_at', null);
+        webSubs = (subs ?? []) as WebSub[];
+      } else {
+        console.warn('web push: hiányzó VAPID kulcs az app_secrets táblában');
+      }
+    }
+    const subsOf = (uid: string) => (vapidReady ? webSubs.filter((s) => s.user_id === uid) : []);
+
+    // 1) Expo (natív) üzenetek
     const messages: { to: string; title: string; body: string; data?: unknown }[] = [];
     const msgIds: number[] = [];
-    const doneIds: number[] = []; // token nélküli címzett: az app-beli értesítés megvan, push nincs
-    for (const n of queue ?? []) {
+    const doneIds: number[] = []; // se token, se feliratkozás: az app-beli értesítés megvan, push nincs
+    for (const n of rows) {
       const token = tokenOf(n.recipient);
       if (token) { messages.push({ to: token, title: n.title, body: n.body, data: n.payload }); msgIds.push(n.id); }
-      else doneIds.push(n.id);
+      else if (subsOf(n.recipient).length === 0) doneIds.push(n.id);
     }
     const { ok, deadTokens } = await sendExpoPush(messages);
     ok.forEach((v, i) => { if (v) doneIds.push(msgIds[i]); });
@@ -93,8 +164,38 @@ Deno.serve(async (req) => {
     deadTokens.forEach((t) => msgIds.forEach((id, i) => { if (messages[i].to === t) doneIds.push(id); }));
     await clearDeadTokens(deadTokens);
     sentCount = ok.filter(Boolean).length;
+
+    // 2) Web Push minden feliratkozott böngészőre; a sor akkor is lezárul,
+    //    ha csak a webes ág sikerült
+    const goneIds = new Set<string>();
+    const errors = new Map<string, string>();
+    for (const n of rows) {
+      const subs = subsOf(n.recipient);
+      if (!subs.length) continue;
+      const payload = { title: n.title, body: n.body, url: targetUrl(n.kind, n.payload) };
+      const results = await Promise.all(subs.map((s) => sendWebPush(s, payload)));
+      let any = false;
+      results.forEach((r, i) => {
+        if (r.status === 'ok') any = true;
+        else if (r.status === 'gone') goneIds.add(subs[i].id);
+        else errors.set(subs[i].id, r.error ?? 'ismeretlen hiba');
+      });
+      if (any) { doneIds.push(n.id); sentCount++; }
+      // csak lejárt feliratkozások: a sor lezárható, kézbesíteni nincs hová
+      else if (results.every((r) => r.status === 'gone') && !msgIds.includes(n.id)) doneIds.push(n.id);
+    }
+    if (goneIds.size) {
+      await supabase.from('push_subscriptions')
+        .update({ deleted_at: new Date().toISOString(), last_error: 'lejárt (404/410)' })
+        .in('id', [...goneIds]);
+    }
+    for (const [id, err] of errors) {
+      if (!goneIds.has(id)) await supabase.from('push_subscriptions').update({ last_error: err }).eq('id', id);
+    }
+
     if (doneIds.length) {
-      await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() }).in('id', doneIds);
+      await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() })
+        .in('id', [...new Set(doneIds)]);
     }
   }
 

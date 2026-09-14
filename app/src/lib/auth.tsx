@@ -81,6 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (s) {
         void guardUserSwitch(s.user.id).then(() => { startSyncLoop(); startRealtime(); });
         import('./push').then((m) => m.registerPushToken()).catch(() => {});
+        // weben: a meglévő Web Push feliratkozás frissítése (engedélyt nem kér)
+        import('./webpush').then((m) => m.refreshWebPush()).catch(() => {});
       } else {
         stopSyncLoop();
         stopRealtime();

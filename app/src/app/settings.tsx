@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented } from '../ui/kit';
 import { S, C, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
 import { useTable, useOnlineView } from '../lib/hooks';
@@ -11,6 +11,7 @@ import { AppSettings, Profile, ExpenseCategory, ShareChangeRequest } from '../li
 import { notify, confirmDialog } from '../lib/dialogs';
 import { PercentSlider } from '../components/PercentSlider';
 import { PartnerAccountCard } from '../components/PartnerAccountCard';
+import { WebPushRow } from '../components/WebPushRow';
 
 function RateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
@@ -255,6 +256,7 @@ export default function Settings() {
             <Check checked={myProfile.notify_weekly} onToggle={() => toggleNotif('notify_weekly')} label="Heti összefoglaló (péntek délután)" />
             <Check checked={myProfile.notify_overdue} onToggle={() => toggleNotif('notify_overdue')} label="Régi kifizetetlen bér / be nem folyt számla" />
             <Btn title="Értesítések mentése" onPress={saveNotif} />
+            {Platform.OS === 'web' ? <><Divider /><WebPushRow /></> : null}
           </>
         ) : null}
       </Card>
