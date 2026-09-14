@@ -1,7 +1,7 @@
 // Feladat-számítások a lokális tükörből: munkaidő, bérköltség (idő- vagy
 // ajánlat-alapú), anyagköltség/továbbszámlázás, haszon.
 
-import { TaskMaterial, TaskMaterialPricing, TaskStatus, Worker, WorkerTask, WorkSession } from './types';
+import { TaskMaterial, TaskMaterialPricing, TaskQuote, TaskStatus, Worker, WorkerTask, WorkSession } from './types';
 
 /** Munkavállaló megjelenített neve: becenév, ha van. */
 export function wname(w: { name: string; nickname?: string | null } | undefined | null): string {
@@ -19,6 +19,57 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 
 export function isActiveTask(t: WorkerTask): boolean {
   return t.status === 'assigned' || t.status === 'acknowledged';
+}
+
+// ---------- ajánlatok ----------
+export const QUOTE_STATUS_LABEL: Record<TaskQuote['status'], string> = {
+  requested: 'ajánlatra vár', submitted: 'elfogadásra vár', accepted: 'elfogadva',
+  rejected: 'elutasítva', declined: 'nem vállalja',
+};
+export const QUOTE_STATUS_COLOR: Record<TaskQuote['status'], string> = {
+  requested: '#B7791F', submitted: '#2B6CB0', accepted: '#2F855A', rejected: '#C53030', declined: '#718096',
+};
+
+/** A feladat ajánlat-sorai (legfrissebb elöl). */
+export function quotesOf(taskId: string, quotes: TaskQuote[]): TaskQuote[] {
+  return quotes.filter((q) => q.task_id === taskId).sort((a, b) => b.requested_at.localeCompare(a.requested_at));
+}
+
+/** Egy munkavállaló legutóbbi ajánlat-sora a feladathoz (ha volt kérés). */
+export function myQuote(taskId: string, workerId: string | null | undefined, quotes: TaskQuote[]): TaskQuote | null {
+  if (!workerId) return null;
+  return quotesOf(taskId, quotes).find((q) => q.worker_id === workerId) ?? null;
+}
+
+/** Nyitott (ajánlatra váró / beküldött) sorok a feladathoz. */
+export function openQuotes(taskId: string, quotes: TaskQuote[]): TaskQuote[] {
+  return quotesOf(taskId, quotes).filter((q) => q.status === 'requested' || q.status === 'submitted');
+}
+
+/** Rövid állapotcímke listákhoz. Munkavállalónál a sajátja, partnernél az
+ *  összesítés (hány ajánlat vár visszaigazolásra / kire várunk). */
+export function quoteLabel(task: WorkerTask, quotes: TaskQuote[], myWorkerId?: string | null): string | null {
+  if (!task.quote_requested && !quotes.some((q) => q.task_id === task.id)) return null;
+  if (task.quote_accepted_at) return null; // elfogadva → normál állapot
+  if (myWorkerId) {
+    const q = myQuote(task.id, myWorkerId, quotes);
+    if (!q) return null;
+    if (q.status === 'requested') return 'ajánlatkérés';
+    if (q.status === 'submitted') return 'visszaigazolásra vár';
+    return QUOTE_STATUS_LABEL[q.status];
+  }
+  const open = openQuotes(task.id, quotes);
+  const submitted = open.filter((q) => q.status === 'submitted');
+  if (submitted.length === 1) return `ajánlat ${fmtFt(submitted[0].amount ?? 0)} · elfogadásra vár`;
+  if (submitted.length > 1) return `${submitted.length} ajánlat elfogadásra vár`;
+  if (open.length > 0) return 'ajánlatra vár';
+  const all = quotesOf(task.id, quotes);
+  if (all.length > 0) return all.every((q) => q.status === 'declined') ? 'nem vállalták — kérj új ajánlatot' : 'ajánlat elutasítva — kérj újat';
+  return 'ajánlatra vár';
+}
+
+function fmtFt(n: number): string {
+  return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} Ft`;
 }
 
 /** Egy munkamenet hossza órában (nyitottnál mostanáig). */

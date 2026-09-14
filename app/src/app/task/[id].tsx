@@ -5,10 +5,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Linking, Pressable } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty, Picker } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useRow } from '../../lib/hooks';
-import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow } from '../../lib/repo';
+import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow, callRpc } from '../../lib/repo';
+import { syncNow } from '../../lib/sync';
 import { smartBack } from '../../lib/nav';
 import { ft, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
@@ -17,9 +18,10 @@ import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import {
   TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, wname,
+  quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, WorkSession, Worker, Site, Profile,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile,
 } from '../../lib/types';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
@@ -55,6 +57,7 @@ export default function TaskDetail() {
   // csak-partner táblák: munkavállalónál üresek
   const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
   const finance = useTable<TaskFinance>('task_finance').find((f) => f.task_id === id);
+  const allQuotes = useTable<TaskQuote>('task_quotes');
   const me = getCurrentUserId();
   const myProfile = profiles.find((p) => p.id === me);
   const myWorkerId = myProfile?.worker_id ?? null;
@@ -81,6 +84,11 @@ export default function TaskDetail() {
   const [resaleDraft, setResaleDraft] = useState<Record<string, string>>({});
   const [quoteAmount, setQuoteAmount] = useState('');
   const [quoteNote, setQuoteNote] = useState('');
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
+  const [rejectFor, setRejectFor] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [requestWorker, setRequestWorker] = useState<string | null>(null);
   const [failOpen, setFailOpen] = useState(false);
   const [failReason, setFailReason] = useState('');
   const [failPhotos, setFailPhotos] = useState<PickedPhoto[]>([]);
@@ -98,8 +106,14 @@ export default function TaskDetail() {
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
   const openSession = sessions.find((s) => !s.ended_at && s.worker_id === myWorkerId);
   const active = isActiveTask(task);
+  // ajánlatok: a napló sorai; munkavállalónál a saját legutóbbi sora számít
+  const quoteLog = quotesOf(task.id, allQuotes);
+  const mine = myQuote(task.id, myWorkerId, allQuotes);
+  const isQuoteTask = task.quote_requested || quoteLog.length > 0;
+  // ajánlatkérésnél a munkavállaló nem „fogadja el” a feladatot: ajánlatot ad vagy nem vállalja
+  const quoteOpenForMe = !!mine && (mine.status === 'requested' || mine.status === 'submitted');
   // a munkavállaló csak visszaigazolás után indíthat munkát / rögzíthet anyagot
-  const acked = !!myAssignment?.acknowledged_at;
+  const acked = !!myAssignment?.acknowledged_at && !quoteOpenForMe;
   // késznek csak akkor jelölhető, ha a munkavállaló el is kezdte (van munkaideje rajta)
   const startedByMe = sessions.some((s) => s.worker_id === myWorkerId);
   const nowISO = () => new Date().toISOString();
@@ -124,11 +138,20 @@ export default function TaskDetail() {
   const sendQuote = () => {
     const amount = parseAmount(quoteAmount);
     if (amount <= 0) { notify('Hiba', 'Adj meg ajánlati összeget.'); return; }
-    queueRpc('worker_task_action', { p_id: task.id, p_action: 'quote', p_amount: amount, p_reason: quoteNote.trim() || null }, [
-      { table: 'worker_tasks', id: task.id, patch: { quote_amount: amount, quote_note: quoteNote.trim() || null, quote_submitted_at: nowISO(), quote_accepted_at: null } },
-    ]);
+    queueRpc('worker_task_action', { p_id: task.id, p_action: 'quote', p_amount: amount, p_reason: quoteNote.trim() || null },
+      mine ? [{ table: 'task_quotes', id: mine.id, patch: { amount, note: quoteNote.trim() || null, submitted_at: nowISO(), status: 'submitted' } }] : []);
     setQuoteAmount(''); setQuoteNote('');
-    notify('Ajánlat elküldve 💬', 'Elfogadás után az appban látod.');
+    notify('Ajánlat elküldve 💬', 'Visszaigazolásra vár — ha elfogadják, értesítést kapsz, és a feladat a folyamatban lévők közé kerül.');
+  };
+  const declineQuote = async () => {
+    if (!mine) return;
+    if (!await confirmDialog('Nem vállalom', 'Jelezzük a fő felhasználóknak, hogy nem vállalod ezt a munkát. A feladat lekerül a listádról.', 'Nem vállalom', true)) return;
+    queueRpc('worker_task_action', { p_id: task.id, p_action: 'decline_quote', p_reason: declineReason.trim() || null }, [
+      { table: 'task_quotes', id: mine.id, patch: { status: 'declined', decided_at: nowISO(), decision_note: declineReason.trim() || null } },
+      ...(myAssignment ? [{ table: 'task_assignees' as const, id: myAssignment.id, patch: { deleted_at: nowISO() } }] : []),
+    ]);
+    setDeclineOpen(false);
+    smartBack();
   };
 
   const startWork = () => {
@@ -196,11 +219,35 @@ export default function TaskDetail() {
     else insertRow('task_material_pricing', { material_id: m.id, resale_net: v, resale_by: me, resale_at: nowISO() });
     setResaleDraft((d) => { const n = { ...d }; delete n[m.id]; return n; });
   };
-  const acceptQuote = async () => {
-    if (!await confirmDialog('Ajánlat elfogadása', `${ft(task.quote_amount ?? 0)} — ettől kezdve ez a feladat bérköltsége. A munkavállaló értesítést kap.`, 'Elfogadom')) return;
-    queueRpc('accept_task_quote', { p_id: task.id }, [
-      { table: 'worker_tasks', id: task.id, patch: { quote_accepted_at: nowISO(), quote_accepted_by: me } },
+  const acceptQuote = async (q: TaskQuote) => {
+    const who = workerName(q.worker_id);
+    const others = openQuotes(task.id, allQuotes).filter((o) => o.id !== q.id);
+    if (!await confirmDialog('Ajánlat elfogadása',
+      `${who}: ${ft(q.amount ?? 0)} — ettől kezdve ez a feladat bérköltsége. ${who} feladata ezzel elfogadottnak számít, és kezdheti a munkát.${others.length ? `\n\nA többi nyitott ajánlatkérés (${others.map((o) => workerName(o.worker_id)).join(', ')}) elutasításra kerül.` : ''}`,
+      'Elfogadom')) return;
+    queueRpc('accept_task_quote', { p_id: q.id }, [
+      { table: 'task_quotes', id: q.id, patch: { status: 'accepted', decided_at: nowISO(), decided_by: me } },
+      { table: 'worker_tasks', id: task.id, patch: { quote_amount: q.amount, quote_note: q.note, quote_accepted_at: nowISO(), quote_accepted_by: me } },
+      ...others.map((o) => ({ table: 'task_quotes' as const, id: o.id, patch: { status: 'rejected', decided_at: nowISO(), decision_note: 'másik ajánlatot fogadtak el' } })),
     ]);
+  };
+  const rejectQuote = (q: TaskQuote) => {
+    queueRpc('reject_task_quote', { p_id: q.id, p_reason: rejectReason.trim() || null }, [
+      { table: 'task_quotes', id: q.id, patch: { status: 'rejected', decided_at: nowISO(), decided_by: me, decision_note: rejectReason.trim() || null } },
+    ]);
+    setRejectFor(null); setRejectReason('');
+    notify('Ajánlat elutasítva', 'A munkavállaló értesítést kap. Kérhetsz új ajánlatot tőle vagy mástól.');
+  };
+  const requestQuote = async (wid: string) => {
+    if (openQuotes(task.id, allQuotes).some((q) => q.worker_id === wid)) { notify('Már van nyitott ajánlatkérés', `${workerName(wid)} még nem válaszolt az előző kérésre.`); return; }
+    try {
+      await callRpc('request_task_quote', { p_task: task.id, p_worker: wid });
+      void syncNow();
+      setRequestWorker(null);
+      notify('Ajánlatkérés kiküldve 💬', `${workerName(wid)} értesítést kapott.`);
+    } catch (e: any) {
+      notify('Hiba', String(e?.message ?? e));
+    }
   };
   const cancelTask = async () => {
     if (!await confirmDialog('Feladat visszavonása', 'A feladat lezárul „visszavont” állapottal.', 'Visszavonás', true)) return;
@@ -263,7 +310,8 @@ export default function TaskDetail() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />
           {task.priority ? <Badge text="⚡ prioritás" color={C.danger} /> : null}
-          {task.quote_requested && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
+          {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
+          {task.quote_accepted_at ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
         </View>
         <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
         {task.details ? <Body>{task.details}</Body> : null}
@@ -271,7 +319,7 @@ export default function TaskDetail() {
         <KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} />
         <KV k="Kiadta" v={creator} />
         <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '—'} />
-        {assignees.some((a) => !a.acknowledged_at) ? <Sub>⏳ = még nem fogadta el · ✓ = elfogadta</Sub> : null}
+        {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {(task.photo_paths ?? []).length > 0 || !isWorker ? (
           <View style={{ gap: 4 }}>
             <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
@@ -323,30 +371,105 @@ export default function TaskDetail() {
       </Section>
       )}
 
-      {/* ---------- ajánlat ---------- */}
-      {task.quote_requested || task.quote_amount != null ? (
+      {/* ---------- ajánlat: munkavállaló ---------- */}
+      {isWorker && mine ? (
         <Card style={{ borderColor: C.primary }}>
           <H2>💬 Ajánlat</H2>
-          {task.quote_amount != null ? (
+          {mine.status === 'requested' ? (
             <>
-              <KV k="Ajánlati ár" v={ft(task.quote_amount)} strong />
-              {task.quote_note ? <Sub>{task.quote_note}</Sub> : null}
-              <Sub>{task.quote_accepted_at ? `✅ Ajánlat elfogadva ${hdt(task.quote_accepted_at)}` : 'Az ajánlat elfogadásra vár'}</Sub>
-              {!isWorker && !task.quote_accepted_at ? <Btn title="Ajánlat elfogadása ✅" onPress={() => void acceptQuote()} /> : null}
-            </>
-          ) : isWorker && myAssignment ? (
-            <>
-              <Sub>Add meg, mennyiért vállalod a feladatot.</Sub>
+              <Sub>Ajánlatot kértek tőled erre a munkára. Add meg, mennyiért vállalod — vagy jelezd, ha nem vállalod.</Sub>
               <Input label="Ajánlati ár (Ft)" value={quoteAmount} onChangeText={setQuoteAmount} keyboardType="numeric" placeholder="pl. 120 000" />
-              <Input label="Megjegyzés" value={quoteNote} onChangeText={setQuoteNote} placeholder="opcionális" />
-              <Btn title="Ajánlat küldése" onPress={sendQuote} disabled={!quoteAmount} />
+              <Input label="Megjegyzés" value={quoteNote} onChangeText={setQuoteNote} placeholder="opcionális (pl. anyag nélkül, 3 nap)" />
+              <Btn title="Ajánlat küldése 💬" onPress={sendQuote} disabled={!quoteAmount} />
             </>
-          ) : <Sub>A munkavállaló ajánlatára várunk.</Sub>}
+          ) : mine.status === 'submitted' ? (
+            <>
+              <KV k="Ajánlatod" v={ft(mine.amount ?? 0)} strong />
+              {mine.note ? <Sub>{mine.note}</Sub> : null}
+              <Sub>🕐 Beküldve {hdt(mine.submitted_at ?? mine.updated_at)} — visszaigazolásra vár. Ha elfogadják, a feladat a folyamatban lévők közé kerül.</Sub>
+            </>
+          ) : mine.status === 'accepted' ? (
+            <>
+              <KV k="Elfogadott ajánlatod" v={ft(mine.amount ?? 0)} strong />
+              <Sub>✅ Elfogadva {hdt(mine.decided_at ?? mine.updated_at)} — a feladat a tiéd, kezdheted.</Sub>
+            </>
+          ) : (
+            <Sub>{mine.status === 'declined' ? '✋ Nem vállaltad ezt a munkát.' : `Az ajánlatkérés lezárult${mine.decision_note ? ` — ${mine.decision_note}` : ''}.`}</Sub>
+          )}
+          {quoteOpenForMe ? (
+            !declineOpen ? (
+              <Btn title="Nem vállalom ✋" kind="ghost" onPress={() => setDeclineOpen(true)} />
+            ) : (
+              <View style={{ gap: S.sm }}>
+                <Input label="Miért nem? (opcionális)" value={declineReason} onChangeText={setDeclineReason} placeholder="pl. nincs rá kapacitásom" />
+                <View style={{ flexDirection: 'row', gap: S.sm }}>
+                  <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setDeclineOpen(false)} /></View>
+                  <View style={{ flex: 1 }}><Btn title="Nem vállalom" kind="danger" onPress={() => void declineQuote()} /></View>
+                </View>
+              </View>
+            )
+          ) : null}
         </Card>
       ) : null}
 
+      {/* ---------- ajánlat: partner (napló + újrakérés) ---------- */}
+      {!isWorker && (isQuoteTask || active) ? (
+        <Section title="💬 Ajánlatok" accent={openQuotes(task.id, allQuotes).length > 0}
+          defaultOpen={isQuoteTask && !task.quote_accepted_at}
+          summary={task.quote_accepted_at ? `elfogadva ${ft(task.quote_amount ?? 0)}`
+            : openQuotes(task.id, allQuotes).length ? `${openQuotes(task.id, allQuotes).filter((q) => q.status === 'submitted').length} ajánlat · ${openQuotes(task.id, allQuotes).filter((q) => q.status === 'requested').length} kérés nyitva`
+            : quoteLog.length ? 'nincs nyitott kérés' : 'nem ajánlatkérős'}>
+          {quoteLog.length === 0 ? <Sub>Még nem kértél ajánlatot ehhez a feladathoz.</Sub> : null}
+          {quoteLog.map((q) => (
+            <View key={q.id} style={{ gap: 3, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+                <Body style={{ fontWeight: '700', flex: 1 }}>{workerName(q.worker_id)}</Body>
+                <Badge text={QUOTE_STATUS_LABEL[q.status]} color={QUOTE_STATUS_COLOR[q.status]} />
+              </View>
+              <Sub>Kérés: {hdt(q.requested_at)}{q.requested_by ? ` · ${profiles.find((p) => p.id === q.requested_by)?.display_name ?? ''}` : ''}</Sub>
+              {q.submitted_at ? <Body>Ajánlat: <Text style={{ fontWeight: '800' }}>{ft(q.amount ?? 0)}</Text>{q.note ? ` — ${q.note}` : ''} <Text style={{ color: C.sub, fontSize: 12 }}>({hdt(q.submitted_at)})</Text></Body> : null}
+              {q.decided_at ? <Sub>{q.status === 'accepted' ? '✅ Elfogadva' : q.status === 'declined' ? '✋ Nem vállalja' : '✖ Elutasítva'} {hdt(q.decided_at)}{q.decision_note ? ` — ${q.decision_note}` : ''}{q.decided_by && q.status !== 'declined' ? ` · ${profiles.find((p) => p.id === q.decided_by)?.display_name ?? ''}` : ''}</Sub> : null}
+              {q.status === 'submitted' && active ? (
+                rejectFor === q.id ? (
+                  <View style={{ gap: S.sm }}>
+                    <Input label="Indok (opcionális, a munkavállaló látja)" value={rejectReason} onChangeText={setRejectReason} placeholder="pl. túl drága" />
+                    <View style={{ flexDirection: 'row', gap: S.sm }}>
+                      <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setRejectFor(null)} /></View>
+                      <View style={{ flex: 1 }}><Btn title="Elutasítás" kind="danger" small onPress={() => rejectQuote(q)} /></View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="Elutasítás" kind="ghost" small onPress={() => { setRejectFor(q.id); setRejectReason(''); }} /></View>
+                    <View style={{ flex: 2 }}><Btn title="Ajánlat elfogadása ✅" small onPress={() => void acceptQuote(q)} /></View>
+                  </View>
+                )
+              ) : null}
+              {q.status === 'requested' && active ? (
+                <Btn title="Kérés visszavonása" kind="ghost" small onPress={() => { setRejectReason(''); rejectQuote(q); }} />
+              ) : null}
+              {(q.status === 'declined' || q.status === 'rejected') && active && !task.quote_accepted_at && !openQuotes(task.id, allQuotes).some((o) => o.worker_id === q.worker_id) ? (
+                <Btn title={`↻ Új ajánlatkérés: ${workerName(q.worker_id)}`} kind="secondary" small onPress={() => void requestQuote(q.worker_id)} />
+              ) : null}
+            </View>
+          ))}
+          {active && !task.quote_accepted_at ? (
+            <View style={{ gap: S.sm, paddingTop: 4 }}>
+              <Sub>Új ajánlatkérés — bárkitől, akár ugyanattól az embertől is:</Sub>
+              <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+                <View style={{ flex: 1 }}>
+                  <Picker items={workers.filter((w) => !!w.approved_at).sort((a, b) => wname(a).localeCompare(wname(b), 'hu'))}
+                    selectedId={requestWorker} getId={(w) => w.id} getLabel={(w) => wname(w)} onSelect={setRequestWorker} placeholder="Válassz munkavállalót…" />
+                </View>
+                <Btn title="Ajánlatot kérek 💬" small disabled={!requestWorker} onPress={() => requestWorker && void requestQuote(requestWorker)} />
+              </View>
+            </View>
+          ) : null}
+        </Section>
+      ) : null}
+
       {/* ---------- munkavállalói műveletek ---------- */}
-      {isWorker && myAssignment && active ? (
+      {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
         <Card style={{ borderColor: C.accent }}>
           <H2>Teendőid</H2>
           {!myAssignment.acknowledged_at ? (

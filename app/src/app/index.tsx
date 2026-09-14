@@ -10,7 +10,7 @@ import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
 import {
   Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory,
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, TaskQuote,
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
 import { isActiveTask } from '../lib/tasks';
@@ -82,6 +82,7 @@ function DashboardInner() {
   const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
+  const quotes = useTable<TaskQuote>('task_quotes');
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
   const awaitingMyApproval = shareRequests.find((r) =>
@@ -120,7 +121,8 @@ function DashboardInner() {
   const today = todayISO();
   const pendingTasks = activeTasks.filter((t) => t.status === 'assigned');
   const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
-  const quoteTasks = activeTasks.filter((t) => t.quote_requested && !t.quote_accepted_at && t.quote_amount != null);
+  const submittedQuotes = quotes.filter((q) => q.status === 'submitted' && activeTasks.some((t) => t.id === q.task_id));
+  const quoteTasks = activeTasks.filter((t) => submittedQuotes.some((q) => q.task_id === t.id));
   const failedRecent = tasks.filter((t) => t.status === 'failed' && (t.done_at ?? t.updated_at) >= new Date(Date.now() - 14 * 864e5).toISOString());
   const runningCount = activeTasks.filter((t) => runningTaskIds.has(t.id)).length;
   const unpricedSum = unpricedMaterials.reduce((s, m) => s + Number(m.amount), 0);
@@ -135,7 +137,7 @@ function DashboardInner() {
     pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
       detail: pendingPrio ? `ebből ${pendingPrio} prioritásos ⚡` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
     quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,
-      detail: `összesen ${ft(quoteTasks.reduce((s, t) => s + Number(t.quote_amount ?? 0), 0))}`, color: C.primary, href: '/tasks?filter=quote' } : null,
+      detail: `${submittedQuotes.length} ajánlat · összesen ${ft(submittedQuotes.reduce((s, q) => s + Number(q.amount ?? 0), 0))}`, color: C.primary, href: '/tasks?filter=quote' } : null,
     unpricedMaterials.length ? { key: 'unpriced', icon: '📦', title: 'Beárazandó anyagköltség', count: unpricedMaterials.length,
       detail: `összértéke ${ft(unpricedSum)} — add meg, mennyiért számlázod tovább`, color: C.warning, href: '/tasks?filter=unpriced' } : null,
     failedRecent.length ? { key: 'failed', icon: '⚠️', title: 'Nem sikerült feladat (14 nap)', count: failedRecent.length,

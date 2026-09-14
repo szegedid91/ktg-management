@@ -360,6 +360,30 @@ export interface TaskMaterialPricing {
   deleted_at: string | null;
 }
 
+export type QuoteStatus = 'requested' | 'submitted' | 'accepted' | 'rejected' | 'declined';
+
+/** Ajánlatkérés-napló: feladat × munkavállaló × kérés. requested = ajánlatra
+ *  várunk; submitted = a munkavállaló beküldte (visszaigazolásra vár);
+ *  accepted = elfogadva (egyben a feladat elfogadása); rejected = a partner
+ *  elutasította / mást választott; declined = a munkavállaló nem vállalja */
+export interface TaskQuote {
+  id: UUID;
+  task_id: UUID;
+  worker_id: UUID;
+  requested_by: UUID | null;
+  requested_at: string;
+  amount: number | null;
+  note: string | null;
+  submitted_at: string | null;
+  status: QuoteStatus;
+  decided_at: string | null;
+  decided_by: UUID | null;
+  decision_note: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
 /** Munkaidő: mikor kezdte / fejezte be (feladathoz köthető) */
 export interface WorkSession extends BaseRow {
   worker_id: string;
@@ -377,7 +401,7 @@ export const SYNC_TABLES = [
   'invoices', 'settlements', 'equipment', 'equipment_moves',
   'profit_share_history', 'share_change_requests',
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
-  'task_finance', 'task_material_pricing', 'notification_queue',
+  'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

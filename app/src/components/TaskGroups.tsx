@@ -9,7 +9,7 @@ import { useTable } from '../lib/hooks';
 import { isActiveTask } from '../lib/tasks';
 import { TaskRow } from './TaskRow';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, Site,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
 const STATUS_ORDER: WorkerTask['status'][] = ['assigned', 'acknowledged', 'done', 'failed', 'cancelled'];
@@ -43,11 +43,12 @@ export function TaskGroups({ tasks, mode }: { tasks: WorkerTask[]; mode: 'site' 
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
+  const quotes = useTable<TaskQuote>('task_quotes');
   const running = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
 
   const tile = (t: WorkerTask) => (
     <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
-      materials={materials.filter((m) => m.task_id === t.id)} pricing={pricing}
+      materials={materials.filter((m) => m.task_id === t.id)} pricing={pricing} quotes={quotes}
       workers={workers} sites={sites} running={running.has(t.id)} showSite={mode === 'site' ? false : true} />
   );
   const byDate = (a: WorkerTask, b: WorkerTask) => b.created_at.localeCompare(a.created_at);

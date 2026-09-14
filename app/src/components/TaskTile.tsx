@@ -5,8 +5,8 @@ import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { C, S } from '../ui/theme';
 import { ft } from '../lib/format';
-import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, Worker, Profile, Site } from '../lib/types';
-import { wname } from '../lib/tasks';
+import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, Worker, Profile, Site } from '../lib/types';
+import { wname, quoteLabel } from '../lib/tasks';
 
 const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
@@ -15,9 +15,9 @@ const STATUS_SHORT: Record<string, string> = {
   assigned: 'elfogadásra vár', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva',
 };
 
-export function TaskTile({ task, assignees, materials, pricing = [], workers, profiles, sites, running }: {
+export function TaskTile({ task, assignees, materials, pricing = [], workers, profiles, sites, running, quotes = [] }: {
   task: WorkerTask; assignees: TaskAssignee[]; materials: TaskMaterial[]; pricing?: TaskMaterialPricing[];
-  workers: Worker[]; profiles: Profile[]; sites: Site[]; running?: boolean;
+  workers: Worker[]; profiles: Profile[]; sites: Site[]; running?: boolean; quotes?: TaskQuote[];
 }) {
   const names = assignees.map((a) => wname(workers.find((w) => w.id === a.worker_id)));
   const acked = assignees.filter((a) => a.acknowledged_at).length;
@@ -43,7 +43,7 @@ export function TaskTile({ task, assignees, materials, pricing = [], workers, pr
       </View>
       <Text style={{ fontSize: 12, color: color, fontWeight: '700' }}>
         {STATUS_SHORT[task.status]}{task.status === 'assigned' && assignees.length > 1 ? ` (${acked}/${assignees.length})` : ''}
-        {task.quote_requested && !task.quote_accepted_at ? (task.quote_amount != null ? ' · ajánlat elfogadásra vár' : ' · ajánlatra vár') : ''}
+        {quoteLabel(task, quotes) ? ` · ${quoteLabel(task, quotes)}` : ''}
       </Text>
       <Text style={{ fontSize: 12, color: C.sub }}>👷 {names.join(', ') || '—'}</Text>
       <Text style={{ fontSize: 12, color: C.sub }}>Kiadta: {creator}{site ? ` · 📍 ${site.name}` : ''}</Text>

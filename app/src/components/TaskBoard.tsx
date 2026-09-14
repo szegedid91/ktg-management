@@ -7,10 +7,10 @@ import { View, Text, Pressable } from 'react-native';
 import { Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { isActiveTask, wname } from '../lib/tasks';
+import { isActiveTask, wname, openQuotes } from '../lib/tasks';
 import { TaskRow, STATUS_COLOR } from './TaskRow';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, Site,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
 export type BoardFilter = 'active' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'done' | 'failed' | 'all';
@@ -36,6 +36,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
+  const quotes = useTable<TaskQuote>('task_quotes');
+  const hasOpenQuote = (t: WorkerTask) => openQuotes(t.id, quotes).length > 0;
 
   const [filter, setFilter] = useState<Filter>(initialFilter);
   const [q, setQ] = useState('');
@@ -56,7 +58,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     running: active.filter((t) => running.has(t.id)).length,
     unpriced: tasks.filter((t) => unpricedTaskIds.has(t.id)).length,
     priority: active.filter((t) => t.priority > 0).length,
-    quote: active.filter((t) => t.quote_requested && !t.quote_accepted_at).length,
+    quote: active.filter(hasOpenQuote).length,
     done: tasks.filter((t) => t.status === 'done').length,
     failed: tasks.filter((t) => t.status === 'failed').length,
     all: tasks.length,
@@ -73,7 +75,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
           case 'running': return running.has(t.id);
           case 'unpriced': return unpricedTaskIds.has(t.id);
           case 'priority': return isActiveTask(t) && t.priority > 0;
-          case 'quote': return isActiveTask(t) && !!t.quote_requested && !t.quote_accepted_at;
+          case 'quote': return isActiveTask(t) && hasOpenQuote(t);
           case 'done': return t.status === 'done';
           case 'failed': return t.status === 'failed';
           default: return true;
@@ -89,11 +91,11 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
       })
       .sort((a, b) => (b.priority - a.priority) || b.updated_at.localeCompare(a.updated_at));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, workers, sites]);
+  }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, workers, sites, quotes]);
 
   const row = (t: WorkerTask, showSite = true) => (
     <TaskRow key={t.id} task={t} assignees={assigneesOf(t)} materials={materials.filter((m) => m.task_id === t.id)}
-      pricing={pricing} workers={workers} sites={sites} running={running.has(t.id)} showSite={showSite} />
+      pricing={pricing} quotes={quotes} workers={workers} sites={sites} running={running.has(t.id)} showSite={showSite} />
   );
 
   const shown = filtered.slice(0, limit);

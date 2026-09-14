@@ -82,3 +82,9 @@ select gen_random_uuid(), u.id, u.id::text, 'email',
        jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true),
        now(), now(), now()
 from auth.users u where u.email = 'pista@teszt.hu';
+
+-- ajánlatkérős feladat Marcinak (a kiosztás-trigger nyitja a kérés-sort)
+insert into public.worker_tasks (id, code, title, details, site_id, status, priority, quote_requested, created_by) values
+  ('20000000-0000-0000-0000-000000000003', 'F-003', 'Terasz burkolása', 'Kb. 18 m², anyag a megrendelőé.', '10000000-0000-0000-0000-000000000001', 'assigned', 0, true, '00000000-0000-0000-0000-00000000000b');
+insert into public.task_assignees (task_id, worker_id)
+select '20000000-0000-0000-0000-000000000003', w.id from public.workers w where w.email = 'marci@teszt.hu';

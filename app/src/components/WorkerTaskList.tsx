@@ -6,11 +6,12 @@ import { View, Text, Pressable } from 'react-native';
 import { Sub, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { isActiveTask } from '../lib/tasks';
+import { isActiveTask, myQuote } from '../lib/tasks';
+import { getCurrentUserId } from '../lib/repo';
 import { TaskRow, STATUS_COLOR } from './TaskRow';
-import { WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Worker, Site } from '../lib/types';
+import { WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Worker, Site, Profile } from '../lib/types';
 
-type Filter = 'assigned' | 'acknowledged' | 'closed';
+type Filter = 'quote' | 'assigned' | 'acknowledged' | 'closed';
 
 function Chip({ label, count, color, on, onPress }: { label: string; count?: number; color?: string; on: boolean; onPress: () => void }) {
   return (
@@ -30,12 +31,17 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
+  const quotes = useTable<TaskQuote>('task_quotes');
+  const wid = useTable<Profile>('profiles').find((p) => p.id === getCurrentUserId())?.worker_id ?? null;
+  // ajánlatkérős feladat: a saját ajánlat-sorom állapota dönt (kérés vagy beküldött → „ajánlat” fül)
+  const isQuoteOpen = (t: WorkerTask) => { const q = myQuote(t.id, wid, quotes); return !!q && (q.status === 'requested' || q.status === 'submitted'); };
   const [filter, setFilter] = useState<Filter | null>(initialFilter);
   const [siteId, setSiteId] = useState<string | null>(null);
 
   const running = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const counts = {
-    assigned: tasks.filter((t) => t.status === 'assigned').length,
+    quote: tasks.filter((t) => isActiveTask(t) && isQuoteOpen(t)).length,
+    assigned: tasks.filter((t) => t.status === 'assigned' && !isQuoteOpen(t)).length,
     acknowledged: tasks.filter((t) => t.status === 'acknowledged').length,
     closed: tasks.filter((t) => !isActiveTask(t)).length,
   };
@@ -45,14 +51,19 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   const siteName = (id: string) => (id ? sites.find((s) => s.id === id)?.name ?? 'Ismeretlen' : 'Helyszín nélkül');
 
   const list = tasks
-    .filter((t) => filter === null ? isActiveTask(t) : filter === 'closed' ? !isActiveTask(t) : t.status === filter)
+    .filter((t) => filter === null ? isActiveTask(t)
+      : filter === 'closed' ? !isActiveTask(t)
+      : filter === 'quote' ? isActiveTask(t) && isQuoteOpen(t)
+      : filter === 'assigned' ? t.status === 'assigned' && !isQuoteOpen(t)
+      : t.status === filter)
     .filter((t) => siteId === null || (t.site_id ?? '') === siteId)
     .sort((a, b) => (a.status === 'assigned' ? 0 : 1) - (b.status === 'assigned' ? 0 : 1) || b.updated_at.localeCompare(a.updated_at));
 
   return (
     <View style={{ gap: S.sm }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Chip label="Aktív" count={counts.assigned + counts.acknowledged} on={filter === null} onPress={() => setFilter(null)} />
+        <Chip label="Aktív" count={counts.quote + counts.assigned + counts.acknowledged} on={filter === null} onPress={() => setFilter(null)} />
+        {counts.quote > 0 ? <Chip label="💬 Ajánlat" count={counts.quote} color={C.primary} on={filter === 'quote'} onPress={() => setFilter(filter === 'quote' ? null : 'quote')} /> : null}
         <Chip label="Elfogadásra vár" count={counts.assigned} color={STATUS_COLOR.assigned} on={filter === 'assigned'} onPress={() => setFilter(filter === 'assigned' ? null : 'assigned')} />
         <Chip label="Folyamatban" count={counts.acknowledged} color={STATUS_COLOR.acknowledged} on={filter === 'acknowledged'} onPress={() => setFilter(filter === 'acknowledged' ? null : 'acknowledged')} />
         {showClosed ? <Chip label="Lezárt" count={counts.closed} on={filter === 'closed'} onPress={() => setFilter(filter === 'closed' ? null : 'closed')} /> : null}
@@ -69,7 +80,7 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
       {list.length === 0 ? <Empty text={filter === 'closed' ? 'Nincs lezárt feladatod.' : 'Nincs ilyen feladatod.'} /> : null}
       <View style={{ gap: 6 }}>
         {list.map((t) => (
-          <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
+          <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)} quotes={quotes} myWorkerId={wid}
             materials={materials.filter((m) => m.task_id === t.id)} workers={workers} sites={sites} running={running.has(t.id)} />
         ))}
       </View>

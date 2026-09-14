@@ -8,11 +8,11 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt } from '../lib/format';
-import { isActiveTask, fmtHours, sessionHours, wname } from '../lib/tasks';
+import { isActiveTask, fmtHours, sessionHours, wname, myQuote } from '../lib/tasks';
 import { TaskRow } from './TaskRow';
 import { router } from 'expo-router';
 import {
-  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, WorkSession, Site, Attendance,
+  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance,
 } from '../lib/types';
 
 export function WorkerHome({ profile }: { profile: Profile }) {
@@ -24,6 +24,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const materials = useTable<TaskMaterial>('task_materials');
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === wid);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.worker_id === wid);
+  const quotes = useTable<TaskQuote>('task_quotes');
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
   const [closedOpen, setClosedOpen] = useState(false);
@@ -32,12 +33,18 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid).map((a) => a.task_id));
   const myTasks = tasks.filter((t) => myTaskIds.has(t.id));
   const active = myTasks.filter(isActiveTask);
-  const pending = active.filter((t) => t.status === 'assigned').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const qOf = (t: WorkerTask) => myQuote(t.id, wid, quotes);
+  // ajánlatkérések: ajánlatot adok vagy nem vállalom (nincs „elfogadás”);
+  // beküldött ajánlat: visszaigazolásra vár; elfogadott → normál feladat
+  const quoteRequests = active.filter((t) => qOf(t)?.status === 'requested').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const quoteWaiting = active.filter((t) => qOf(t)?.status === 'submitted').sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const quoteOpenIds = new Set([...quoteRequests, ...quoteWaiting].map((t) => t.id));
+  const pending = active.filter((t) => t.status === 'assigned' && !quoteOpenIds.has(t.id)).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const inProgress = active.filter((t) => t.status === 'acknowledged');
   const closedTasks = myTasks.filter((t) => !isActiveTask(t)).sort((a, b) => (b.done_at ?? b.updated_at).localeCompare(a.done_at ?? a.updated_at));
   const runningIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const row = (t: WorkerTask) => (
-    <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)}
+    <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)} quotes={quotes} myWorkerId={wid}
       materials={materials.filter((m) => m.task_id === t.id)} workers={workers} sites={sites} running={runningIds.has(t.id)} />
   );
   const openSession = sessions.find((s) => !s.ended_at);
@@ -76,6 +83,21 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                   onPress={() => insertRow('work_sessions', { worker_id: wid, task_id: null, site_id: null, started_at: nowISO(), ended_at: null, note: null })} />}
           </View>
         </Card>
+      ) : null}
+
+      {quoteRequests.length > 0 ? (
+        <View style={{ gap: S.sm }}>
+          <H2>💬 Ajánlatkérések ({quoteRequests.length})</H2>
+          <View style={{ gap: 6 }}>{quoteRequests.map(row)}</View>
+          <Sub style={{ color: C.primary }}>Nyisd meg, és add meg, mennyiért vállalod — vagy jelezd, hogy nem vállalod.</Sub>
+        </View>
+      ) : null}
+      {quoteWaiting.length > 0 ? (
+        <View style={{ gap: S.sm }}>
+          <H2>🕐 Visszaigazolásra váró ajánlataim ({quoteWaiting.length})</H2>
+          <View style={{ gap: 6 }}>{quoteWaiting.map(row)}</View>
+          <Sub>Ha elfogadják, a feladat átkerül a folyamatban lévők közé, és értesítést kapsz.</Sub>
+        </View>
       ) : null}
 
       <View style={{ gap: S.sm }}>
