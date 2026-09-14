@@ -11,7 +11,7 @@ import { useTable, useRow } from '../../lib/hooks';
 import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow, callRpc } from '../../lib/repo';
 import { syncNow } from '../../lib/sync';
 import { smartBack } from '../../lib/nav';
-import { ft, hdt, parseAmount } from '../../lib/format';
+import { ft, hd, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
