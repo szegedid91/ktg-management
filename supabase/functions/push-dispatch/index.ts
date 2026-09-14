@@ -15,13 +15,30 @@ const corsHeaders = {
 
 const ft = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' Ft';
 
-async function sendExpoPush(messages: { to: string; title: string; body: string; data?: unknown }[]) {
-  if (messages.length === 0) return;
-  await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(messages),
-  });
+/** Expo push küldés; a válasz ticketjei alapján visszaadja, mely üzenetek
+ *  mentek el, és mely tokenek érvénytelenek (DeviceNotRegistered). */
+async function sendExpoPush(messages: { to: string; title: string; body: string; data?: unknown }[])
+  : Promise<{ ok: boolean[]; deadTokens: string[] }> {
+  const ok = messages.map(() => false);
+  const deadTokens: string[] = [];
+  if (messages.length === 0) return { ok, deadTokens };
+  try {
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages),
+    });
+    if (!res.ok) return { ok, deadTokens };
+    const body = await res.json().catch(() => ({}));
+    const tickets: any[] = Array.isArray(body?.data) ? body.data : [];
+    tickets.forEach((t, i) => {
+      if (t?.status === 'ok') ok[i] = true;
+      else if (t?.details?.error === 'DeviceNotRegistered') deadTokens.push(messages[i].to);
+    });
+  } catch (e) {
+    console.error('expo push', e);
+  }
+  return { ok, deadTokens };
 }
 
 Deno.serve(async (req) => {
@@ -47,6 +64,11 @@ Deno.serve(async (req) => {
 
   const { data: profiles } = await supabase.from('profiles').select('*');
   const tokenOf = (id: string) => profiles?.find((p) => p.id === id)?.push_token as string | null;
+  // cégszintű összesítők (heti, lejárt) csak a fő felhasználóknak
+  const partners = (profiles ?? []).filter((p) => p.worker_id == null);
+  const clearDeadTokens = async (tokens: string[]) => {
+    if (tokens.length) await supabase.from('profiles').update({ push_token: null }).in('push_token', tokens);
+  };
 
   let sentCount = 0;
 
@@ -57,17 +79,22 @@ Deno.serve(async (req) => {
       .is('sent_at', null)
       .order('created_at')
       .limit(100);
-    const messages = [];
-    const ids = [];
+    const messages: { to: string; title: string; body: string; data?: unknown }[] = [];
+    const msgIds: number[] = [];
+    const doneIds: number[] = []; // token nélküli címzett: az app-beli értesítés megvan, push nincs
     for (const n of queue ?? []) {
-      ids.push(n.id);
       const token = tokenOf(n.recipient);
-      if (token) messages.push({ to: token, title: n.title, body: n.body, data: n.payload });
+      if (token) { messages.push({ to: token, title: n.title, body: n.body, data: n.payload }); msgIds.push(n.id); }
+      else doneIds.push(n.id);
     }
-    await sendExpoPush(messages);
-    sentCount = messages.length;
-    if (ids.length) {
-      await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() }).in('id', ids);
+    const { ok, deadTokens } = await sendExpoPush(messages);
+    ok.forEach((v, i) => { if (v) doneIds.push(msgIds[i]); });
+    // érvénytelen tokenű címzett sora is lezárható (újraküldésnek nincs értelme)
+    deadTokens.forEach((t) => msgIds.forEach((id, i) => { if (messages[i].to === t) doneIds.push(id); }));
+    await clearDeadTokens(deadTokens);
+    sentCount = ok.filter(Boolean).length;
+    if (doneIds.length) {
+      await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() }).in('id', doneIds);
     }
   }
 
@@ -83,7 +110,7 @@ Deno.serve(async (req) => {
     const revenue = (inv ?? []).reduce((s, i) => s + Number(i.net_amount), 0);
     const { data: balances } = await supabase.from('v_user_balances').select('*');
     const messages = [];
-    for (const p of profiles ?? []) {
+    for (const p of partners) {
       if (!p.notify_weekly || !p.push_token) continue;
       const b = balances?.find((x) => x.user_id === p.id);
       messages.push({
@@ -92,13 +119,14 @@ Deno.serve(async (req) => {
         body: `Heti költés: ${ft(cost)} · bevétel: ${ft(revenue)} · egyenleged: ${ft(Number(b?.balance ?? 0))}`,
       });
     }
-    await sendExpoPush(messages);
-    sentCount = messages.length;
+    const r1 = await sendExpoPush(messages);
+    await clearDeadTokens(r1.deadTokens);
+    sentCount = r1.ok.filter(Boolean).length;
   }
 
   if (job === 'overdue') {
     const messages = [];
-    for (const p of profiles ?? []) {
+    for (const p of partners) {
       if (!p.notify_overdue || !p.push_token) continue;
       const cutoffDate = new Date(Date.now() - Number(p.overdue_days) * 86400_000).toISOString().slice(0, 10);
       const [{ data: wages }, { data: inv }] = await Promise.all([
@@ -120,8 +148,9 @@ Deno.serve(async (req) => {
         });
       }
     }
-    await sendExpoPush(messages);
-    sentCount = messages.length;
+    const r2 = await sendExpoPush(messages);
+    await clearDeadTokens(r2.deadTokens);
+    sentCount = r2.ok.filter(Boolean).length;
   }
 
   return new Response(JSON.stringify({ ok: true, sent: sentCount }), {

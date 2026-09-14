@@ -61,6 +61,7 @@ export function dayShort(dow: number): string {
 export function parseAmount(input: string): number {
   if (!input) return 0;
   let s = String(input).replace(/\s+/g, '').replace(/[^\d.,-]/g, '');
+  if (s.indexOf('-') > 0) return 0; // belső kötőjel (pl. „10-20”): nem szám
   if (/^-?\d{1,3}([.,]\d{3})+$/.test(s)) {
     // tiszta ezres tagolás: minden elválasztó törlendő
     s = s.replace(/[.,]/g, '');

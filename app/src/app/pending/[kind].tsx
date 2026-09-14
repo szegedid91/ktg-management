@@ -1,6 +1,7 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
+import { unpaidWorkerPart } from '../../lib/tasks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -74,7 +75,7 @@ export default function PendingScreen() {
 
       if (isWages) {
         const workerPart = Number(a.amount) - Number(a.commission_amount);
-        if (a.pay_basis === 'presence' || a.paid_at || workerPart <= 0) continue;
+        if (unpaidWorkerPart(a) <= 0) continue;
         const w = workers.find((x) => x.id === a.worker_id);
         personKey = a.worker_id;
         personName = w?.name ?? '?';

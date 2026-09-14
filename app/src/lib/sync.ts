@@ -39,13 +39,19 @@ function isNetworkError(err: any): boolean {
 }
 
 /** Végleges üzleti elutasítás (RLS, constraint, trigger, séma) — nincs értelme
- *  újrapróbálni. Minden más (5xx, rate limit, ismeretlen) átmeneti: retry. */
+ *  újrapróbálni. Minden más (5xx, rate limit, kapcsolat, lejárt token) átmeneti. */
 function isRejection(err: any): boolean {
   const code = String(err?.code ?? '');
   // PG hibaosztályok: 22 adathiba, 23 constraint, 42 jogosultság/séma,
-  // P0 raise exception; PGRST a PostgREST séma-/kéréshibái
-  return /^(22|23|42|P0|PGRST)/.test(code);
+  // P0 raise exception; PGRST1xx/2xx a PostgREST kérés-/sémahibái
+  // (PGRST0xx kapcsolati, PGRST3xx JWT hibák: átmenetiek)
+  return /^(22|23|42|P0)/.test(code) || /^PGRST[12]/.test(code);
 }
+
+/** Néhány táblát maszkoló nézeten át olvasunk (a profilok érzékeny
+ *  oszlopai csak a sajátnál / partnernek látszanak). */
+const READ_SOURCE: Partial<Record<SyncTable, string>> = { profiles: 'profiles_v' };
+const sourceOf = (table: SyncTable) => READ_SOURCE[table] ?? table;
 
 /** Elutasított művelet visszagörgetése: az érintett sorok szerver-állapotának
  *  visszatöltése, hogy az optimista lokális változat ne ragadjon bent. */
@@ -53,7 +59,8 @@ async function rollbackOp(op: OutboxOp): Promise<void> {
   const targets: { table: SyncTable; id: string }[] = [];
   if (op.kind === 'upsert' && op.table && op.row) targets.push({ table: op.table, id: String(op.row.id) });
   if (op.kind === 'update' && op.table && op.id) targets.push({ table: op.table, id: op.id });
-  if (op.kind === 'rpc') {
+  if (op.kind === 'rpc' && op.touched?.length) targets.push(...op.touched);
+  if (op.kind === 'rpc' && !op.touched?.length) {
     const table: SyncTable = op.fn === 'mark_invoice_paid' ? 'invoices'
       : op.fn === 'delete_site' ? 'sites'
       : op.fn === 'worker_task_action' ? 'worker_tasks'
@@ -64,7 +71,7 @@ async function rollbackOp(op: OutboxOp): Promise<void> {
   }
   for (const t of targets) {
     try {
-      const { data, error } = await supabase.from(t.table).select('*').eq('id', t.id).maybeSingle();
+      const { data, error } = await supabase.from(sourceOf(t.table)).select('*').eq('id', t.id).maybeSingle();
       if (error) continue; // offline vagy átmeneti — a következő pull rendezi
       if (data) store.putServer(t.table, data as any);
       else store.removeLocal(t.table, t.id); // a szerver el sem fogadta a beszúrást
@@ -118,7 +125,7 @@ async function pushOutbox(): Promise<boolean> {
  *  profilokat minden körben összevetjük a szerver teljes listájával, és ami
  *  ott már nincs, azt helyben is töröljük (a tábla kicsi, ez olcsó). */
 async function reconcileProfiles(): Promise<void> {
-  const { data, error } = await supabase.from('profiles').select('id');
+  const { data, error } = await supabase.from(sourceOf('profiles')).select('id');
   if (error || !data) return;
   const alive = new Set(data.map((r: any) => String(r.id)));
   for (const row of store.getAll('profiles') as any[]) {
@@ -136,7 +143,7 @@ async function pullTable(table: SyncTable): Promise<void> {
     // maradhatnak ki (pl. tömeges kifizetés-pipa egy tranzakcióban);
     // a határ-sorok újratöltése ártalmatlan (idempotens upsert a tükörbe)
     const { data, error } = await supabase
-      .from(table)
+      .from(sourceOf(table))
       .select('*')
       .gte('updated_at', cursor)
       .order('updated_at', { ascending: true })
@@ -170,6 +177,9 @@ export async function syncNow(): Promise<void> {
       }
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
+      // régi, olvasott értesítések ne duzzasszák a lokális tárat
+      const cutoff = new Date(Date.now() - 30 * 864e5).toISOString();
+      store.prune('notification_queue', (r) => !!r.read_at && String(r.read_at) < cutoff);
       // függő push-értesítések kiküldése (legfeljebb percenként)
       import('./push').then((m) => m.drainPushQueue()).catch(() => {});
     }

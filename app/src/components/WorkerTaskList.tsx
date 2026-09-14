@@ -35,14 +35,16 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   const wid = useTable<Profile>('profiles').find((p) => p.id === getCurrentUserId())?.worker_id ?? null;
   // ajánlatkérős feladat: a saját ajánlat-sorom állapota dönt (kérés vagy beküldött → „ajánlat” fül)
   const isQuoteOpen = (t: WorkerTask) => { const q = myQuote(t.id, wid, quotes); return !!q && (q.status === 'requested' || q.status === 'submitted'); };
+  // saját elfogadás szerint (több emberes feladatnál a feladat állapota a többiekre is vár)
+  const ackedByMe = (t: WorkerTask) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at);
   const [filter, setFilter] = useState<Filter | null>(initialFilter);
   const [siteId, setSiteId] = useState<string | null>(null);
 
   const running = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const counts = {
     quote: tasks.filter((t) => isActiveTask(t) && isQuoteOpen(t)).length,
-    assigned: tasks.filter((t) => t.status === 'assigned' && !isQuoteOpen(t)).length,
-    acknowledged: tasks.filter((t) => t.status === 'acknowledged').length,
+    assigned: tasks.filter((t) => isActiveTask(t) && !ackedByMe(t) && !isQuoteOpen(t)).length,
+    acknowledged: tasks.filter((t) => isActiveTask(t) && ackedByMe(t)).length,
     closed: tasks.filter((t) => !isActiveTask(t)).length,
   };
   // helyszín-szűrő csak akkor, ha a feladatai több helyszínen vannak
@@ -54,10 +56,10 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
     .filter((t) => filter === null ? isActiveTask(t)
       : filter === 'closed' ? !isActiveTask(t)
       : filter === 'quote' ? isActiveTask(t) && isQuoteOpen(t)
-      : filter === 'assigned' ? t.status === 'assigned' && !isQuoteOpen(t)
-      : t.status === filter)
+      : filter === 'assigned' ? isActiveTask(t) && !ackedByMe(t) && !isQuoteOpen(t)
+      : isActiveTask(t) && ackedByMe(t))
     .filter((t) => siteId === null || (t.site_id ?? '') === siteId)
-    .sort((a, b) => (a.status === 'assigned' ? 0 : 1) - (b.status === 'assigned' ? 0 : 1) || b.updated_at.localeCompare(a.updated_at));
+    .sort((a, b) => (ackedByMe(a) ? 1 : 0) - (ackedByMe(b) ? 1 : 0) || b.updated_at.localeCompare(a.updated_at));
 
   return (
     <View style={{ gap: S.sm }}>

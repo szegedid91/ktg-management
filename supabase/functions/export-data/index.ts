@@ -7,6 +7,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as XLSX from 'npm:xlsx@0.18.5';
 import { PDFDocument, rgb } from 'npm:pdf-lib@1.17.1';
 import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
+import { identifyCaller } from '../_shared/caller.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,13 +19,25 @@ const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : 
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
-    const { from = '1970-01-01', to = '2999-12-31', site_id = null, format = 'xlsx' } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const ISO = /^\d{4}-\d{2}-\d{2}$/;
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const from = ISO.test(body.from ?? '') ? body.from : '1970-01-01';
+    const to = ISO.test(body.to ?? '') ? body.to : '2999-12-31';
+    const site_id = UUID.test(body.site_id ?? '') ? body.site_id : null;
+    const format = body.format === 'pdf' ? 'pdf' : 'xlsx';
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+    // csak fő felhasználó exportálhat — a munkavállalói fiók nem lát pénzügyet
+    const caller = await identifyCaller(req, supabase);
+    if (!caller) return json({ error: 'Bejelentkezés szükséges.' }, 401);
+    if (!caller.isPartner) return json({ error: 'Az export csak a fő felhasználóknak érhető el.' }, 403);
 
     let expQ = supabase.from('expenses').select('*, expense_categories(name), sites(name), profiles:created_by(display_name)')
       .gte('expense_date', from).lte('expense_date', to).is('deleted_at', null).order('expense_date');
@@ -37,10 +50,12 @@ Deno.serve(async (req) => {
       attQ = attQ.eq('site_id', site_id);
       invQ = invQ.eq('site_id', site_id);
     }
-    const [{ data: expenses }, { data: attendance }, { data: invoices }, { data: photos }] = await Promise.all([
-      expQ, attQ, invQ,
-      supabase.from('expense_photos').select('*').is('deleted_at', null),
-    ]);
+    const [{ data: expenses }, { data: attendance }, { data: invoices }] = await Promise.all([expQ, attQ, invQ]);
+    // csak az exportált költségek fotói kapnak (7 napos) linket
+    const expenseIds = (expenses ?? []).map((e: any) => e.id);
+    const { data: photos } = expenseIds.length
+      ? await supabase.from('expense_photos').select('*').is('deleted_at', null).in('expense_id', expenseIds)
+      : { data: [] as any[] };
 
     // számlafotó signed URL-ek (7 nap)
     const photoUrls = new Map<string, string[]>();
@@ -175,8 +190,7 @@ Deno.serve(async (req) => {
       base64: btoa(bin),
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String((err as Error)?.message ?? err) }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('export-data', err);
+    return json({ error: 'Az export nem sikerült. Próbáld újra később.' }, 500);
   }
 });

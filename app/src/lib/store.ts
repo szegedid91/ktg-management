@@ -20,6 +20,8 @@ export interface OutboxOp {
   args?: Record<string, any>;
   queuedAt: string;
   lastError?: string;
+  /** rpc: az optimistán módosított sorok — elutasításnál mindet visszatöltjük */
+  touched?: { table: SyncTable; id: string }[];
 }
 
 /** Az op melyik sor(oka)t érinti — pending-védelemhez és rollbackhez */
@@ -40,6 +42,8 @@ class Store {
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** az utolsó tábla-mentés eredménye (a kurzor csak sikeres mentés után rögzül) */
+  private tableWrites = new Map<string, Promise<boolean>>();
   version = 0;
 
   /** Betöltés-váró: a sync és az írások megvárhatják a diszk-állapotot */
@@ -105,17 +109,29 @@ class Store {
     return () => this.listeners.delete(listener);
   }
 
-  private schedulePersist(key: string, get: () => any) {
+  private schedulePersist(key: string, get: () => any): Promise<boolean> {
     const existing = this.persistTimers.get(key);
     if (existing) clearTimeout(existing);
-    this.persistTimers.set(key, setTimeout(() => {
-      this.persistTimers.delete(key);
-      AsyncStorage.setItem(key, JSON.stringify(get())).catch(() => {});
-    }, 150));
+    return new Promise<boolean>((resolve) => {
+      this.persistTimers.set(key, setTimeout(() => {
+        this.persistTimers.delete(key);
+        AsyncStorage.setItem(key, JSON.stringify(get())).then(() => resolve(true)).catch(() => resolve(false));
+      }, 150));
+    });
   }
 
   private persistTable(table: SyncTable) {
-    this.schedulePersist(PREFIX + 't:' + table, () => [...(this.tables.get(table)?.values() ?? [])]);
+    const p = this.schedulePersist(PREFIX + 't:' + table, () => [...(this.tables.get(table)?.values() ?? [])]);
+    this.tableWrites.set(table, p);
+  }
+
+  /** Lokális sorok eldobása feltétel szerint (pl. régi, olvasott értesítések) */
+  prune(table: SyncTable, drop: (row: Row) => boolean) {
+    const map = this.tables.get(table);
+    if (!map) return;
+    let changed = false;
+    for (const [id, row] of map) if (drop(row)) { map.delete(id); changed = true; }
+    if (changed) { this.persistTable(table); this.emit(); }
   }
 
   getAll(table: SyncTable): Row[] {
@@ -239,7 +255,13 @@ class Store {
 
   setCursor(table: string, cursor: string) {
     this.cursors[table] = cursor;
-    this.schedulePersist(PREFIX + 'cursors', () => this.cursors);
+    // ha a tábla lemezre írása nem sikerült (pl. betelt a tároló), a kurzor
+    // visszaáll, hogy a következő lehúzás újra behozza a sorokat
+    const w = this.tableWrites.get(table) ?? Promise.resolve(true);
+    void w.then((ok) => {
+      if (!ok) { this.cursors[table] = '1970-01-01T00:00:00Z'; }
+      void this.schedulePersist(PREFIX + 'cursors', () => this.cursors);
+    });
   }
 
   async clearAll() {

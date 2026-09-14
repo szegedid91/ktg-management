@@ -45,6 +45,7 @@ export default function NewTask() {
   const save = async () => {
     if (!title.trim()) { notify('Hiba', 'Adj címet a feladatnak.'); return; }
     if (chosen.size === 0) { notify('Hiba', 'Válassz legalább egy munkavállalót.'); return; }
+    if (!site) { notify('Helyszín kell', 'A bér (munkaidő, ajánlat) építkezésenként képződik — válassz helyszínt a feladathoz.'); return; }
     setSaving(true);
     // a fotók előre mennek fel (internet kell); ha nem sikerül, a feladat
     // fotó nélkül is kimegy
@@ -83,9 +84,9 @@ export default function NewTask() {
         <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
         <Input label="Részletek" value={details} onChangeText={setDetails} placeholder="Mit, hol, mivel…" multiline />
         <Check checked={priority} onToggle={() => setPriority(!priority)} label="⚡ Prioritásos (sürgős) feladat" sub="A listák elején, kiemelve jelenik meg." />
-        <Picker label="Helyszín (építkezés)" items={sites} selectedId={site} getId={(s) => s.id}
+        <Picker label="Helyszín (építkezés) *" items={sites} selectedId={site} getId={(s) => s.id}
           getLabel={(s) => s.address ? `${s.name} — ${s.address}` : s.name} onSelect={setSite}
-          allowNull nullLabel="— nincs helyszín —" />
+          />
       </Card>
 
       <Card>

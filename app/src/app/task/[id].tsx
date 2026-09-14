@@ -21,7 +21,7 @@ import {
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance,
 } from '../../lib/types';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
@@ -75,9 +75,14 @@ export default function TaskDetail() {
     [assignees, workers],
   );
   const timing = useMemo(() => (task ? taskTiming(task, sessions, now) : null), [task, sessions, now]);
-  const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions, now) : null), [task, assigneeWorkers, sessions, now]);
+  // bérköltség: a ténylegesen könyvelt bér-sorok (munkaidőből / elfogadott
+  // ajánlatból, a szerver számolja) + a még futó munkamenetek előnézete
+  const wageRows = useTable<Attendance>('attendance').filter((a) => a.task_id === id);
+  const wageBooked = useMemo(() => wageRows.reduce((s, a) => s + Number(a.amount), 0), [wageRows]);
+  const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions.filter((s) => !s.ended_at), now) : null), [task, assigneeWorkers, sessions, now]);
+  const wageTotal = task?.quote_accepted_at && task.quote_amount != null ? Number(task.quote_amount) : wageBooked + (wage?.total ?? 0);
   const mat = useMemo(() => materialTotals(materials, pricing), [materials, pricing]);
-  const profit = task && wage ? taskProfit(finance?.invoice_net, wage.total, materials, pricing) : null;
+  const profit = task && wage ? taskProfit(finance?.invoice_net, wageTotal, materials, pricing) : null;
 
   // űrlap-állapotok
   const [invoiceStr, setInvoiceStr] = useState<string | null>(null);
@@ -560,17 +565,21 @@ export default function TaskDetail() {
       {/* ---------- partner: pénzügy ---------- */}
       {!isWorker && wage ? (
         <Section title="💰 Pénzügy" accent defaultOpen={finance?.invoice_net == null}
-          summary={profit == null ? `bér ${ft(wage.total)} · nincs kiszámlázott érték` : `haszon ${ft(profit)}`}>
+          summary={profit == null ? `bér ${ft(wageTotal)} · nincs kiszámlázott érték` : `haszon ${ft(profit)}`}>
           {task.quote_amount != null && task.quote_accepted_at ? (
-            <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wage.total)} strong />
+            <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wageTotal)} strong />
           ) : (
             <>
-              {wage.parts.map((p) => (
-                <KV key={p.worker.id}
-                  k={`${wname(p.worker)} · ${p.basis === 'hourly' ? `${fmtHours(p.hours)} × ${ft(p.worker.hourly_rate ?? 0)}/ó` : p.basis === 'daily' ? `napi ${ft(p.worker.daily_rate ?? 0)}` : `projekt ${ft(p.worker.project_rate ?? 0)}`}`}
-                  v={ft(p.amount)} />
+              {wageRows.map((a) => (
+                <KV key={a.id}
+                  k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}` : a.pay_basis === 'daily' ? 'napi díj' : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${a.paid_at ? ' ✓' : ''}`}
+                  v={ft(Number(a.amount))} />
               ))}
-              <KV k="Bérköltség eddig (idő alapján)" v={ft(wage.total)} strong />
+              {wage.parts.filter((p) => p.amount > 0).map((p) => (
+                <KV key={`run-${p.worker.id}`} k={`${wname(p.worker)} · épp fut (${fmtHours(p.hours)}, előnézet)`} v={`~${ft(p.amount)}`} />
+              ))}
+              {wageRows.length === 0 && wage.total === 0 ? <Sub>Még nincs könyvelt bér — a munkaidő lezárásakor képződik.</Sub> : null}
+              <KV k="Bérköltség eddig" v={ft(wageTotal)} strong />
             </>
           )}
           <KV k="Anyag beszerzés" v={ft(mat.cost)} />

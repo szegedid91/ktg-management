@@ -8,7 +8,7 @@ import { useTable, useRow, useOnlineView } from '../../lib/hooks';
 import { callRpc, fetchView, getCurrentUserId, updateRow, markInvoicePaid, queueRpc } from '../../lib/repo';
 import { syncNow } from '../../lib/sync';
 import { ft, hd, todayISO } from '../../lib/format';
-import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals, WorkerTask } from '../../lib/types';
+import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals, WorkerTask , Profile} from '../../lib/types';
 import { TaskGroups } from '../../components/TaskGroups';
 import { isActiveTask } from '../../lib/tasks';
 import { Comments } from '../../components/Comments';
@@ -29,6 +29,7 @@ export default function SiteDetail() {
   const categories = useTable<ExpenseCategory>('expense_categories');
   const equipment = useOnlineView<any[]>(`equipment-${id}`, () => fetchView('v_equipment_current', (q) => q.eq('site_id', id)), [id]);
   const me = getCurrentUserId();
+  const isWorker = !!useTable<Profile>('profiles').find((p) => p.id === me)?.worker_id;
 
   const totals = useMemo(() => {
     const expNet = expenses.reduce((s, e) => s + Number(e.net_amount), 0);
@@ -42,6 +43,7 @@ export default function SiteDetail() {
   }, [expenses, attendance, invoices]);
 
   if (!site) return <Screen><Empty text="Építkezés nem található (szinkronizálás folyamatban?)" /></Screen>;
+  if (isWorker) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól — a feladataidat a Feladatok fülön találod." /></Screen>;
   const closed = site.status === 'closed';
 
   const doClose = async () => {

@@ -21,6 +21,14 @@ export function isActiveTask(t: WorkerTask): boolean {
   return t.status === 'assigned' || t.status === 'acknowledged';
 }
 
+/** Kifizetetlen bér-sor, amiben a munkavállalónak tényleg jár pénz
+ *  (a 0 Ft-os / csak jelenlét sorok nem számítanak) — minden képernyő ezt használja */
+export function unpaidWorkerPart(a: { pay_basis: string; paid_at: string | null; amount: number | string; commission_amount: number | string }): number {
+  if (a.pay_basis === 'presence' || a.paid_at) return 0;
+  const part = Number(a.amount) - Number(a.commission_amount);
+  return part > 0 ? part : 0;
+}
+
 // ---------- ajánlatok ----------
 export const QUOTE_STATUS_LABEL: Record<TaskQuote['status'], string> = {
   requested: 'ajánlatra vár', submitted: 'elfogadásra vár', accepted: 'elfogadva',

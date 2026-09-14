@@ -44,8 +44,11 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const quoteRequests = active.filter((t) => qOf(t)?.status === 'requested').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const quoteWaiting = active.filter((t) => qOf(t)?.status === 'submitted').sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const quoteOpenIds = new Set([...quoteRequests, ...quoteWaiting].map((t) => t.id));
-  const pending = active.filter((t) => t.status === 'assigned' && !quoteOpenIds.has(t.id)).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const inProgress = active.filter((t) => t.status === 'acknowledged');
+  // a besorolás a SAJÁT elfogadásom szerint (több emberes feladatnál a feladat
+  // állapota a többiekre is vár)
+  const ackedByMe = (t: WorkerTask) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at);
+  const pending = active.filter((t) => !ackedByMe(t) && !quoteOpenIds.has(t.id)).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const inProgress = active.filter((t) => ackedByMe(t));
   const closedTasks = myTasks.filter((t) => !isActiveTask(t)).sort((a, b) => (b.done_at ?? b.updated_at).localeCompare(a.done_at ?? a.updated_at));
   const runningIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const row = (t: WorkerTask) => (

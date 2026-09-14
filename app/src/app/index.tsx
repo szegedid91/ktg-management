@@ -13,7 +13,7 @@ import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, TaskQuote,
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
-import { isActiveTask } from '../lib/tasks';
+import { unpaidWorkerPart, isActiveTask } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
 import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
@@ -128,7 +128,7 @@ function DashboardInner() {
   const unpricedSum = unpricedMaterials.reduce((s, m) => s + Number(m.amount), 0);
   const overdueInvoices = invoices.filter((i) => !i.paid_at && i.due_date && i.due_date < today);
   const overdueSum = overdueInvoices.reduce((s, i) => s + Number(i.net_amount), 0);
-  const unpaidWageCount = attendance.filter((a) => a.pay_basis !== 'presence' && !a.paid_at).length;
+  const unpaidWageCount = attendance.filter((a) => unpaidWorkerPart(a) > 0).length;
   const pendingWorkers = workers.filter((w) => !w.approved_at);
   const todos = [
     pendingWorkers.length ? { key: 'approve', icon: '👷', title: 'Jóváhagyásra váró regisztráció', count: pendingWorkers.length,

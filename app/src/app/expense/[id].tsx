@@ -57,6 +57,7 @@ export default function ExpenseDetail() {
   };
 
   const saveEdit = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { notify('Dátum', 'A dátumot ÉÉÉÉ-HH-NN formában add meg (pl. 2026-09-14).'); return; }
     const amounts = vatStateToAmounts(vat);
     updateRow('expenses', expense.id, {
       title: title.trim() || null,

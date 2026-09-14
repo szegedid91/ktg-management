@@ -1,6 +1,7 @@
 // Függőben — áttekintő: kintlévőség, kifizetetlen bérek és közvetítői
 // díjak, innen nyílnak a részletes, építkezésenkénti bontások.
 
+import { unpaidWorkerPart } from '../../lib/tasks';
 import React, { useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
@@ -35,8 +36,7 @@ export default function PendingOverview() {
 
   const stats = useMemo(() => {
     const unpaidInvoices = invoices.filter((i) => !i.paid_at);
-    const unpaidWageRows = attendance.filter((a) =>
-      a.pay_basis !== 'presence' && !a.paid_at && Number(a.amount) - Number(a.commission_amount) > 0);
+    const unpaidWageRows = attendance.filter((a) => unpaidWorkerPart(a) > 0);
     const unpaidCommRows = attendance.filter((a) =>
       a.referrer_external_id && Number(a.commission_amount) > 0 && !a.commission_paid_at);
     return {

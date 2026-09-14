@@ -8,6 +8,7 @@ import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../c
 import { todayISO, addDaysISO } from '../../lib/format';
 import { Site, AppSettings } from '../../lib/types';
 
+import { notify } from '../../lib/dialogs';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function NewInvoice() {
@@ -34,6 +35,10 @@ export default function NewInvoice() {
 
   const save = () => {
     if (!site) return;
+    if (!ISO_DATE.test(date) || (invoicedAt && !ISO_DATE.test(invoicedAt)) || (dueDate && !ISO_DATE.test(dueDate))) {
+      notify('Dátum', 'A dátumokat ÉÉÉÉ-HH-NN formában add meg (pl. 2026-09-14).');
+      return;
+    }
     const a = vatStateToAmounts(vat);
     insertRow('invoices', {
       site_id: site,

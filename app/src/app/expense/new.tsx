@@ -126,6 +126,7 @@ export default function NewExpense() {
   };
 
   const save = async () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { notify('Dátum', 'A dátumot ÉÉÉÉ-HH-NN formában add meg (pl. 2026-09-14).'); return; }
     if (!hasAmount || saving) return;
     setSaving(true);
     try {

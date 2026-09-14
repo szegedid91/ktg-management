@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
+import { todayISO } from './format';
 import { store } from './store';
 import { syncNow } from './sync';
 import { SyncTable } from './types';
@@ -83,7 +84,8 @@ export function queueRpc(fn: string, args: Record<string, any>,
       if (existing) store.putLocal(p.table, { ...existing, ...p.patch, updated_at: nowISO() });
     }
   }
-  store.enqueue({ opId: newId(), kind: 'rpc', fn, args, queuedAt: nowISO() });
+  store.enqueue({ opId: newId(), kind: 'rpc', fn, args, queuedAt: nowISO(),
+    touched: localPatch?.map((p) => ({ table: p.table, id: p.id })) });
   void syncNow();
 }
 
@@ -111,11 +113,11 @@ export function markCommissionPaid(ids: string[], paid: boolean, note?: string) 
 }
 
 export function markInvoicePaid(id: string, paid: boolean, date?: string) {
-  queueRpc('mark_invoice_paid', { p_id: id, p_paid: paid, p_date: date ?? new Date().toISOString().slice(0, 10) },
+  queueRpc('mark_invoice_paid', { p_id: id, p_paid: paid, p_date: date ?? todayISO() },
     [{
       table: 'invoices' as SyncTable, id,
       patch: paid
-        ? { paid_at: date ?? new Date().toISOString().slice(0, 10), paid_marked_by: currentUserId }
+        ? { paid_at: date ?? todayISO(), paid_marked_by: currentUserId }
         : { paid_at: null, paid_marked_by: null },
     }]);
 }
