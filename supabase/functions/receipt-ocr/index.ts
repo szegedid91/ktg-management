@@ -22,9 +22,10 @@ Deno.serve(async (req) => {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const caller = await identifyCaller(req, admin);
     if (!caller) return json({ error: 'Bejelentkezés szükséges.' }, 401);
-    if (!caller.isPartner) return json({ error: 'A blokk-felismerés csak a fő felhasználóknak érhető el.' }, 403);
-    if (!await checkQuota(admin, caller.id, 'receipt-ocr', 60)) {
-      return json({ error: 'Elérted a napi felismerési keretet (60). Holnap újra próbálhatod.' }, 429);
+    // partner: 60 / nap; munkavállaló (anyagköltség blokkja): 20 / nap
+    const limit = caller.isPartner ? 60 : 20;
+    if (!await checkQuota(admin, caller.id, 'receipt-ocr', limit)) {
+      return json({ error: `Elérted a napi felismerési keretet (${limit}). Holnap újra próbálhatod.` }, 429);
     }
     const { image_base64, media_type } = await req.json();
     if (!image_base64 || typeof image_base64 !== 'string') {
