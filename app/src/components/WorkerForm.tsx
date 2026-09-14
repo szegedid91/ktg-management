@@ -5,9 +5,9 @@ import { View } from 'react-native';
 import { Card, Input, Btn, Segmented, Picker, Sub, H2 } from '../ui/kit';
 import { S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { Worker, Profile, ExternalPerson, PayBasis } from '../lib/types';
+import { Worker, Profile, ExternalPerson, PayBasis, AppSettings } from '../lib/types';
 import { insertRow } from '../lib/repo';
-import { parseAmount } from '../lib/format';
+import { parseAmount, ft } from '../lib/format';
 
 export const COMMON_TRADES = [
   'Villanyszerelő', 'Vízszerelő', 'Kőműves', 'Burkoló', 'Ács', 'Festő',
@@ -113,8 +113,18 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
 }
 
 export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onChange: (v: WorkerFormValues) => void }) {
-  const profiles = useTable<Profile>('profiles');
+  // közvetítő csak fő felhasználó lehet: admin és munkavállalói fiók nem
+  const profiles = useTable<Profile>('profiles').filter((p) => !p.is_admin && !p.worker_id);
   const externals = useTable<ExternalPerson>('external_people');
+  const settings = useTable<AppSettings>('app_settings')[0];
+  // örökölt (globális) díj a munkavállaló típusa szerint — a mezőben alapból
+  // ezt mutatjuk, üresen hagyva ezt fogja használni
+  const inherited = (kind: 'hourly' | 'daily' | 'project'): string => {
+    if (!settings) return 'öröklés';
+    const key = `${value.worker_type}_${kind}_rate` as keyof AppSettings;
+    const n = Number(settings[key]) || 0;
+    return n ? `örökölt: ${ft(n)}` : 'öröklés (nincs beállítva)';
+  };
   const [showNewExternal, setShowNewExternal] = useState(false);
   const [newExternalName, setNewExternalName] = useState('');
   const set = (patch: Partial<WorkerFormValues>) => onChange({ ...value, ...patch });
@@ -186,7 +196,7 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
 
       <Card>
         <H2>Díjazás</H2>
-        <Sub>Ha üresen hagyod, a globális alapértelmezést örökli (Beállítások).</Sub>
+        <Sub>Üresen hagyva a Beállításokban megadott, a típus szerinti alapdíjat örökli — ezt mutatjuk a mezőben.</Sub>
         <Segmented
           label="Jellemző elszámolás"
           options={[
@@ -197,9 +207,9 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
           value={value.default_pay_basis}
           onChange={(v) => set({ default_pay_basis: v })}
         />
-        <Input label="Órabér (Ft)" value={value.hourly_rate} onChangeText={(t) => set({ hourly_rate: t })} keyboardType="numeric" placeholder="öröklés" />
-        <Input label="Napi díj (Ft)" value={value.daily_rate} onChangeText={(t) => set({ daily_rate: t })} keyboardType="numeric" placeholder="öröklés" />
-        <Input label="Projektdíj (Ft)" value={value.project_rate} onChangeText={(t) => set({ project_rate: t })} keyboardType="numeric" placeholder="öröklés" />
+        <Input label="Órabér (Ft)" value={value.hourly_rate} onChangeText={(t) => set({ hourly_rate: t })} keyboardType="numeric" placeholder={inherited('hourly')} />
+        <Input label="Napi díj (Ft)" value={value.daily_rate} onChangeText={(t) => set({ daily_rate: t })} keyboardType="numeric" placeholder={inherited('daily')} />
+        <Input label="Projektdíj (Ft)" value={value.project_rate} onChangeText={(t) => set({ project_rate: t })} keyboardType="numeric" placeholder={inherited('project')} />
       </Card>
 
       <Card>
