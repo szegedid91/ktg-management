@@ -19,7 +19,7 @@ type Tab = 'summary' | 'tasks' | 'expenses' | 'calendar' | 'invoices' | 'equipme
 export default function SiteDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const site = useRow<Site>('sites', id);
-  const [tab, setTab] = useState<Tab>('summary');
+  const [tab, setTab] = useState<Tab>('tasks');
   const [costTab, setCostTab] = useState<'expenses' | 'wages'>('expenses');
   const expenses = useTable<Expense>('expenses').filter((e) => e.site_id === id);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.site_id === id);
@@ -90,11 +90,38 @@ export default function SiteDetail() {
       </View>
       {closed ? <Sub style={{ color: C.warning }}>Ez az építkezés lezárt, csak olvasható.</Sub> : null}
 
+      <View style={{ flexDirection: 'row', gap: S.sm }}>
+        <View style={{ flex: 1 }}>
+          {closed
+            ? <Btn title="Újranyitás" kind="secondary" small onPress={doReopen} />
+            : <Btn title="Építkezés lezárása…" kind="danger" small onPress={doClose} />}
+        </View>
+        {!closed ? (
+          <View style={{ flex: 1 }}>
+            <Btn title="Építkezés törlése" kind="ghost" small onPress={() => {
+              void confirmDialog(
+                'Építkezés törlése',
+                `${site.name}\n\nA hozzá tartozó költségek és bevételek 30 napig még megmaradnak és beleszámítanak az elszámolásba, utána véglegesen törlődnek. A másik fél értesítést kap a törlésről.`,
+                'Törlés', true,
+              ).then((ok) => {
+                if (ok) {
+                  // offline-képes: a törlés a sorba kerül, a szerver küldi
+                  // az értesítést a másik félnek
+                  queueRpc('delete_site', { p_id: site.id },
+                    [{ table: 'sites', id: site.id, patch: { deleted_at: new Date().toISOString() } }]);
+                  smartBack();
+                }
+              });
+            }} />
+          </View>
+        ) : null}
+      </View>
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
         <Segmented
           options={[
-            { value: 'summary', label: 'Összesítés' },
             { value: 'tasks', label: `Feladatok (${siteTasks.filter(isActiveTask).length})` },
+            { value: 'summary', label: 'Összesítés' },
             { value: 'expenses', label: `Költségek (${expenses.length})` },
             { value: 'calendar', label: 'Naptár' },
             { value: 'invoices', label: `Számlák (${invoices.length})` },
@@ -123,28 +150,6 @@ export default function SiteDetail() {
             {totals.unpaidWage > 0 ? <KV k="⚠️ Kifizetetlen bér" v={ft(totals.unpaidWage)} /> : null}
           </Card>
           {site.note ? <Card><Sub>Megjegyzés</Sub><Body>{site.note}</Body></Card> : null}
-          <Card>
-            {closed
-              ? <Btn title="Újranyitás" kind="secondary" onPress={doReopen} />
-              : <Btn title="Építkezés lezárása…" kind="danger" onPress={doClose} />}
-            {!closed ? (
-              <Btn title="Építkezés törlése" kind="ghost" onPress={() => {
-                void confirmDialog(
-                  'Építkezés törlése',
-                  `${site.name}\n\nA hozzá tartozó költségek és bevételek 30 napig még megmaradnak és beleszámítanak az elszámolásba, utána véglegesen törlődnek. A másik fél értesítést kap a törlésről.`,
-                  'Törlés', true,
-                ).then((ok) => {
-                  if (ok) {
-                    // offline-képes: a törlés a sorba kerül, a szerver küldi
-                    // az értesítést a másik félnek
-                    queueRpc('delete_site', { p_id: site.id },
-                      [{ table: 'sites', id: site.id, patch: { deleted_at: new Date().toISOString() } }]);
-                    smartBack();
-                  }
-                });
-              }} />
-            ) : null}
-          </Card>
         </>
       ) : null}
 
