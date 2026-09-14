@@ -2,8 +2,9 @@
 // (A teljes Beállítások oldal a munkavállalónak nem érhető el.)
 
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Card, H2, Sub, Input, Btn, Segmented } from '../ui/kit';
+import { WebPushRow } from './WebPushRow';
 import { S, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { callRpc, getCurrentUserId } from '../lib/repo';
@@ -87,6 +88,12 @@ export function WorkerAccountCard() {
           <Sub>Csak ezen az eszközön.</Sub>
         </View>
       </Card>
+      {Platform.OS === 'web' ? (
+        <Card>
+          <H2>🔔 Értesítések</H2>
+          <WebPushRow />
+        </Card>
+      ) : null}
     </>
   );
 }
