@@ -5,15 +5,15 @@ import { View } from 'react-native';
 import { S } from '../../ui/theme';
 import { useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
-import { Screen, Card, H2, Sub, Input, Btn, Picker, Check } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Input, Btn, Picker, Check, Empty } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
-import { insertRow, newId } from '../../lib/repo';
+import { insertRow, newId, getCurrentUserId as currentUser } from '../../lib/repo';
 import { parseAmount } from '../../lib/format';
 import { getCurrentUserId } from '../../lib/repo';
 import { notify } from '../../lib/dialogs';
 import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
-import { Site, Worker, TaskTemplate } from '../../lib/types';
+import { Site, Worker, TaskTemplate, Profile } from '../../lib/types';
 import { addDaysISO, todayISO } from '../../lib/format';
 import { wname } from '../../lib/tasks';
 
@@ -21,6 +21,7 @@ export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
   const workers = [...useTable<Worker>('workers')].filter((w) => !!w.approved_at).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const isWorker = !!useTable<Profile>('profiles').find((p) => p.id === currentUser())?.worker_id;
 
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
@@ -118,6 +119,8 @@ export default function NewTask() {
         : 'A munkavállaló(k) értesítést kapnak, és az appban fogadják el a feladatot.');
     smartBack();
   };
+
+  if (isWorker) return <Screen><Empty text="Feladatot csak a fő felhasználók adhatnak ki." /></Screen>;
 
   return (
     <Screen>
