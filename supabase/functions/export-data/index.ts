@@ -7,7 +7,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as XLSX from 'npm:xlsx@0.18.5';
 import { PDFDocument, rgb } from 'npm:pdf-lib@1.17.1';
 import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
-import { identifyCaller } from '../_shared/caller.ts';
+import { identifyCaller } from './caller.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

@@ -4,7 +4,7 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { identifyCaller, checkQuota } from '../_shared/caller.ts';
+import { identifyCaller, checkQuota } from './caller.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
