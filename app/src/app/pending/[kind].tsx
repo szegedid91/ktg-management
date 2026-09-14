@@ -1,7 +1,7 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
-import { unpaidWorkerPart } from '../../lib/tasks';
+import { unpaidWorkerPart, weekStartISO } from '../../lib/tasks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -10,7 +10,7 @@ import { C, S } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { markAttendancePaid, markCommissionPaid } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
-import { Attendance, Worker, Site, ExternalPerson } from '../../lib/types';
+import { Attendance, Worker, Site, ExternalPerson , Timesheet, Profile} from '../../lib/types';
 
 function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
@@ -65,6 +65,9 @@ export default function PendingScreen() {
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
   const externals = useTable<ExternalPerson>('external_people');
+  const timesheets = useTable<Timesheet>('timesheets');
+  const profiles = useTable<Profile>('profiles');
+  const hasAccount = (wid: string) => profiles.some((p) => p.worker_id === wid);
 
   const groups = useMemo<SiteGroup[]>(() => {
     const bySite = new Map<string, Map<string, PersonGroup>>();
@@ -85,6 +88,10 @@ export default function PendingScreen() {
           : 'projektdíj';
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
+        if ((a.source === 'session' || a.source === 'task') && hasAccount(a.worker_id)
+            && !timesheets.some((t) => t.worker_id === a.worker_id && t.week_start === weekStartISO(a.work_date) && t.status === 'approved')) {
+          detail += ' · 🗓️ óralap jóváhagyásra vár';
+        }
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
         const ep = externals.find((x) => x.id === a.referrer_external_id);

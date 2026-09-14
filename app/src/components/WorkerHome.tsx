@@ -8,11 +8,14 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt } from '../lib/format';
-import { isActiveTask, fmtHours, sessionHours, wname, myQuote } from '../lib/tasks';
+import { isActiveTask, fmtHours, sessionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
+import { callRpc } from '../lib/repo';
+import { syncNow } from '../lib/sync';
+import { notify, confirmDialog } from '../lib/dialogs';
 import { TaskRow } from './TaskRow';
 import { router } from 'expo-router';
 import {
-  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance,
+  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, Timesheet,
 } from '../lib/types';
 
 export function WorkerHome({ profile }: { profile: Profile }) {
@@ -25,6 +28,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === wid);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.worker_id === wid);
   const quotes = useTable<TaskQuote>('task_quotes');
+  const sheets = useTable<Timesheet>('timesheets').filter((t) => t.worker_id === wid);
+  const [sheetBusy, setSheetBusy] = useState(false);
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
   const [closedOpen, setClosedOpen] = useState(false);
@@ -77,6 +82,31 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   }, [sessions]);
 
   const days = [...attendance].sort((a, b) => b.work_date.localeCompare(a.work_date));
+  // heti óralap: az elmúlt 4 hét, amelyiken volt munkaidő
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const thisWeek = weekStartISO(todayIso);
+  const weeks = Array.from({ length: 4 }, (_, i) => {
+    const d = new Date(`${thisWeek}T12:00:00`); d.setDate(d.getDate() - 7 * i);
+    const week = d.toISOString().slice(0, 10);
+    const own = sessions.filter((s) => s.ended_at && weekStartISO(s.started_at.slice(0, 10)) === week);
+    const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
+    const amount = attendance.filter((a) => a.pay_basis !== 'presence' && weekStartISO(a.work_date) === week)
+      .reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
+    return { week, hours, amount, sheet: sheets.find((t) => t.week_start === week) ?? null };
+  }).filter((w) => w.hours > 0 || w.amount > 0 || w.sheet);
+  const submitSheet = async (week: string) => {
+    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a fő felhasználók jóváhagyják, utána fizethető ki a béred. Beküldöd?`, 'Beküldés')) return;
+    setSheetBusy(true);
+    try {
+      await callRpc('submit_timesheet', { p_week_start: week });
+      void syncNow();
+      notify('Óralap beküldve 🗓️', 'Értesítést kapsz, amint jóváhagyják.');
+    } catch (e: any) {
+      notify('Hiba', String(e?.message ?? e));
+    } finally {
+      setSheetBusy(false);
+    }
+  };
   const unpaid = days.filter((a) => a.pay_basis !== 'presence' && !a.paid_at)
     .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
 
@@ -154,6 +184,25 @@ export function WorkerHome({ profile }: { profile: Profile }) {
               {closedTasks.length > closedLimit ? <Btn title={`Több (${closedTasks.length - closedLimit})`} kind="ghost" small onPress={() => setClosedLimit(closedLimit + 30)} /> : null}
             </View>
           ) : null}
+        </Card>
+      ) : null}
+
+      {weeks.length > 0 ? (
+        <Card style={{ paddingVertical: S.sm, gap: 6 }}>
+          <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>🗓️ Heti óralap</Text>
+          {weeks.map((w) => (
+            <View key={w.week} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.text, fontWeight: '600' }}>{hd(w.week)} hete{w.week === thisWeek ? ' (folyó)' : ''}</Text>
+                <Sub>{fmtHours(w.hours)} · {ft(w.amount)}</Sub>
+              </View>
+              {w.sheet?.status === 'approved' ? <Badge text="jóváhagyva ✓" color={C.success} />
+                : w.sheet?.status === 'submitted' ? <Badge text="jóváhagyásra vár" color={C.warning} />
+                : <Btn title={w.sheet?.status === 'rejected' ? 'Újra beküld' : 'Beküldés'} kind="secondary" small disabled={sheetBusy} onPress={() => void submitSheet(w.week)} />}
+            </View>
+          ))}
+          {weeks.some((w) => w.sheet?.status === 'rejected') ? <Sub style={{ color: C.danger }}>Visszaküldött óralap: {weeks.find((w) => w.sheet?.status === 'rejected')?.sheet?.decision_note ?? 'nézd át, és küldd be újra.'}</Sub> : null}
+          <Sub>A béred a jóváhagyott heteid után fizethető ki.</Sub>
         </Card>
       ) : null}
 

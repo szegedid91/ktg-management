@@ -317,6 +317,61 @@ export interface WorkerTask extends BaseRow {
   quote_submitted_at: string | null;
   quote_accepted_at: string | null;
   quote_accepted_by: string | null;
+  /** határidő; lejárta után a partnerek és a munkavállaló riasztást kapnak */
+  due_date: string | null;
+  overdue_notified_at: string | null;
+}
+
+/** Részfeladat (pipálható lépés); kötelező fotó esetén csak fotóval pipálható */
+export interface TaskSubtask {
+  id: UUID;
+  task_id: UUID;
+  title: string;
+  position: number;
+  photo_required: boolean;
+  photo_paths: string[];
+  done_at: string | null;
+  done_by: UUID | null;
+  created_by: UUID;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/** Feladat-sablon: cím, részletek, részfeladatok, határidő napokban */
+export interface TaskTemplate {
+  id: UUID;
+  name: string;
+  title: string;
+  details: string | null;
+  code_prefix: string | null;
+  priority: number;
+  quote_requested: boolean;
+  due_days: number | null;
+  subtasks: { title: string; photo_required?: boolean }[];
+  created_by: UUID;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/** Heti óralap: a munkavállaló beküldi, a partner jóváhagyja */
+export interface Timesheet {
+  id: UUID;
+  worker_id: UUID;
+  week_start: string;
+  status: 'open' | 'submitted' | 'approved' | 'rejected';
+  hours: number;
+  amount: number;
+  days: number;
+  submitted_at: string | null;
+  submitted_note: string | null;
+  decided_at: string | null;
+  decided_by: UUID | null;
+  decision_note: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface TaskAssignee {
@@ -406,6 +461,7 @@ export const SYNC_TABLES = [
   'profit_share_history', 'share_change_requests',
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
+  'task_subtasks', 'task_templates', 'timesheets',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

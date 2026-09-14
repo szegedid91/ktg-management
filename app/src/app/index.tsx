@@ -4,16 +4,16 @@ import { router, Redirect } from 'expo-router';
 import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty, Loading } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useSyncStatus } from '../lib/hooks';
-import { ft, todayISO, hd } from '../lib/format';
+import { ft, todayISO, hd, hdt } from '../lib/format';
 import { store } from '../lib/store';
 import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
 import {
   Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory,
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, TaskQuote,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, TaskQuote, Timesheet,
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
-import { unpaidWorkerPart, isActiveTask } from '../lib/tasks';
+import { unpaidWorkerPart, isActiveTask, wname } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
 import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
@@ -83,6 +83,7 @@ function DashboardInner() {
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const quotes = useTable<TaskQuote>('task_quotes');
+  const timesheets = useTable<Timesheet>('timesheets');
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
   const awaitingMyApproval = shareRequests.find((r) =>
@@ -130,10 +131,24 @@ function DashboardInner() {
   const overdueSum = overdueInvoices.reduce((s, i) => s + Number(i.net_amount), 0);
   const unpaidWageCount = attendance.filter((a) => unpaidWorkerPart(a) > 0).length;
   const pendingWorkers = workers.filter((w) => !w.approved_at);
+  const overdueTasks = activeTasks.filter((t) => t.due_date && t.due_date < today);
+  const pendingTimesheets = timesheets.filter((t) => t.status === 'submitted');
+  // ki hol dolgozik most: futó munkamenetek építkezésenként
+  const runningNow = sessions.filter((s) => !s.ended_at).map((s) => ({
+    s, worker: workers.find((w) => w.id === s.worker_id), site: sites.find((x) => x.id === s.site_id),
+    task: s.task_id ? tasks.find((t) => t.id === s.task_id) : undefined,
+  }));
+  const runningBySite = Array.from(new Set(runningNow.map((r) => r.site?.id ?? ''))).map((sid) => ({
+    site: sites.find((x) => x.id === sid), items: runningNow.filter((r) => (r.site?.id ?? '') === sid),
+  }));
   const todos = [
     pendingWorkers.length ? { key: 'approve', icon: '👷', title: 'Jóváhagyásra váró regisztráció', count: pendingWorkers.length,
       detail: `${pendingWorkers.map((w) => w.name).join(', ')} — nézd át a díjazást és hagyd jóvá`, color: '#B7791F',
       href: pendingWorkers.length === 1 ? `/worker/${pendingWorkers[0].id}` : '/workers' } : null,
+    overdueTasks.length ? { key: 'overdue', icon: '⏰', title: 'Lejárt határidejű feladat', count: overdueTasks.length,
+      detail: overdueTasks.slice(0, 3).map((t) => t.code || t.title).join(', '), color: C.danger, href: '/tasks?filter=overdue' } : null,
+    pendingTimesheets.length ? { key: 'timesheets', icon: '🗓️', title: 'Jóváhagyásra váró óralap', count: pendingTimesheets.length,
+      detail: `összesen ${ft(pendingTimesheets.reduce((s, t) => s + Number(t.amount), 0))} · ${pendingTimesheets.reduce((s, t) => s + Number(t.hours), 0).toFixed(1)} óra`, color: '#B7791F', href: '/timesheets' } : null,
     pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
       detail: pendingPrio ? `ebből ${pendingPrio} prioritásos ⚡` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
     quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,
@@ -155,6 +170,23 @@ function DashboardInner() {
 
   return (
     <Screen>
+      {runningNow.length > 0 ? (
+        <Card style={{ borderColor: C.success, paddingVertical: S.sm }}>
+          <Text style={{ fontWeight: '800', color: C.success }}>● Most dolgoznak ({runningNow.length})</Text>
+          {runningBySite.map((g) => (
+            <View key={g.site?.id ?? 'none'} style={{ gap: 2 }}>
+              <Pressable onPress={() => g.site && router.push(`/site/${g.site.id}`)}>
+                <Text style={{ fontWeight: '700', color: C.text }}>📍 {g.site?.name ?? 'Helyszín nélkül'}</Text>
+              </Pressable>
+              {g.items.map(({ s, worker, task }) => (
+                <Pressable key={s.id} onPress={() => task && router.push(`/task/${task.id}`)}>
+                  <Sub>👷 {worker ? wname(worker) : '?'} · {hdt(s.started_at).slice(-5)} óta{task ? ` · ${task.code ? `${task.code} ` : ''}${task.title}` : ''}</Sub>
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </Card>
+      ) : null}
       {awaitingMyApproval ? (
         <Card style={{ borderColor: C.primary, backgroundColor: C.warnBg }}>
           <Sub style={{ fontWeight: '700', color: C.text }}>

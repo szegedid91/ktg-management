@@ -5,8 +5,8 @@ import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { C, S } from '../ui/theme';
-import { ft } from '../lib/format';
-import { wname, quoteLabel } from '../lib/tasks';
+import { ft, todayISO } from '../lib/format';
+import { wname, quoteLabel, isOverdue } from '../lib/tasks';
 import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, Worker, Site } from '../lib/types';
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -27,6 +27,7 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
   const unpriced = materials.filter((m) => !pricing.some((p) => p.material_id === m.id)).length;
   const color = STATUS_COLOR[task.status] ?? C.sub;
   const quote = quoteLabel(task, quotes, myWorkerId);
+  const overdue = isOverdue(task, todayISO());
   const status = quote ?? `${STATUS_SHORT[task.status]}${task.status === 'assigned' && assignees.length > 1 ? ` ${acked}/${assignees.length}` : ''}`;
   return (
     <Pressable
@@ -42,6 +43,11 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
           {task.priority ? '⚡ ' : ''}{task.code ? `${task.code} · ` : ''}{task.title}
         </Text>
         {running ? <Text style={{ fontSize: 11, color: C.success, fontWeight: '800' }}>● fut</Text> : null}
+        {task.due_date && task.status !== 'done' && task.status !== 'cancelled' ? (
+          <Text style={{ fontSize: 11, color: overdue ? C.danger : C.sub, fontWeight: overdue ? '800' : '600' }}>
+            {overdue ? '⏰ késik' : `📅 ${task.due_date.slice(5).replace('-', '.')}`}
+          </Text>
+        ) : null}
         <Text style={{ fontSize: 11, color: quote ? C.primary : color, fontWeight: '700' }} numberOfLines={1}>{status}</Text>
       </View>
       <Text style={{ fontSize: 12, color: C.sub }} numberOfLines={1}>

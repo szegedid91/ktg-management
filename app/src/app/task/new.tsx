@@ -9,10 +9,12 @@ import { Screen, Card, H2, Sub, Input, Btn, Picker, Check } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
 import { insertRow, newId } from '../../lib/repo';
 import { parseAmount } from '../../lib/format';
+import { getCurrentUserId } from '../../lib/repo';
 import { notify } from '../../lib/dialogs';
 import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
-import { Site, Worker } from '../../lib/types';
+import { Site, Worker, TaskTemplate } from '../../lib/types';
+import { addDaysISO, todayISO } from '../../lib/format';
 import { wname } from '../../lib/tasks';
 
 export default function NewTask() {
@@ -30,6 +32,33 @@ export default function NewTask() {
   const [invoice, setInvoice] = useState('');
   const [saving, setSaving] = useState(false);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
+  // sablon, határidő, részfeladatok
+  const templates = useTable<TaskTemplate>('task_templates').sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [dueDate, setDueDate] = useState('');
+  const [subtasks, setSubtasks] = useState<{ title: string; photo_required: boolean }[]>([]);
+  const [newSub, setNewSub] = useState('');
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  const applyTemplate = (id: string | null) => {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setTitle(t.title);
+    setDetails(t.details ?? '');
+    if (t.code_prefix && !code) setCode(t.code_prefix);
+    setPriority(t.priority > 0);
+    setQuote(t.quote_requested);
+    setSubtasks((t.subtasks ?? []).map((s) => ({ title: s.title, photo_required: !!s.photo_required })));
+    if (t.due_days != null) setDueDate(addDaysISO(todayISO(), t.due_days));
+  };
+  const addSub = () => {
+    const v = newSub.trim();
+    if (!v) return;
+    setSubtasks((l) => [...l, { title: v, photo_required: false }]);
+    setNewSub('');
+  };
 
   const addPhoto = async (fromCamera: boolean) => {
     const list = await pickPhotos(fromCamera);
@@ -46,6 +75,7 @@ export default function NewTask() {
     if (!title.trim()) { notify('Hiba', 'Adj címet a feladatnak.'); return; }
     if (chosen.size === 0) { notify('Hiba', 'Válassz legalább egy munkavállalót.'); return; }
     if (!site) { notify('Helyszín kell', 'A bér (munkaidő, ajánlat) építkezésenként képződik — válassz helyszínt a feladathoz.'); return; }
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { notify('Határidő', 'A határidőt ÉÉÉÉ-HH-NN formában add meg.'); return; }
     setSaving(true);
     // a fotók előre mennek fel (internet kell); ha nem sikerül, a feladat
     // fotó nélkül is kimegy
@@ -65,7 +95,20 @@ export default function NewTask() {
       priority: priority ? 1 : 0,
       quote_requested: quote,
       photo_paths: paths,
+      due_date: dueDate || null,
     });
+    subtasks.forEach((s, i) => insertRow('task_subtasks', {
+      task_id: taskId, title: s.title, position: i, photo_required: s.photo_required, photo_paths: [], done_at: null, done_by: null,
+      created_by: getCurrentUserId(),
+    }));
+    if (saveAsTemplate && templateName.trim()) {
+      insertRow('task_templates', {
+        name: templateName.trim(), title: title.trim(), details: details.trim() || null, code_prefix: code.trim() || null,
+        priority: priority ? 1 : 0, quote_requested: quote,
+        due_days: dueDate ? Math.max(0, Math.round((new Date(dueDate).getTime() - new Date(todayISO()).getTime()) / 864e5)) : null,
+        subtasks, created_by: getCurrentUserId(),
+      });
+    }
     if (invoice.trim()) insertRow('task_finance', { task_id: taskId, invoice_net: parseAmount(invoice) });
     for (const wid of chosen) insertRow('task_assignees', { task_id: taskId, worker_id: wid });
     if (photoFails) notify('Fotó', `${photoFails} fotót nem sikerült feltölteni (internet?) — a feladat nélkülük ment ki.`);
@@ -78,6 +121,13 @@ export default function NewTask() {
 
   return (
     <Screen>
+      {templates.length > 0 ? (
+        <Card>
+          <H2>📋 Sablonból</H2>
+          <Picker label="Sablon" items={templates} selectedId={templateId} getId={(t) => t.id} getLabel={(t) => t.name}
+            onSelect={applyTemplate} placeholder="Válassz sablont (opcionális)…" allowNull nullLabel="— nincs —" />
+        </Card>
+      ) : null}
       <Card>
         <H2>Feladat</H2>
         <Input label="Feladat címe *" value={title} onChangeText={setTitle} placeholder="pl. Csempézés a fürdőben" />
@@ -87,6 +137,30 @@ export default function NewTask() {
         <Picker label="Helyszín (építkezés) *" items={sites} selectedId={site} getId={(s) => s.id}
           getLabel={(s) => s.address ? `${s.name} — ${s.address}` : s.name} onSelect={setSite}
           />
+        <Input label="Határidő (ÉÉÉÉ-HH-NN, opcionális)" value={dueDate} onChangeText={setDueDate} placeholder={`pl. ${addDaysISO(todayISO(), 7)}`} />
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          {[3, 7, 14].map((d) => (
+            <View key={d} style={{ flex: 1 }}><Btn title={`+${d} nap`} kind="ghost" small onPress={() => setDueDate(addDaysISO(todayISO(), d))} /></View>
+          ))}
+        </View>
+      </Card>
+
+      <Card>
+        <H2>☑ Részfeladatok</H2>
+        <Sub>Lépések, amiket a munkavállaló sorban pipál; a kötelező fotósat csak fotóval tudja késznek jelölni.</Sub>
+        {subtasks.map((s, i) => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+            <Sub style={{ width: 22 }}>{i + 1}.</Sub>
+            <View style={{ flex: 1 }}><Check checked={s.photo_required} onToggle={() => setSubtasks((l) => l.map((x, j) => j === i ? { ...x, photo_required: !x.photo_required } : x))} label={s.title} sub={s.photo_required ? '📷 fotó kötelező' : 'fotó nem kötelező'} /></View>
+            <Btn title="🗑️" kind="ghost" small onPress={() => setSubtasks((l) => l.filter((_, j) => j !== i))} />
+          </View>
+        ))}
+        <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+          <View style={{ flex: 1 }}><Input label="Új lépés" value={newSub} onChangeText={setNewSub} placeholder="pl. Aljzat kiegyenlítése" /></View>
+          <Btn title="+ Hozzáad" kind="secondary" small onPress={addSub} disabled={!newSub.trim()} />
+        </View>
+        <Check checked={saveAsTemplate} onToggle={() => setSaveAsTemplate(!saveAsTemplate)} label="Mentés sablonként" sub="Legközelebb egy kattintással kitölthető." />
+        {saveAsTemplate ? <Input label="Sablon neve" value={templateName} onChangeText={setTemplateName} placeholder="pl. Fürdő burkolás" /> : null}
       </Card>
 
       <Card>

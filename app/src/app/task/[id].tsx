@@ -21,8 +21,10 @@ import {
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask,
 } from '../../lib/types';
+import { isOverdue } from '../../lib/tasks';
+import { todayISO } from '../../lib/format';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
 function Section({ title, summary, defaultOpen = false, accent, children }: {
@@ -58,6 +60,11 @@ export default function TaskDetail() {
   const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
   const finance = useTable<TaskFinance>('task_finance').find((f) => f.task_id === id);
   const allQuotes = useTable<TaskQuote>('task_quotes');
+  const subtasks = useTable<TaskSubtask>('task_subtasks').filter((s) => s.task_id === id).sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
+  const [newSub, setNewSub] = useState('');
+  const [dueEdit, setDueEdit] = useState<string | null>(null);
+  const [subBusy, setSubBusy] = useState<string | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
   const me = getCurrentUserId();
   const myProfile = profiles.find((p) => p.id === me);
   const myWorkerId = myProfile?.worker_id ?? null;
@@ -261,6 +268,61 @@ export default function TaskDetail() {
 
   const materialPhotos = (m: TaskMaterial) => (m.photo_paths?.length ? m.photo_paths : m.photo_path ? [m.photo_path] : []);
 
+  // ---------- részfeladatok ----------
+  const toggleSub = async (s: TaskSubtask) => {
+    if (s.done_at) { updateRow('task_subtasks', s.id, { done_at: null, done_by: null }); return; }
+    if (s.photo_required && (s.photo_paths ?? []).length === 0) {
+      notify('Fotó kell', 'Ehhez a lépéshez fotó kötelező — készíts egyet a 📷 gombbal, utána pipálható.');
+      return;
+    }
+    updateRow('task_subtasks', s.id, { done_at: nowISO(), done_by: me });
+  };
+  const addSubPhoto = async (s: TaskSubtask) => {
+    const fromCamera = await confirmDialog('Fotó a lépéshez', 'Honnan?', 'Kamera');
+    const list = await pickPhotos(fromCamera);
+    if (!list.length) return;
+    setSubBusy(s.id);
+    try {
+      const paths: string[] = [];
+      for (const ph of list) paths.push(await uploadTaskPhoto(ph.base64, `${task.id}/sub`));
+      updateRow('task_subtasks', s.id, { photo_paths: [...(s.photo_paths ?? []), ...paths] });
+    } catch {
+      notify('Hiba', 'A fotó feltöltéséhez internet kell.');
+    } finally {
+      setSubBusy(null);
+    }
+  };
+  const addSubtask = () => {
+    const v = newSub.trim();
+    if (!v) return;
+    insertRow('task_subtasks', { task_id: task.id, title: v, position: subtasks.length, photo_required: false, photo_paths: [], done_at: null, done_by: null, created_by: me });
+    setNewSub('');
+  };
+  const saveDue = () => {
+    const v = (dueEdit ?? '').trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { notify('Határidő', 'ÉÉÉÉ-HH-NN formában add meg.'); return; }
+    updateRow('worker_tasks', task.id, { due_date: v || null });
+    setDueEdit(null);
+  };
+
+  // ---------- anyagköltség: összeg felismerése a blokk fotójából ----------
+  const recognizeMaterial = async () => {
+    if (!matPhotos.length) { notify('Fotó kell', 'Előbb fotózd le a blokkot / számlát.'); return; }
+    setOcrBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('receipt-ocr', { body: { image_base64: matPhotos[0].base64, media_type: 'image/jpeg' } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.gross_amount) setMatAmount(String(Math.round(Number(data.gross_amount))));
+      if (data?.merchant && !matNote) setMatNote(String(data.merchant));
+      notify('Felismerés kész', data?.gross_amount ? `Összeg: ${ft(Number(data.gross_amount))} — ellenőrizd, és javítsd, ha kell.` : 'Az összeget nem sikerült kiolvasni — írd be kézzel.');
+    } catch (e: any) {
+      notify('Felismerés nem sikerült', String(e?.message ?? 'Írd be kézzel az összeget.'));
+    } finally {
+      setOcrBusy(false);
+    }
+  };
+
   const deleteMaterial = async (m: TaskMaterial) => {
     if (!await confirmDialog('Anyagköltség törlése', `${ft(m.amount)}${m.note ? ` — ${m.note}` : ''}\n\nA hozzá tartozó fotók is törlődnek a tárolóból.`, 'Törlés', true)) return;
     void removeStoragePaths('tasks', materialPhotos(m));
@@ -317,12 +379,26 @@ export default function TaskDetail() {
           {task.priority ? <Badge text="⚡ prioritás" color={C.danger} /> : null}
           {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
           {task.quote_accepted_at ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
+          {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
         </View>
         <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
         {task.details ? <Body>{task.details}</Body> : null}
         <Divider />
         <KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} />
         <KV k="Kiadta" v={creator} />
+        {!isWorker && active ? (
+          dueEdit === null ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Sub>Határidő: <Text style={{ color: C.text, fontWeight: '700' }}>{task.due_date ? hd(task.due_date) : 'nincs'}</Text></Sub>
+              <Btn title={task.due_date ? 'Módosít' : 'Határidő'} kind="ghost" small onPress={() => setDueEdit(task.due_date ?? '')} />
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+              <View style={{ flex: 1 }}><Input label="Határidő (ÉÉÉÉ-HH-NN, üres = nincs)" value={dueEdit} onChangeText={setDueEdit} placeholder="2026-09-30" /></View>
+              <Btn title="Mentés" small onPress={saveDue} />
+            </View>
+          )
+        ) : null}
         <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '—'} />
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {(task.photo_paths ?? []).length > 0 || !isWorker ? (
@@ -375,6 +451,36 @@ export default function TaskDetail() {
         ) : null}
       </Section>
       )}
+
+      {/* ---------- részfeladatok ---------- */}
+      {subtasks.length > 0 || (!isWorker && active) ? (
+        <Section title="☑ Részfeladatok" defaultOpen={subtasks.some((s) => !s.done_at)}
+          summary={subtasks.length ? `${subtasks.filter((s) => s.done_at).length}/${subtasks.length} kész` : 'nincs'}>
+          {subtasks.map((s, i) => (
+            <View key={s.id} style={{ gap: 4, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+                <Pressable disabled={isWorker ? !acked || !active : !active} onPress={() => void toggleSub(s)} hitSlop={8}
+                  style={{ width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: s.done_at ? C.success : C.border, backgroundColor: s.done_at ? C.success : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>{s.done_at ? '✓' : ''}</Text>
+                </Pressable>
+                <Body style={{ flex: 1, fontWeight: '600', textDecorationLine: s.done_at ? 'line-through' : 'none', color: s.done_at ? C.sub : C.text }}>{i + 1}. {s.title}</Body>
+                {s.photo_required ? <Badge text={(s.photo_paths ?? []).length ? '📷 ✓' : '📷 kötelező'} color={(s.photo_paths ?? []).length ? C.success : C.warning} /> : null}
+                {(isWorker ? acked && active : active) ? <Btn title={subBusy === s.id ? '…' : '📷'} kind="ghost" small disabled={subBusy === s.id} onPress={() => void addSubPhoto(s)} /> : null}
+                {!isWorker && active ? <Btn title="🗑️" kind="ghost" small onPress={() => softDeleteRow('task_subtasks', s.id)} /> : null}
+              </View>
+              {(s.photo_paths ?? []).length ? <PhotoThumbs paths={s.photo_paths} /> : null}
+              {s.done_at ? <Sub style={{ fontSize: 11 }}>kész: {hdt(s.done_at)}{s.done_by ? ` · ${profiles.find((p) => p.id === s.done_by)?.display_name ?? workers.find((w) => w.id === myWorkerId)?.name ?? ''}` : ''}</Sub> : null}
+            </View>
+          ))}
+          {!isWorker && active ? (
+            <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+              <View style={{ flex: 1 }}><Input label="Új lépés" value={newSub} onChangeText={setNewSub} placeholder="pl. Fugázás" /></View>
+              <Btn title="+ Hozzáad" kind="secondary" small onPress={addSubtask} disabled={!newSub.trim()} />
+            </View>
+          ) : null}
+          {isWorker && !acked ? <Sub>A lépéseket a feladat elfogadása után tudod pipálni.</Sub> : null}
+        </Section>
+      ) : null}
 
       {/* ---------- ajánlat: munkavállaló ---------- */}
       {isWorker && mine ? (
@@ -552,6 +658,7 @@ export default function TaskDetail() {
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>
               </View>
               {matPhotos.length ? <PhotoThumbs local={matPhotos} onRemoveLocal={(i) => setMatPhotos((ps) => ps.filter((_, j) => j !== i))} /> : <Sub style={{ color: C.warning }}>még nincs fotó (több is csatolható)</Sub>}
+              {matPhotos.length ? <Btn title={ocrBusy ? 'Felismerés…' : '🤖 Összeg felismerése a fotóból'} kind="ghost" small disabled={ocrBusy} onPress={() => void recognizeMaterial()} /> : null}
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setMatOpen(false)} /></View>
                 <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || matPhotos.length === 0} /></View>

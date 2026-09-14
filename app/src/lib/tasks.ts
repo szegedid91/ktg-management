@@ -29,6 +29,19 @@ export function unpaidWorkerPart(a: { pay_basis: string; paid_at: string | null;
   return part > 0 ? part : 0;
 }
 
+/** Lejárt határidő (aktív feladatnál) */
+export function isOverdue(t: WorkerTask, today: string): boolean {
+  return isActiveTask(t) && !!t.due_date && t.due_date < today;
+}
+
+/** Hét kezdete (hétfő) ISO dátumból */
+export function weekStartISO(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  const dow = (d.getDay() + 6) % 7; // 0 = hétfő
+  d.setDate(d.getDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
 // ---------- ajánlatok ----------
 export const QUOTE_STATUS_LABEL: Record<TaskQuote['status'], string> = {
   requested: 'ajánlatra vár', submitted: 'elfogadásra vár', accepted: 'elfogadva',

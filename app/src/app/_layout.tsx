@@ -54,6 +54,7 @@ export default function RootLayout() {
         <Stack.Screen name="meghivo" options={{ headerShown: false }} />
         <Stack.Screen name="task/new" options={{ title: 'Új feladat' }} />
         <Stack.Screen name="tasks" options={{ title: 'Feladatok' }} />
+        <Stack.Screen name="timesheets" options={{ title: 'Óralapok' }} />
         <Stack.Screen name="notifications" options={{ title: 'Értesítések' }} />
         <Stack.Screen name="task/[id]" options={{ title: 'Feladat' }} />
         <Stack.Screen name="megerosites" options={{ title: 'E-mail megerősítés' }} />

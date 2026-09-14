@@ -7,13 +7,14 @@ import { View, Text, Pressable } from 'react-native';
 import { Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { isActiveTask, wname, openQuotes } from '../lib/tasks';
+import { isActiveTask, wname, openQuotes, isOverdue } from '../lib/tasks';
+import { todayISO } from '../lib/format';
 import { TaskRow, STATUS_COLOR } from './TaskRow';
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
-export type BoardFilter = 'active' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'done' | 'failed' | 'all';
+export type BoardFilter = 'active' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
 type Filter = BoardFilter;
 const PAGE = 25;
 
@@ -59,6 +60,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     unpriced: tasks.filter((t) => unpricedTaskIds.has(t.id)).length,
     priority: active.filter((t) => t.priority > 0).length,
     quote: active.filter(hasOpenQuote).length,
+    overdue: active.filter((t) => isOverdue(t, todayISO())).length,
     done: tasks.filter((t) => t.status === 'done').length,
     failed: tasks.filter((t) => t.status === 'failed').length,
     all: tasks.length,
@@ -76,6 +78,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
           case 'unpriced': return unpricedTaskIds.has(t.id);
           case 'priority': return isActiveTask(t) && t.priority > 0;
           case 'quote': return isActiveTask(t) && hasOpenQuote(t);
+          case 'overdue': return isOverdue(t, todayISO());
           case 'done': return t.status === 'done';
           case 'failed': return t.status === 'failed';
           default: return true;
@@ -115,6 +118,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
         <Chip label="● Fut a munka" count={counts.running} color={C.success} on={filter === 'running'} onPress={() => { setFilter('running'); setLimit(PAGE); }} />
         {counts.priority > 0 ? <Chip label="⚡ Prioritás" count={counts.priority} color={C.danger} on={filter === 'priority'} onPress={() => { setFilter('priority'); setLimit(PAGE); }} /> : null}
         {counts.quote > 0 ? <Chip label="💬 Ajánlat" count={counts.quote} color={C.primary} on={filter === 'quote'} onPress={() => { setFilter('quote'); setLimit(PAGE); }} /> : null}
+        {counts.overdue > 0 ? <Chip label="⏰ Késik" count={counts.overdue} color={C.danger} on={filter === 'overdue'} onPress={() => { setFilter('overdue'); setLimit(PAGE); }} /> : null}
         {counts.unpriced > 0 ? <Chip label="📦 Beárazandó" count={counts.unpriced} color={C.warning} on={filter === 'unpriced'} onPress={() => { setFilter('unpriced'); setLimit(PAGE); }} /> : null}
         {includeClosed ? (
           <>
