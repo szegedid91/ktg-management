@@ -85,6 +85,9 @@ begin
 end $$;
 
 -- ---------- munkavállalói műveletek ----------
+-- a régi, 5 paraméteres túlterhelés kétértelművé tenné a hívást
+drop function if exists public.worker_task_action(uuid, text, text, text, numeric);
+drop function if exists public.worker_task_action(uuid, text, text, text);
 create or replace function public.worker_task_action(
   p_id uuid, p_action text, p_reason text default null, p_photo_path text default null,
   p_amount numeric default null, p_photo_paths text[] default null)
@@ -113,7 +116,7 @@ begin
   -- a legutóbbi ajánlat-sorom ehhez a feladathoz
   select * into v_q from public.task_quotes
   where task_id = p_id and worker_id = v_wid and deleted_at is null
-  order by requested_at desc limit 1;
+  order by (status in ('requested', 'submitted')) desc, requested_at desc, created_at desc limit 1;
 
   if p_action = 'acknowledge' then
     if v_task.quote_requested and (v_q.id is null or v_q.status <> 'accepted') then
