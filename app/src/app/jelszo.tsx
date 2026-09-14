@@ -34,7 +34,14 @@ export default function PasswordReset() {
     const { error: err } = await supabase.auth.updateUser({ password: pw1 });
     setBusy(false);
     if (err) {
-      setError('Nem sikerült a jelszócsere. Lehet, hogy a link lejárt — kérj újat a belépőoldalon.');
+      const code = String((err as any)?.code ?? '');
+      setError(
+        code === 'same_password' || /different from the old/i.test(err.message)
+          ? 'Az új jelszó nem egyezhet meg a régivel — adj meg egy másikat.'
+          : /weak|password should/i.test(err.message)
+            ? 'Ez a jelszó túl gyenge — válassz hosszabbat vagy összetettebbet.'
+            : 'Nem sikerült a jelszócsere. Lehet, hogy a link lejárt — kérj újat a belépőoldalon.',
+      );
       return;
     }
     notify('Jelszó megváltoztatva ✅', 'Mostantól az új jelszóval tudsz belépni.');

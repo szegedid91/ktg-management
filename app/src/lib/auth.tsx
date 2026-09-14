@@ -12,6 +12,27 @@ import { AppState } from 'react-native';
 
 const LAST_USER_KEY = 'ktg:lastUserId';
 
+/** Jelszó-visszaállító linkről érkeztünk: a Supabase a levél linkjét a
+ *  Site URL-re is dobhatja (ha a /jelszo nincs az engedélyezett címek
+ *  között) — ilyenkor is a jelszócsere oldalra kell vinni, nem beléptetni. */
+let recoveryPending = false;
+export function consumeRecoveryRedirect(): boolean {
+  const r = recoveryPending;
+  recoveryPending = false;
+  return r;
+}
+function urlLooksLikeRecovery(): boolean {
+  if (typeof window === 'undefined') return false;
+  const u = `${window.location.search}${window.location.hash}`;
+  return /type=recovery/.test(u);
+}
+function goToPasswordPage() {
+  recoveryPending = true;
+  import('expo-router').then((m) => {
+    try { m.router.replace('/jelszo'); recoveryPending = false; } catch { /* a navigátor még nem áll — az index oldal kezeli */ }
+  }).catch(() => {});
+}
+
 /** Fiókváltás-őr: ha nem ugyanaz a felhasználó lép be, mint akié a helyi
  *  tükör/küldősor, mindent törlünk — a másik fiók nevében sorban álló
  *  műveleteket az RLS úgyis elutasítaná. */
@@ -42,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (urlLooksLikeRecovery()) recoveryPending = true;
     void store.load().then(() => {
       supabase.auth.getSession().then(async ({ data }) => {
         if (data.session) await guardUserSwitch(data.session.user.id);
@@ -52,9 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       setCurrentUserId(s?.user.id ?? null);
+      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && urlLooksLikeRecovery())) goToPasswordPage();
       if (s) {
         void guardUserSwitch(s.user.id).then(() => { startSyncLoop(); startRealtime(); });
         import('./push').then((m) => m.registerPushToken()).catch(() => {});

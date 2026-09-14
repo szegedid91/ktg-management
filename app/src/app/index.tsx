@@ -16,7 +16,7 @@ import { computeBalances } from '../lib/balances';
 import { isActiveTask } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
-import { useAuth } from '../lib/auth';
+import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
   { icon: '🏗️', label: 'Építkezések', href: '/sites' },
@@ -58,6 +58,7 @@ export default function Dashboard() {
   const { session, loading } = useAuth();
   if (loading) return <Loading />;
   if (!session) return <Redirect href="/login" />;
+  if (consumeRecoveryRedirect()) return <Redirect href="/jelszo" />;
   return <DashboardInner />;
 }
 
