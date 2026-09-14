@@ -1,15 +1,62 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
-import { Screen, Card, H2, Sub, KV, Divider, Empty } from '../ui/kit';
+import { Screen, Card, H2, Sub, KV, Divider, Empty, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { ft, todayISO, monthName } from '../lib/format';
-import { Expense, Attendance, Invoice, Site, Worker, ExpenseCategory, Profile, ExternalPerson } from '../lib/types';
+import { ft, todayISO, monthName, hd, addDaysISO } from '../lib/format';
+import { sessionHours, wname } from '../lib/tasks';
+import {
+  Expense, Attendance, Invoice, Site, Worker, ExpenseCategory, Profile, ExternalPerson,
+  WorkerTask, TaskAssignee, WorkSession,
+} from '../lib/types';
 
 const PIE_COLORS = ['#1F4E5F', '#F5A623', '#2E7D32', '#C0392B', '#7B1FA2', '#0288D1', '#5D4037', '#607D8B'];
 
 type Period = 'month' | '3months' | 'year' | 'all';
+/** a munkavállalói teljesítmény saját időszaka (a fenti szűrőktől független) */
+type WorkerPeriod = '30' | '90' | 'all';
+
+/** Összecsukható kártya: fejlécben egysoros összefoglaló, a tartalom koppintásra. */
+function Section({ title, summary, defaultOpen = false, children }: {
+  title: string; summary?: string; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card>
+      <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+        <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{title}</Text>
+        <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }} numberOfLines={1}>{summary ?? ''}</Text>
+        <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
+      </Pressable>
+      {open ? children : null}
+    </Card>
+  );
+}
+
+/** Vízszintes sávok View-ból (könyvtár nélkül): a leghosszabb = 100%. */
+function HBars({ data }: { data: { label: string; value: number }[] }) {
+  if (data.length === 0) return <Empty text="Nincs adat az időszakban." />;
+  const max = Math.max(...data.map((d) => d.value), 1);
+  const total = data.reduce((s, d) => s + d.value, 0);
+  return (
+    <View style={{ gap: 6 }}>
+      {data.map((d, i) => (
+        <View key={i} style={{ gap: 2 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <Text style={{ fontSize: 12, color: C.text, flex: 1 }} numberOfLines={1}>{d.label}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: C.text, fontVariant: ['tabular-nums'] }}>
+              {ft(d.value)} · {total > 0 ? Math.round(d.value / total * 100) : 0}%
+            </Text>
+          </View>
+          <View style={{ height: 8, backgroundColor: C.chipBg, borderRadius: 4, overflow: 'hidden' }}>
+            <View style={{ height: 8, width: `${Math.max(1, Math.round(d.value / max * 100))}%`, backgroundColor: PIE_COLORS[i % PIE_COLORS.length], borderRadius: 4 }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function periodStart(p: Period): string {
   const t = todayISO();
@@ -103,6 +150,10 @@ export default function Stats() {
   const categories = useTable<ExpenseCategory>('expense_categories');
   const profiles = useTable<Profile>('profiles');
   const externals = useTable<ExternalPerson>('external_people');
+  const tasks = useTable<WorkerTask>('worker_tasks');
+  const assignees = useTable<TaskAssignee>('task_assignees');
+  const sessions = useTable<WorkSession>('work_sessions');
+  const [wpPeriod, setWpPeriod] = useState<WorkerPeriod>('30');
 
   const years = useMemo(() => {
     const ys = new Set<number>();
@@ -235,6 +286,58 @@ export default function Stats() {
     return [...m.values()].sort((a, b) => b.total - a.total);
   }, [attendance, profiles, externals]);
 
+  // költségek kategória szerint (csak a költség-tábla, bér nélkül): top 8 + egyéb
+  const expenseByCat = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of expenses) {
+      const label = categories.find((c) => c.id === e.category_id)?.name ?? 'Nincs kategória';
+      m.set(label, (m.get(label) ?? 0) + Number(e.net_amount));
+    }
+    const sorted = [...m.entries()].map(([label, value]) => ({ label, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+    if (sorted.length <= 8) return sorted;
+    const rest = sorted.slice(8).reduce((s, d) => s + d.value, 0);
+    return [...sorted.slice(0, 8), { label: `egyéb (${sorted.length - 8} kategória)`, value: rest }];
+  }, [expenses, categories]);
+
+  // ---- munkavállalói teljesítmény: saját időszak (30 / 90 nap / összes) ----
+  const workerPerf = useMemo(() => {
+    const today = todayISO();
+    const start = wpPeriod === 'all' ? '0000-01-01' : addDaysISO(today, -Number(wpPeriod));
+    const inP = (iso: string | null | undefined) => !!iso && iso.slice(0, 10) >= start;
+    const now = Date.now();
+    // feladatonként az összes munkaóra (minden munkavállalóé együtt) — az átlag óra/kész feladathoz
+    const taskHours = new Map<string, number>();
+    for (const s of sessions) {
+      if (!s.task_id) continue;
+      taskHours.set(s.task_id, (taskHours.get(s.task_id) ?? 0) + sessionHours(s, now));
+    }
+    return workers
+      .filter((w) => !!w.approved_at)
+      .map((w) => {
+        const myTasks = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === w.id));
+        // kész / nem sikerült: a lezárás napja szerint az időszakban; aktív mindig számít
+        const done = myTasks.filter((t) => t.status === 'done' && inP(t.done_at ?? t.updated_at));
+        const failed = myTasks.filter((t) => t.status === 'failed' && inP(t.done_at ?? t.updated_at));
+        const active = myTasks.filter((t) => t.status === 'assigned' || t.status === 'acknowledged');
+        const closed = done.length + failed.length;
+        const failRate = closed > 0 ? failed.length / closed * 100 : null;
+        const doneHours = done.reduce((s, t) => s + (taskHours.get(t.id) ?? 0), 0);
+        const avgHoursPerDone = done.length > 0 ? doneHours / done.length : null;
+        const own = sessions.filter((s) => s.worker_id === w.id);
+        const hoursAll = own.reduce((s, x) => s + sessionHours(x, now), 0);
+        const hoursP = own.filter((s) => inP(s.started_at)).reduce((s, x) => s + sessionHours(x, now), 0);
+        const rows = allAttendance.filter((a) => a.worker_id === w.id && inP(a.work_date));
+        const wage = rows.reduce((s, a) => s + Number(a.amount), 0);
+        const avgHourly = hoursP > 0 ? wage / hoursP : null;
+        let last: string | null = null;
+        for (const a of allAttendance) if (a.worker_id === w.id && (!last || a.work_date > last)) last = a.work_date;
+        for (const s of own) { const d = s.started_at.slice(0, 10); if (!last || d > last) last = d; }
+        return { w, done: done.length, failed: failed.length, active: active.length, failRate, avgHoursPerDone, hoursP, hoursAll, wage, avgHourly, last };
+      })
+      .filter((x) => x.done + x.failed + x.active > 0 || x.hoursAll > 0 || x.wage > 0)
+      .sort((a, b) => b.hoursP - a.hoursP || b.hoursAll - a.hoursAll);
+  }, [wpPeriod, workers, tasks, assignees, sessions, allAttendance]);
+
   return (
     <Screen>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
@@ -319,6 +422,11 @@ export default function Stats() {
         {byCategory.map((d, i) => <KV key={i} k={d.label} v={ft(d.value)} />)}
       </Card>
 
+      <Section title="Költségek kategória szerint" summary={`${expenseByCat.length} kategória · ${ft(expenseByCat.reduce((s, d) => s + d.value, 0))}`}>
+        <Sub>Csak a rögzített költségek (bér nélkül), a fenti időszak- és terület-szűrővel; a 8 legnagyobb + egyéb.</Sub>
+        <HBars data={expenseByCat} />
+      </Section>
+
       <Card>
         <H2>Havi trend</H2>
         <Bars data={monthly} />
@@ -346,6 +454,31 @@ export default function Stats() {
           <KV key={x.w.id} k={`${x.w.name} (${x.days} nap)`} v={ft(x.total)} />
         ))}
       </Card>
+
+      <Section title="👷 Munkavállalói teljesítmény" summary={`${workerPerf.length} fő`}>
+        <Segmented<WorkerPeriod>
+          options={[{ value: '30', label: '30 nap' }, { value: '90', label: '90 nap' }, { value: 'all', label: 'Összes' }]}
+          value={wpPeriod}
+          onChange={setWpPeriod}
+        />
+        <Sub>Saját időszak (a fenti szűrőktől független). Óra = munkaidő-rögzítésből; bér = jelenléti sorokból.</Sub>
+        {workerPerf.length === 0 ? <Empty text="Nincs adat az időszakban." /> : null}
+        {workerPerf.map((x, i) => (
+          <View key={x.w.id} style={{ paddingVertical: 6, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.border }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: C.text, flex: 1 }} numberOfLines={1}>{wname(x.w)}</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.text, fontVariant: ['tabular-nums'] }}>{x.hoursP.toFixed(1)} ó</Text>
+            </View>
+            <KV k="Feladatok (kész / nem sikerült / aktív)" v={`${x.done} / ${x.failed} / ${x.active}`} />
+            <KV k="Sikertelen arány" v={x.failRate == null ? '–' : `${x.failRate.toFixed(0)}%`} />
+            <KV k="Átlag óra / kész feladat" v={x.avgHoursPerDone == null ? '–' : `${x.avgHoursPerDone.toFixed(1)} ó`} />
+            <KV k="Ledolgozott óra (időszak / összes)" v={`${x.hoursP.toFixed(1)} ó / ${x.hoursAll.toFixed(1)} ó`} />
+            <KV k="Bér összesen (időszak)" v={ft(x.wage)} />
+            <KV k="Átlagos óradíj-költség" v={x.avgHourly == null ? '–' : `${ft(x.avgHourly)}/ó`} />
+            <KV k="Utolsó munkanap" v={hd(x.last)} />
+          </View>
+        ))}
+      </Section>
 
       <Card>
         <H2>Közvetítői díjak</H2>
