@@ -1,13 +1,11 @@
 // Polimorf komment-szekció bármely entitáshoz, realtime frissüléssel
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 import { Card, H2, Sub, Body, Input, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, softDeleteRow, getCurrentUserId } from '../lib/repo';
-import { supabase } from '../lib/supabase';
-import { store } from '../lib/store';
 import { hdt } from '../lib/format';
 import { Comment, Profile } from '../lib/types';
 
@@ -17,26 +15,9 @@ export function Comments({ entityType, entityId }: { entityType: Comment['entity
   const [text, setText] = useState('');
   const me = getCurrentUserId();
 
-  // realtime: más felhasználó kommentje azonnal megjelenik
-  useEffect(() => {
-    const channel = supabase
-      .channel(`comments-${entityType}-${entityId}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'comments' },
-        (payload) => {
-          // hard DELETE-nél a payload.old csak az id-t hozza — a csonk sorral
-          // nem írjuk felül a kommentet, hanem eltávolítjuk a tükörből
-          if (payload.eventType === 'DELETE') {
-            const oldId = (payload.old as any)?.id;
-            if (oldId) store.removeLocal('comments', String(oldId));
-            return;
-          }
-          const row = payload.new as Comment | undefined;
-          if (row?.id) store.putLocal('comments', row as any, true);
-        })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [entityType, entityId]);
+  // realtime: a globális csatorna (lib/realtime.ts) a kommenteket azonnal a
+  // tükörbe írja — külön csatorna nem kell (az újrafelhasznált, már feliratkozott
+  // csatornára nem lehet figyelőt tenni → összeomlás volt)
 
   const comments = all
     .filter((cm) => cm.entity_type === entityType && cm.entity_id === entityId)
