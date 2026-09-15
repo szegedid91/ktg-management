@@ -13,6 +13,7 @@ import { callRpc } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { TaskRow } from './TaskRow';
+import { InviteCard } from './InviteCard';
 import { router } from 'expo-router';
 import {
   Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, Timesheet,
@@ -29,6 +30,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const me = workers.find((w) => w.id === wid);
   const crew = workers.filter((w) => w.contractor_id === wid).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
   const isContractor = !!me?.is_contractor;
+  // ha én valakinek az embere vagyok: a bérem a vállalkozómhoz kerül, az óralapot ő küldi be
+  const boss = me?.contractor_id ? workers.find((w) => w.id === me.contractor_id) : undefined;
   const myIds = new Set([wid, ...crew.map((c) => c.id)]);
   const allSessions = useTable<WorkSession>('work_sessions').filter((s) => myIds.has(s.worker_id));
   const sessions = allSessions.filter((s) => s.worker_id === wid);
@@ -153,6 +156,12 @@ export function WorkerHome({ profile }: { profile: Profile }) {
 
   return (
     <Screen>
+      {boss ? (
+        <Card style={{ paddingVertical: S.sm, borderColor: C.primary }}>
+          <Text style={{ fontWeight: '800', color: C.text }}>👥 {wname(boss)} csapatában dolgozol</Text>
+          <Sub>A béred emberenként számolódik, de a kifizetés a vállalkozódhoz kerül; az óralapot ő küldi be. A fő felhasználók látják, mennyit dolgoztál.</Sub>
+        </Card>
+      ) : null}
       {showWorkTime ? (
         <Card style={{ borderColor: openSession ? C.success : C.border, paddingVertical: S.sm }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
@@ -212,6 +221,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                       <Text style={{ color: C.text, fontWeight: '600' }}>{c.name}</Text>
                       <Sub>{c.trade ? `${c.trade} · ` : ''}{c.phones[0] ? `${c.phones[0]} · ` : ''}ma {fmtHours(h)}</Sub>
                     </View>
+                    {c.email ? <Badge text="📱 saját fiók" color={C.sub} /> : null}
                     {allSessions.some((s) => s.worker_id === c.id && !s.ended_at) ? <Badge text="● dolgozik" color={C.success} /> : null}
                     <Btn title="🗑️" kind="ghost" small onPress={() => void removeMember(c)} />
                   </View>
@@ -224,6 +234,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
               </View>
               <Btn title={crewBusy ? '…' : '+ Felveszem'} kind="secondary" small disabled={crewBusy || !newName.trim()} onPress={() => void addMember()} />
               <Sub>Az embereid bére emberenként számolódik, de a kifizetés hozzád kerül. A fő felhasználók látják, ki mennyit dolgozott.</Sub>
+              <InviteCard contractor />
             </View>
           ) : null}
         </Card>
@@ -283,11 +294,12 @@ export function WorkerHome({ profile }: { profile: Profile }) {
               </View>
               {w.sheet?.status === 'approved' ? <Badge text="jóváhagyva ✓" color={C.success} />
                 : w.sheet?.status === 'submitted' ? <Badge text="jóváhagyásra vár" color={C.warning} />
+                : boss ? <Badge text="a vállalkozód küldi be" color={C.sub} />
                 : <Btn title={w.sheet?.status === 'rejected' ? 'Újra beküld' : 'Beküldés'} kind="secondary" small disabled={sheetBusy} onPress={() => void submitSheet(w.week, w.person.id === wid ? undefined : w.person.id)} />}
             </View>
           ))}
           {weeks.some((w) => w.sheet?.status === 'rejected') ? <Sub style={{ color: C.danger }}>Visszaküldött óralap: {weeks.find((w) => w.sheet?.status === 'rejected')?.sheet?.decision_note ?? 'nézd át, és küldd be újra.'}</Sub> : null}
-          <Sub>A béred a jóváhagyott heteid után fizethető ki.</Sub>
+          <Sub>{boss ? 'A jóváhagyott hetek bére a vállalkozódnak fizethető ki.' : 'A béred a jóváhagyott heteid után fizethető ki.'}</Sub>
         </Card>
       ) : null}
 

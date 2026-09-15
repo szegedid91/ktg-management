@@ -6,6 +6,8 @@ import { InviteCard } from '../../components/InviteCard';
 import { C } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { Worker } from '../../lib/types';
+import { copyText } from '../../lib/clipboard';
+import { notify } from '../../lib/dialogs';
 
 export function CallButton({ phone, small }: { phone: string; small?: boolean }) {
   return (
@@ -21,6 +23,25 @@ export function CallButton({ phone, small }: { phone: string; small?: boolean })
       }}
     >
       <Text style={{ color: '#fff', fontWeight: '700', fontSize: small ? 13 : 15 }}>📞</Text>
+    </Pressable>
+  );
+}
+
+/** Telefonszám vágólapra másolása (a gyorshívó mellé) */
+export function CopyButton({ text, small, label = 'Telefonszám' }: { text: string; small?: boolean; label?: string }) {
+  return (
+    <Pressable
+      onPress={(e) => {
+        // @ts-ignore – web esemény
+        e?.stopPropagation?.();
+        void copyText(text).then((ok) => notify(ok ? 'Kimásolva' : 'Nem sikerült', ok ? `${label} a vágólapon: ${text}` : 'A vágólap nem érhető el — jelöld ki és másold kézzel.'));
+      }}
+      style={{
+        backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 999,
+        paddingHorizontal: small ? 10 : 14, paddingVertical: small ? 6 : 9,
+      }}
+    >
+      <Text style={{ color: C.text, fontWeight: '700', fontSize: small ? 13 : 15 }}>📋</Text>
     </Pressable>
   );
 }
@@ -68,6 +89,7 @@ export default function Workers() {
               {w.phones[0] ? ` · ${w.phones[0]}` : ''}
             </Sub>
           </View>
+          {w.phones[0] ? <CopyButton text={w.phones[0]} small /> : null}
           {w.phones[0] ? <CallButton phone={w.phones[0]} small /> : null}
         </Row>
       ))}

@@ -9,7 +9,8 @@ import { useAuth } from '../lib/auth';
 import { EyeToggle } from '../components/EyeToggle';
 
 export default function Invite() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const { token, c } = useLocalSearchParams<{ token?: string; c?: string }>();
+  const viaContractor = c === '1';
   const { session, signUp, signOut } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -27,7 +28,7 @@ export default function Invite() {
     setBusy(true);
     setError(null);
     const err = await signUp(email.trim(), password, name.trim(), token,
-      { phone: phone.trim(), trade: trade.trim(), is_contractor: contractor });
+      { phone: phone.trim(), trade: trade.trim(), is_contractor: !viaContractor && contractor });
     setBusy(false);
     if (err) { setError(err); return; }
     setDone(true);
@@ -67,12 +68,14 @@ export default function Invite() {
           </Card>
         ) : (
           <Card>
-            <Sub>A fő felhasználók meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.</Sub>
+            <Sub>{viaContractor
+              ? 'Egy vállalkozó meghívott a csapatába. Add meg az adataid — a profilod az ő embereként jön létre, a béred hozzá kerül (emberenként részletezve), és rögtön be tudsz lépni.'
+              : 'A fő felhasználók meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.'}</Sub>
             <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
             <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />
-            <Check checked={contractor} onToggle={() => setContractor(!contractor)} label="Vállalkozóként regisztrálok — saját embereket hozok"
-              sub="Az embereidet te veszed fel és jelentkezteted be; a bérük hozzád kerül, emberenként részletezve." />
+            {!viaContractor ? <Check checked={contractor} onToggle={() => setContractor(!contractor)} label="Vállalkozóként regisztrálok — saját embereket hozok"
+              sub="Az embereidet te veszed fel és jelentkezteted be; a bérük hozzád kerül, emberenként részletezve." /> : null}
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
             <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
               right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />

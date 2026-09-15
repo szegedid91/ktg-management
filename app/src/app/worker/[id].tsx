@@ -8,11 +8,10 @@ import { useRow, useTable } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow, callRpc } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings, WorkerTask, TaskAssignee, WorkSession } from '../../lib/types';
-import { InviteCard } from '../../components/InviteCard';
 import { isActiveTask, TASK_STATUS_LABEL, fmtHours, sessionHours } from '../../lib/tasks';
 import { hdt } from '../../lib/format';
 import { Comments } from '../../components/Comments';
-import { CallButton } from '../workers/index';
+import { CallButton, CopyButton } from '../workers/index';
 import { WorkerForm, workerToForm, formToRow, validateWorkerForm, WorkerFormValues } from '../../components/WorkerForm';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { syncNow } from '../../lib/sync';
@@ -73,7 +72,7 @@ export default function WorkerDetail() {
   }, [attendance]);
 
   if (!worker) return <Screen><Empty text="Munkavállaló nem található." /></Screen>;
-  const mine = worker.created_by === me;
+  const isPartner = !profiles.find((p) => p.id === me)?.worker_id;
 
   const referrerName = worker.referrer_user_id
     ? profiles.find((p) => p.id === worker.referrer_user_id)?.display_name
@@ -208,7 +207,6 @@ export default function WorkerDetail() {
           {crewOf.length ? <KV k="Emberek bére összesen (kifizetetlen)" v={ft([...crewTotals.values()].reduce((s, t) => s + t.unpaid, 0))} strong /> : null}
         </Card>
       ) : null}
-      {!pendingApproval && !worker.contractor_id ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} /> : null}
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <H2>{worker.name}</H2>
@@ -216,10 +214,15 @@ export default function WorkerDetail() {
           <Badge text={worker.worker_type === 'company' ? 'céges' : 'magánszemély'} />
           {worker.worker_type === 'company' && worker.is_vat_payer ? <Badge text={`ÁFA ${worker.vat_rate}%`} color={C.warning} /> : null}
         </View>
+        <KV k="Név" v={worker.name} />
+        <KV k="Becenév" v={worker.nickname || '—'} />
+        {worker.phones.length === 0 ? <KV k="Telefonszám" v="—" /> : null}
         {worker.phones.map((p) => (
-          <View key={p} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Body>{p}</Body>
-            <CallButton phone={p} />
+          <View key={p} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3 }}>
+            <Sub>Telefonszám</Sub>
+            <Text selectable style={{ flex: 1, textAlign: 'right', fontWeight: '700', color: C.text, fontSize: 15 }}>{p}</Text>
+            <CopyButton text={p} small />
+            <CallButton phone={p} small />
           </View>
         ))}
         {worker.email ? <KV k="Email" v={worker.email} /> : null}
@@ -231,7 +234,7 @@ export default function WorkerDetail() {
           {bank ? <Body>{bank}</Body> : <Btn title="Megjelenítés" kind="ghost" small onPress={() => void showBank()} />}
         </View>
         {worker.note ? <Sub>{worker.note}</Sub> : null}
-        {mine || pendingApproval ? (
+        {isPartner || pendingApproval ? (
           <View style={{ flexDirection: 'row', gap: S.md }}>
             <View style={{ flex: 1 }}>
               <Btn title="Szerkesztés" kind="ghost" small onPress={() => { setForm(workerToForm(worker)); setEditing(true); }} />
