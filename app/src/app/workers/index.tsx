@@ -63,7 +63,7 @@ export default function Workers() {
   const pending = workers.filter((w) => !w.approved_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const filtered = workers
     .filter((w) => !!w.approved_at)
-    .filter((w) => `${w.name} ${w.nickname ?? ''}`.toLowerCase().includes(q.toLowerCase()))
+    .filter((w) => `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
   // a vállalkozó emberei közvetlenül a vállalkozó alatt
   const ordered = filtered.filter((w) => !w.contractor_id).flatMap((w) => [w, ...filtered.filter((c) => c.contractor_id === w.id)])
@@ -86,7 +86,7 @@ export default function Workers() {
           ))}
         </View>
       ) : null}
-      <Input value={q} onChangeText={setQ} placeholder="Keresés név szerint…" />
+      <Input value={q} onChangeText={setQ} placeholder="Keresés név vagy szakma szerint…" />
       {filtered.length === 0 ? <Empty text="Nincs munkavállaló." /> : null}
       {ordered.map((w) => (
         <Row key={w.id} onPress={() => router.push(`/worker/${w.id}`)}>

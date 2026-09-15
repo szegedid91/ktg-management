@@ -1,9 +1,9 @@
 // Munkavállaló űrlap — új felvétel és szerkesztés is ezt használja
 
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { Card, Input, Btn, Segmented, Picker, Sub, H2 } from '../ui/kit';
-import { S } from '../ui/theme';
+import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { Worker, Profile, ExternalPerson, PayBasis, AppSettings } from '../lib/types';
 import { insertRow } from '../lib/repo';
@@ -113,6 +113,20 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
 }
 
 export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onChange: (v: WorkerFormValues) => void }) {
+  // több szakma: vesszővel elválasztva tároljuk a `trade` mezőben
+  const trades = value.trade.split(',').map((t) => t.trim()).filter(Boolean);
+  const isCommon = (t: string) => COMMON_TRADES.some((c) => c.toLowerCase() === t.toLowerCase());
+  const [otherText, setOtherText] = useState(trades.filter((t) => !isCommon(t)).join(', '));
+  const setTrades = (list: string[]) => onChange({ ...value, trade: list.join(', ') });
+  const toggleTrade = (t: string) => {
+    const on = trades.some((x) => x.toLowerCase() === t.toLowerCase());
+    setTrades(on ? trades.filter((x) => x.toLowerCase() !== t.toLowerCase()) : [...trades, t]);
+  };
+  const setOther = (text: string) => {
+    setOtherText(text);
+    const extra = text.split(',').map((t) => t.trim()).filter(Boolean);
+    setTrades([...trades.filter(isCommon), ...extra]);
+  };
   // közvetítő csak fő felhasználó lehet: admin és munkavállalói fiók nem
   const profiles = useTable<Profile>('profiles').filter((p) => !p.is_admin && !p.worker_id);
   const externals = useTable<ExternalPerson>('external_people');
@@ -145,19 +159,27 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
         />
         {value.kind === 'specialist' ? (
           <>
-            <Segmented
-              label="Szakipar"
-              options={COMMON_TRADES.map((t) => ({ value: t, label: t }))}
-              value={(COMMON_TRADES.includes(value.trade) ? value.trade : null) as any}
-              onChange={(v) => set({ trade: v })}
-            />
+            <Sub>Szakipar — több is kijelölhető</Sub>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {COMMON_TRADES.map((t) => {
+                const on = trades.some((x) => x.toLowerCase() === t.toLowerCase());
+                return (
+                  <Pressable key={t} onPress={() => toggleTrade(t)}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1,
+                      borderColor: on ? C.primary : C.border, backgroundColor: on ? C.primary : C.card }}>
+                    <Text style={{ color: on ? '#fff' : C.text, fontWeight: '600', fontSize: 13 }}>{on ? '✓ ' : ''}{t}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <Input
-              label="Egyéb szakipar (ha nincs a listában)"
-              value={COMMON_TRADES.includes(value.trade) ? '' : value.trade}
-              onChangeText={(t) => set({ trade: t })}
-              placeholder="pl. Szigetelő"
+              label="Egyéb szakipar (ha nincs a listában; többet vesszővel)"
+              value={otherText}
+              onChangeText={setOther}
+              placeholder="pl. Szigetelő, Lakatos"
               autoCapitalize="words"
             />
+            {trades.length ? <Sub>Kijelölve: {trades.join(', ')}</Sub> : null}
           </>
         ) : null}
         <Input label="Telefonszám(ok, vesszővel)" value={value.phones} onChangeText={(t) => set({ phones: t })} keyboardType="phone-pad" placeholder="+36 30 123 4567" />
