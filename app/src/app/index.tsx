@@ -106,7 +106,9 @@ function DashboardInner() {
     return { mExp, mWage, mRev, outstanding, unpaidWages, unpaidCommissions };
   }, [expenses, attendance, invoices, month]);
 
-  const activeSites = sites.filter((s) => s.status === 'active');
+  // ABC-sorrend: a lista minden renderkor a tükörből épül, így új/módosított
+  // építkezés azonnal a helyére kerül
+  const activeSites = sites.filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
   const closedSites = sites.filter((s) => s.status === 'closed');
   // lokális tükörből: bármilyen rögzítésre azonnal frissül
   const myBalance = useMemo(
