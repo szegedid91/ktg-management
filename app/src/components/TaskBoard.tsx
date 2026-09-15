@@ -14,7 +14,7 @@ import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
-export type BoardFilter = 'active' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
+export type BoardFilter = 'active' | 'unassigned' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
 type Filter = BoardFilter;
 const PAGE = 25;
 
@@ -54,7 +54,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const active = tasks.filter(isActiveTask);
   const counts = {
     active: active.length,
-    assigned: active.filter((t) => t.status === 'assigned').length,
+    unassigned: active.filter((t) => assigneesOf(t).length === 0).length,
+    assigned: active.filter((t) => t.status === 'assigned' && assigneesOf(t).length > 0).length,
     acknowledged: active.filter((t) => t.status === 'acknowledged').length,
     running: active.filter((t) => running.has(t.id)).length,
     unpriced: tasks.filter((t) => unpricedTaskIds.has(t.id)).length,
@@ -72,7 +73,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
       .filter((t) => {
         switch (filter) {
           case 'active': return isActiveTask(t);
-          case 'assigned': return t.status === 'assigned';
+          case 'unassigned': return isActiveTask(t) && assigneesOf(t).length === 0;
+          case 'assigned': return t.status === 'assigned' && assigneesOf(t).length > 0;
           case 'acknowledged': return t.status === 'acknowledged';
           case 'running': return running.has(t.id);
           case 'unpriced': return unpricedTaskIds.has(t.id);
@@ -113,6 +115,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     <View style={{ gap: S.sm }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         <Chip label="Aktív" count={counts.active} on={filter === 'active'} onPress={() => { setFilter('active'); setLimit(PAGE); }} />
+        {counts.unassigned > 0 ? <Chip label="📋 Kiosztatlan" count={counts.unassigned} color={C.warning} on={filter === 'unassigned'} onPress={() => { setFilter('unassigned'); setLimit(PAGE); }} /> : null}
         <Chip label="Elfogadásra vár" count={counts.assigned} color={STATUS_COLOR.assigned} on={filter === 'assigned'} onPress={() => { setFilter('assigned'); setLimit(PAGE); }} />
         <Chip label="Folyamatban" count={counts.acknowledged} color={STATUS_COLOR.acknowledged} on={filter === 'acknowledged'} onPress={() => { setFilter('acknowledged'); setLimit(PAGE); }} />
         <Chip label="● Fut a munka" count={counts.running} color={C.success} on={filter === 'running'} onPress={() => { setFilter('running'); setLimit(PAGE); }} />

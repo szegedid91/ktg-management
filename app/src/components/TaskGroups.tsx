@@ -54,12 +54,17 @@ export function TaskGroups({ tasks, mode }: { tasks: WorkerTask[]; mode: 'site' 
   const byDate = (a: WorkerTask, b: WorkerTask) => b.created_at.localeCompare(a.created_at);
 
   if (tasks.length === 0) return <Empty text="Nincs feladat." />;
+  const isUnassigned = (t: WorkerTask) => isActiveTask(t) && !assignees.some((a) => a.task_id === t.id);
+  const unassigned = tasks.filter(isUnassigned).sort(byDate);
 
   if (mode === 'status') {
     return (
       <View style={{ gap: S.lg }}>
+        <Group title="📋 Kiosztatlan" count={unassigned.length}>
+          <View style={{ gap: S.sm }}>{unassigned.map(tile)}</View>
+        </Group>
         {STATUS_ORDER.map((st) => {
-          const list = tasks.filter((t) => t.status === st).sort(byDate);
+          const list = tasks.filter((t) => t.status === st && !isUnassigned(t)).sort(byDate);
           return (
             <Group key={st} title={STATUS_TITLE[st]} count={list.length} collapsed={st === 'done' || st === 'cancelled'}>
               <View style={{ gap: S.sm }}>{list.map(tile)}</View>
@@ -71,7 +76,7 @@ export function TaskGroups({ tasks, mode }: { tasks: WorkerTask[]; mode: 'site' 
   }
 
   // helyszín szerint: aktív feladatok
-  const active = tasks.filter(isActiveTask).sort(byDate);
+  const active = tasks.filter((t) => isActiveTask(t) && !isUnassigned(t)).sort(byDate);
   const closed = tasks.filter((t) => !isActiveTask(t)).sort(byDate);
   const siteIds = Array.from(new Set(active.map((t) => t.site_id ?? '')));
   const siteName = (id: string) => (id ? sites.find((s) => s.id === id)?.name ?? 'Ismeretlen helyszín' : 'Helyszín nélkül');
@@ -79,7 +84,10 @@ export function TaskGroups({ tasks, mode }: { tasks: WorkerTask[]; mode: 'site' 
 
   return (
     <View style={{ gap: S.lg }}>
-      {active.length === 0 ? <Sub>Nincs aktív feladat.</Sub> : null}
+      <Group title="📋 Kiosztatlan" count={unassigned.length}>
+        <View style={{ gap: S.sm }}>{unassigned.map(tile)}</View>
+      </Group>
+      {active.length === 0 && unassigned.length === 0 ? <Sub>Nincs aktív feladat.</Sub> : null}
       {siteIds.map((sid) => {
         const list = active.filter((t) => (t.site_id ?? '') === sid);
         return (

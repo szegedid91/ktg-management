@@ -28,7 +28,8 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
   const color = STATUS_COLOR[task.status] ?? C.sub;
   const quote = quoteLabel(task, quotes, myWorkerId);
   const overdue = isOverdue(task, todayISO());
-  const status = quote ?? `${STATUS_SHORT[task.status]}${task.status === 'assigned' && assignees.length > 1 ? ` ${acked}/${assignees.length}` : ''}`;
+  const unassigned = assignees.length === 0 && (task.status === 'assigned' || task.status === 'acknowledged');
+  const status = quote ?? (unassigned ? 'kiosztatlan' : `${STATUS_SHORT[task.status]}${task.status === 'assigned' && assignees.length > 1 ? ` ${acked}/${assignees.length}` : ''}`);
   return (
     <Pressable
       onPress={() => router.push(`/task/${task.id}`)}
@@ -51,7 +52,7 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
         <Text style={{ fontSize: 11, color: quote ? C.primary : color, fontWeight: '700' }} numberOfLines={1}>{status}</Text>
       </View>
       <Text style={{ fontSize: 12, color: C.sub }} numberOfLines={1}>
-        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || '—'}
+        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')}
         {matCost > 0 ? ` · 📦 ${ft(matCost)}${unpriced ? ` (${unpriced} beárazandó)` : ''}` : ''}
       </Text>
     </Pressable>

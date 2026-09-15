@@ -72,7 +72,6 @@ export default function NewTask() {
 
   const save = async () => {
     if (!title.trim()) { notify('Hiba', 'Adj címet a feladatnak.'); return; }
-    if (chosen.size === 0) { notify('Hiba', 'Válassz legalább egy munkavállalót.'); return; }
     if (!site) { notify('Helyszín kell', 'A bér (munkaidő, ajánlat) építkezésenként képződik — válassz helyszínt a feladathoz.'); return; }
     if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { notify('Határidő', 'A határidőt ÉÉÉÉ-HH-NN formában add meg.'); return; }
     setSaving(true);
@@ -110,10 +109,14 @@ export default function NewTask() {
     }
     for (const wid of chosen) insertRow('task_assignees', { task_id: taskId, worker_id: wid });
     if (photoFails) notify('Fotó', `${photoFails} fotót nem sikerült feltölteni (internet?) — a feladat nélkülük ment ki.`);
-    notify(quote ? 'Ajánlatkérés kiküldve 💬' : 'Feladat kiadva 🛠️',
-      quote
-        ? 'A munkavállaló(k) értesítést kapnak, és az appban adnak ajánlatot — azt neked kell elfogadnod.'
-        : 'A munkavállaló(k) értesítést kapnak, és az appban fogadják el a feladatot.');
+    if (chosen.size === 0) {
+      notify('Feladat elmentve 📋', 'Még nincs kiosztva — a Feladatok „Kiosztatlan” részében találod, és a feladat oldalán a „Kiosztva · Módosít” gombbal adod ki.');
+    } else {
+      notify(quote ? 'Ajánlatkérés kiküldve 💬' : 'Feladat kiadva 🛠️',
+        quote
+          ? 'A munkavállaló(k) értesítést kapnak, és az appban adnak ajánlatot — azt neked kell elfogadnod.'
+          : 'A munkavállaló(k) értesítést kapnak, és az appban fogadják el a feladatot.');
+    }
     smartBack();
   };
 
@@ -169,7 +172,7 @@ export default function NewTask() {
 
       <Card>
         <H2>Kinek?</H2>
-        <Sub>Több munkavállaló is kijelölhető — mindegyik külön fogadja el.</Sub>
+        <Sub>Több munkavállaló is kijelölhető — mindegyik külön fogadja el. Üresen is hagyhatod: a feladat „kiosztatlan” lesz, és később adod ki.</Sub>
         {workers.length > 6 ? <Input value={workerQ} onChangeText={setWorkerQ} placeholder="Keresés név / szakma szerint…" /> : null}
         {shownWorkers.map((w) => (
           <Check key={w.id} checked={chosen.has(w.id)} onToggle={() => toggle(w.id)}
@@ -188,7 +191,7 @@ export default function NewTask() {
       </Card>
 
       <View style={{ paddingBottom: 8 }}>
-        <Btn title={saving ? '…' : quote ? 'Ajánlatkérés kiküldése' : 'Feladat kiadása'} onPress={() => void save()} disabled={saving} />
+        <Btn title={saving ? '…' : chosen.size === 0 ? 'Mentés kiosztás nélkül' : quote ? 'Ajánlatkérés kiküldése' : 'Feladat kiadása'} onPress={() => void save()} disabled={saving} />
       </View>
     </Screen>
   );

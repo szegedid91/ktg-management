@@ -411,7 +411,9 @@ Biztosan leveszed?`, 'Levétel', true);
 
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-          <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />
+          {active && assignees.length === 0
+            ? <Badge text="📋 Kiosztatlan — még senkinek sem szól" color={C.warning} />
+            : <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />}
           {task.priority ? <Badge text="🆘 SOS" color={C.danger} /> : null}
           {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
           {task.quote_accepted_at ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
