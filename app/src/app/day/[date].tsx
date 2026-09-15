@@ -13,7 +13,7 @@ import { notify, confirmDialog } from '../../lib/dialogs';
 
 export default function DayView() {
   const { date, siteId } = useLocalSearchParams<{ date: string; siteId?: string }>();
-  const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
+  const sites = useTable<Site>('sites').filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
   const allSites = useTable<Site>('sites');
   const workers = useTable<Worker>('workers').filter((w) => !!w.approved_at);
   const attendance = useTable<Attendance>('attendance');

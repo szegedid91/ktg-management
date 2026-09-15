@@ -37,7 +37,7 @@ function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () 
 
 export default function NewExpense() {
   const { siteId } = useLocalSearchParams<{ siteId?: string }>();
-  const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
+  const sites = useTable<Site>('sites').filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
   const categories = useTable<ExpenseCategory>('expense_categories');
   const settings = useTable<AppSettings>('app_settings')[0];
   const defaultVat = settings ? Number(settings.default_vat_rate) : 27;

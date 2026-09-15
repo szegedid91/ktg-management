@@ -18,7 +18,7 @@ import { wname } from '../../lib/tasks';
 
 export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
-  const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
+  const sites = useTable<Site>('sites').filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
   // a vállalkozók emberei (fiók nélkül) nem kapnak külön feladatot: a vállalkozó viszi őket
   const workers = [...useTable<Worker>('workers')].filter((w) => !!w.approved_at && !w.contractor_id).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
   const [workerQ, setWorkerQ] = useState('');
