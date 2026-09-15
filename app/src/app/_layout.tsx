@@ -6,6 +6,7 @@ import { AuthProvider } from '../lib/auth';
 import { DialogHost } from '../components/DialogHost';
 import { HeaderBell } from '../components/HeaderBell';
 import { WorkerApprovalGate } from '../components/WorkerApprovalGate';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
@@ -38,6 +39,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <ErrorBoundary>
       <Stack
         key={theme}
         screenOptions={{
@@ -84,6 +86,7 @@ export default function RootLayout() {
         <Stack.Screen name="audit" options={{ title: 'Audit napló' }} />
         <Stack.Screen name="export" options={{ title: 'Export könyvelőnek' }} />
       </Stack>
+      </ErrorBoundary>
       <WorkerApprovalGate />
       <DialogHost />
     </AuthProvider>

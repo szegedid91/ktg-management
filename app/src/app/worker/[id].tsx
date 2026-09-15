@@ -13,6 +13,7 @@ import { hdt } from '../../lib/format';
 import { Comments } from '../../components/Comments';
 import { CallButton, CopyButton } from '../workers/index';
 import { WorkerForm, workerToForm, formToRow, validateWorkerForm, WorkerFormValues } from '../../components/WorkerForm';
+import { InviteCard } from '../../components/InviteCard';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { syncNow } from '../../lib/sync';
 
@@ -73,6 +74,7 @@ export default function WorkerDetail() {
 
   if (!worker) return <Screen><Empty text="Munkavállaló nem található." /></Screen>;
   const isPartner = !profiles.find((p) => p.id === me)?.worker_id;
+  const hasAccount = profiles.some((p) => p.worker_id === worker.id);
 
   const referrerName = worker.referrer_user_id
     ? profiles.find((p) => p.id === worker.referrer_user_id)?.display_name
@@ -250,6 +252,7 @@ export default function WorkerDetail() {
         ) : <Sub>Csak a rögzítője szerkesztheti.</Sub>}
       </Card>
 
+      {isPartner && !hasAccount && !pendingApproval && !worker.contractor_id ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} email={worker.email} /> : null}
       <Card>
         <H2>Díjazás</H2>
         {settings ? (

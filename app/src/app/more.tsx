@@ -7,6 +7,7 @@ import { useSyncStatus } from '../lib/hooks';
 import { syncNow } from '../lib/sync';
 import { hdt } from '../lib/format';
 import { APP_VERSION } from '../lib/version';
+import { lastCrash } from '../components/ErrorBoundary';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { useTable } from '../lib/hooks';
 import { Profile } from '../lib/types';
@@ -43,6 +44,7 @@ export default function More() {
         <Sub>Utolsó szinkron: {sync.lastSyncAt ? hdt(sync.lastSyncAt) : 'még nem volt'}
           {sync.pendingOps > 0 ? ` · ${sync.pendingOps} függő művelet` : ''}</Sub>
         <Sub>Verzió: {APP_VERSION}</Sub>
+        {lastCrash() ? <Sub style={{ fontSize: 11, color: '#C53030' }}>Utolsó hiba: {lastCrash()}</Sub> : null}
         <Btn title="Szinkronizálás most" kind="ghost" small onPress={() => void syncNow()} />
         <Btn
           title="Kijelentkezés"

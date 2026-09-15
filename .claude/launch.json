@@ -4,9 +4,27 @@
     {
       "name": "expo-web",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--web", "--port", "8081"],
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8081"
+      ],
       "cwd": "app",
       "port": 8081
+    },
+    {
+      "name": "prod-local",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8082",
+        "--directory",
+        "/private/tmp/claude-501/-Users-daniel-Library-CloudStorage-OneDrive-Personal-Ktg-management/ce8e1a83-0012-4717-8993-1e55b8296bac/scratchpad/prodlocal"
+      ],
+      "port": 8082
     }
   ]
 }

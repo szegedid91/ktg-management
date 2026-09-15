@@ -1,7 +1,7 @@
 // Munkavállaló meghívása az appba: link (megosztható) vagy QR-kód.
 
 import React, { useState } from 'react';
-import { View, Text, Modal, Pressable, Platform, Share } from 'react-native';
+import { View, Text, Modal, Pressable, Platform, Share, Linking } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Card, H2, Sub, Body, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
@@ -12,7 +12,7 @@ import { Profile } from '../lib/types';
 
 const APP_ORIGIN = 'https://ktg.szakify.hu';
 
-export function InviteCard({ workerId, workerName, contractor }: { workerId?: string; workerName?: string; contractor?: boolean }) {
+export function InviteCard({ workerId, workerName, contractor, email }: { workerId?: string; workerName?: string; contractor?: boolean; email?: string | null }) {
   const profiles = useTable<Profile>('profiles');
   const account = workerId ? profiles.find((p) => p.worker_id === workerId) : undefined;
   const generic = !workerId;
@@ -20,15 +20,32 @@ export function InviteCard({ workerId, workerName, contractor }: { workerId?: st
   const [qr, setQr] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const makeLink = async () => {
+  const makeLink = async (): Promise<string | null> => {
+    if (link) return link;
     setBusy(true);
     try {
       const token = await callRpc<string>('create_worker_invite', { p_worker: workerId ?? null });
-      setLink(`${APP_ORIGIN}/meghivo?token=${token}${contractor ? '&c=1' : ''}`);
+      const l = `${APP_ORIGIN}/meghivo?token=${token}${contractor ? '&c=1' : ''}`;
+      setLink(l);
+      return l;
     } catch (e: any) {
       notify('Hiba', String(e?.message ?? e));
+      return null;
     } finally {
       setBusy(false);
+    }
+  };
+
+  // személyre szóló meghívó e-mailben: a partner levelezője nyílik meg kitöltve
+  const sendEmail = async () => {
+    const l = await makeLink();
+    if (!l || !email) return;
+    const subject = 'Meghívó az Építkezés Költségkövető appba';
+    const body = `Szia${workerName ? ` ${workerName}` : ''}!\n\nRegisztrálj az Építkezés Költségkövető appba ezzel a linkkel — a fiókod a meglévő munkavállalói profilodhoz kapcsolódik, így a korábbi napjaidat, feladataidat és béredet is látod majd:\n${l}\n\nA link 7 napig érvényes.`;
+    try {
+      await Linking.openURL(`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    } catch {
+      notify('Nem sikerült', 'Nem nyílt meg a levelező — másold ki a linket, és küldd el kézzel.');
     }
   };
 
@@ -65,9 +82,14 @@ export function InviteCard({ workerId, workerName, contractor }: { workerId?: st
             ? 'Az embered a linkkel vagy a QR-kód beolvasásával regisztrál, és automatikusan hozzád kerül: a bére emberenként számolódik, de a kifizetés hozzád megy. A meghívó 7 napig érvényes, több ember is használhatja.'
             : generic
             ? 'Nem kell előre felvenned: a munkavállaló a linkkel vagy a QR-kód beolvasásával regisztrál, és maga adja meg a nevét, becenevét, telefonszámát — a munkavállalói profilja ebből jön létre. A meghívó 7 napig érvényes, több munkavállaló is használhatja (pl. kivetített QR).'
-            : 'A munkavállaló a linkkel vagy a QR-kód beolvasásával tud saját fiókot készíteni. A meghívó 7 napig érvényes, egyszer használható.'}</Sub>
+            : 'Ha a munkavállaló ezzel a meghívóval regisztrál, a fiókja ehhez a profilhoz kapcsolódik: a korábban rögzített napjait, feladatait és bérét is látja. A meghívó 7 napig érvényes, egyszer használható.'}</Sub>
+          {!generic && !contractor ? (
+            email
+              ? <Btn title={busy ? '…' : `📧 Meghívó küldése e-mailben (${email})`} onPress={() => void sendEmail()} disabled={busy} />
+              : <Sub style={{ color: C.warning }}>Nincs e-mail címe — add meg a Szerkesztésnél, és innen egy gombbal kiküldheted a meghívót.</Sub>
+          ) : null}
           {!link ? (
-            <Btn title={busy ? '…' : 'Meghívó készítése'} kind="secondary" onPress={() => void makeLink()} disabled={busy} />
+            <Btn title={busy ? '…' : !generic && !contractor ? 'Link / QR-kód készítése' : 'Meghívó készítése'} kind="secondary" onPress={() => void makeLink()} disabled={busy} />
           ) : (
             <>
               <Text selectable style={{ fontSize: 12, color: C.sub }}>{link}</Text>
