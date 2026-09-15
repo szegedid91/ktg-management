@@ -2,7 +2,7 @@
 // Fut: app-induláskor, előtérbe kerüléskor, minden írás után és 30 mp-enként.
 
 import { supabase } from './supabase';
-import { store, OutboxOp } from './store';
+import { store, OutboxOp, opRowIds } from './store';
 import { SYNC_TABLES, SyncTable } from './types';
 
 let syncing = false;
@@ -125,11 +125,38 @@ async function pushOutbox(): Promise<boolean> {
  *  profilokat minden körben összevetjük a szerver teljes listájával, és ami
  *  ott már nincs, azt helyben is töröljük (a tábla kicsi, ez olcsó). */
 async function reconcileProfiles(): Promise<void> {
-  const { data, error } = await supabase.from(sourceOf('profiles')).select('id');
-  if (error || !data) return;
-  const alive = new Set(data.map((r: any) => String(r.id)));
-  for (const row of store.getAll('profiles') as any[]) {
-    if (!alive.has(String(row.id))) store.removeLocal('profiles', String(row.id));
+  await reconcileTable('profiles');
+}
+
+/** Egy tábla helyi tükrének összevetése a szerver azonosító-listájával: ami a
+ *  szerveren már fizikailag nincs (végleges takarítás, vagy a jogosultság
+ *  megszűnt), az helyben is eltűnik. A növekményes lehúzás ezt nem látja. */
+async function reconcileTable(table: SyncTable): Promise<void> {
+  const alive = new Set<string>();
+  const page = 1000;
+  for (let from = 0; ; from += page) {
+    const { data, error } = await supabase.from(sourceOf(table)).select('id').order('id').range(from, from + page - 1);
+    if (error || !data) return; // offline / átmeneti hiba: most nem törlünk semmit
+    data.forEach((r: any) => alive.add(String(r.id)));
+    if (data.length < page) break;
+  }
+  const pendingIds = new Set(store.peekOutbox().flatMap((op) => opRowIds(op, table)));
+  for (const row of store.getAll(table) as any[]) {
+    const id = String(row.id);
+    if (!alive.has(id) && !pendingIds.has(id)) store.removeLocal(table, id);
+  }
+}
+
+let lastFullReconcile = 0;
+const RECONCILE_EVERY_MS = 10 * 60_000;
+
+/** Minden tábla egyeztetése — app-induláskor, majd 10 percenként. */
+async function reconcileAll(): Promise<void> {
+  if (Date.now() - lastFullReconcile < RECONCILE_EVERY_MS) return;
+  lastFullReconcile = Date.now();
+  for (const table of SYNC_TABLES) {
+    if (table === 'profiles') continue; // minden körben megy
+    await reconcileTable(table);
   }
 }
 
@@ -175,6 +202,7 @@ export async function syncNow(): Promise<void> {
         await pullTable(table);
         if (table === 'profiles') await reconcileProfiles();
       }
+      await reconcileAll();
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
       // régi, olvasott értesítések ne duzzasszák a lokális tárat
