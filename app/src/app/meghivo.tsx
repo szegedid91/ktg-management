@@ -1,16 +1,19 @@
 // Munkavállalói regisztráció meghívó-linkkel / QR-kóddal (?token=…)
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, Title, Sub, Input, Btn, Body , Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
+import { callRpc } from '../lib/repo';
 import { EyeToggle } from '../components/EyeToggle';
 
 export default function Invite() {
   const { token, c } = useLocalSearchParams<{ token?: string; c?: string }>();
   const viaContractor = c === '1';
+  // személyre szóló meghívó: a partner által felvitt adatok előtöltve, csak jelszó kell
+  const [kind, setKind] = useState<'loading' | 'personal' | 'generic' | 'contractor' | 'invalid'>('loading');
   const { session, signUp, signOut } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -22,6 +25,25 @@ export default function Invite() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!token) { setKind('invalid'); return; }
+    let alive = true;
+    callRpc<{ kind: string; name?: string; email?: string; phone?: string; trade?: string }>('invite_info', { p_token: token })
+      .then((info) => {
+        if (!alive) return;
+        if (info?.kind === 'personal') {
+          setName((v) => v || info.name || '');
+          setEmail((v) => v || info.email || '');
+          setPhone((v) => v || info.phone || '');
+          setTrade((v) => v || info.trade || '');
+        }
+        setKind((info?.kind as any) ?? 'generic');
+      })
+      .catch(() => { if (alive) setKind('generic'); }); // offline / régi szerver: sima űrlap
+    return () => { alive = false; };
+  }, [token]);
+  const personal = kind === 'personal';
 
   const submit = async () => {
     if (!token) return;
@@ -43,10 +65,12 @@ export default function Invite() {
           <Sub>Építkezés Költségkövető</Sub>
         </View>
 
-        {!token ? (
+        {!token || kind === 'invalid' ? (
           <Card>
-            <Body>Ez a link nem tartalmaz meghívót. Kérj új meghívó linket vagy QR-kódot a fő felhasználóktól.</Body>
+            <Body>{!token ? 'Ez a link nem tartalmaz meghívót.' : 'Ez a meghívó érvénytelen, lejárt vagy már felhasználták.'} Kérj új meghívó linket vagy QR-kódot a fő felhasználóktól.</Body>
           </Card>
+        ) : kind === 'loading' ? (
+          <Card><Sub>Meghívó ellenőrzése…</Sub></Card>
         ) : session && !done ? (
           <Card>
             <Body>Már be vagy jelentkezve ({session.user.email}).</Body>
@@ -68,13 +92,15 @@ export default function Invite() {
           </Card>
         ) : (
           <Card>
-            <Sub>{viaContractor
+            <Sub>{personal
+              ? 'A fő felhasználók már felvették az adataidat — nézd át, javítsd, ha kell, és adj meg egy jelszót. A fiókod a meglévő profilodhoz kapcsolódik, a korábbi napjaidat is látod majd.'
+              : viaContractor
               ? 'Egy vállalkozó meghívott a csapatába. Add meg az adataid — a profilod az ő embereként jön létre, a béred hozzá kerül (emberenként részletezve), és rögtön be tudsz lépni.'
               : 'A fő felhasználók meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.'}</Sub>
             <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
             <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />
-            {!viaContractor ? <Check checked={contractor} onToggle={() => setContractor(!contractor)} label="Vállalkozóként regisztrálok — saját embereket hozok"
+            {!viaContractor && !personal ? <Check checked={contractor} onToggle={() => setContractor(!contractor)} label="Vállalkozóként regisztrálok — saját embereket hozok"
               sub="Az embereidet te veszed fel és jelentkezteted be; a bérük hozzád kerül, emberenként részletezve." /> : null}
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
             <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
