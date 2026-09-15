@@ -5,7 +5,7 @@ import { Screen, Input, Row, Body, Sub, Btn, Empty, Badge } from '../../ui/kit';
 import { InviteCard } from '../../components/InviteCard';
 import { C } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
-import { Worker } from '../../lib/types';
+import { Worker, Profile } from '../../lib/types';
 import { copyText } from '../../lib/clipboard';
 import { notify } from '../../lib/dialogs';
 
@@ -48,6 +48,8 @@ export function CopyButton({ text, small, label = 'Telefonszám' }: { text: stri
 
 export default function Workers() {
   const workers = useTable<Worker>('workers');
+  // kinek van saját (összekapcsolt) fiókja — a többinél jelezzük, hogy még nincs
+  const withAccount = new Set(useTable<Profile>('profiles').map((p) => p.worker_id).filter(Boolean) as string[]);
   const [q, setQ] = useState('');
 
   const pending = workers.filter((w) => !w.approved_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -81,7 +83,10 @@ export default function Workers() {
       {ordered.map((w) => (
         <Row key={w.id} onPress={() => router.push(`/worker/${w.id}`)}>
           <View style={{ flex: 1 }}>
-            <Body style={{ fontWeight: '700' }}>{w.contractor_id ? '   ↳ ' : ''}{w.name}{w.nickname ? ` „${w.nickname}”` : ''}{w.is_contractor ? ' 👥' : ''}</Body>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Body style={{ fontWeight: '700' }}>{w.contractor_id ? '   ↳ ' : ''}{w.name}{w.nickname ? ` „${w.nickname}”` : ''}{w.is_contractor ? ' 👥' : ''}</Body>
+              {!withAccount.has(w.id) ? <Badge text="nincs fiókja" color={C.warning} /> : null}
+            </View>
             <Sub>
               {w.contractor_id ? `${workers.find((c) => c.id === w.contractor_id)?.name ?? 'vállalkozó'} embere · ` : ''}
               {w.trade ? `${w.trade} · ` : ''}
