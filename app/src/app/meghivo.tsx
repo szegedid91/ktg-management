@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Screen, Card, Title, Sub, Input, Btn, Body } from '../ui/kit';
+import { Screen, Card, Title, Sub, Input, Btn, Body , Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
 import { EyeToggle } from '../components/EyeToggle';
@@ -14,6 +14,7 @@ export default function Invite() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [trade, setTrade] = useState('');
+  const [contractor, setContractor] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -26,7 +27,7 @@ export default function Invite() {
     setBusy(true);
     setError(null);
     const err = await signUp(email.trim(), password, name.trim(), token,
-      { phone: phone.trim(), trade: trade.trim() });
+      { phone: phone.trim(), trade: trade.trim(), is_contractor: contractor });
     setBusy(false);
     if (err) { setError(err); return; }
     setDone(true);
@@ -70,6 +71,8 @@ export default function Invite() {
             <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
             <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />
+            <Check checked={contractor} onToggle={() => setContractor(!contractor)} label="Vállalkozóként regisztrálok — saját embereket hozok"
+              sub="Az embereidet te veszed fel és jelentkezteted be; a bérük hozzád kerül, emberenként részletezve." />
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
             <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
               right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />

@@ -80,12 +80,14 @@ export default function PendingScreen() {
         const workerPart = Number(a.amount) - Number(a.commission_amount);
         if (unpaidWorkerPart(a) <= 0) continue;
         const w = workers.find((x) => x.id === a.worker_id);
-        personKey = a.worker_id;
-        personName = w?.name ?? '?';
+        const contractor = w?.contractor_id ? workers.find((x) => x.id === w.contractor_id) : null;
+        // vállalkozó embere: a kifizetés a vállalkozóhoz megy, de a tétel az emberé
+        personKey = contractor ? contractor.id : a.worker_id;
+        personName = contractor ? `${contractor.name} 👥` : (w?.name ?? '?');
         amount = workerPart;
-        detail = a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
+        detail = (contractor ? `${w?.name ?? '?'} · ` : '') + (a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
           : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
-          : 'projektdíj';
+          : 'projektdíj');
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
         if ((a.source === 'session' || a.source === 'task') && hasAccount(a.worker_id)

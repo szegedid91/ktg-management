@@ -25,7 +25,21 @@ export default function WorkerDetail() {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === id)
     .sort((a, b) => b.started_at.localeCompare(a.started_at));
-  const attendance = useTable<Attendance>('attendance').filter((a) => a.worker_id === id);
+  const allAttendance = useTable<Attendance>('attendance');
+  const attendance = allAttendance.filter((a) => a.worker_id === id);
+  const allWorkers = useTable<Worker>('workers');
+  const workers = allWorkers;
+  const crewOf = allWorkers.filter((w) => w.contractor_id === id).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const crewTotals = useMemo(() => {
+    const m = new Map<string, { earned: number; unpaid: number }>();
+    for (const c of crewOf) {
+      const rows = allAttendance.filter((a) => a.worker_id === c.id && a.pay_basis !== 'presence');
+      const earned = rows.reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
+      const unpaid = rows.filter((a) => !a.paid_at).reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
+      m.set(c.id, { earned, unpaid });
+    }
+    return m;
+  }, [crewOf, allAttendance]);
   const sites = useTable<Site>('sites');
   const profiles = useTable<Profile>('profiles');
   const externals = useTable<ExternalPerson>('external_people');
@@ -172,7 +186,29 @@ export default function WorkerDetail() {
           </View>
         </Card>
       ) : null}
-      {!pendingApproval ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} /> : null}
+      {worker.contractor_id ? (
+        <Card style={{ borderColor: C.primary }}>
+          <Sub>👥 <Text style={{ fontWeight: '700', color: C.text }}>{workers.find((w) => w.id === worker.contractor_id)?.name ?? 'vállalkozó'}</Text> embere — a bére a vállalkozóhoz kerül, itt emberenként részletezve.</Sub>
+          <Btn title="A vállalkozó oldala" kind="ghost" small onPress={() => router.push(`/worker/${worker.contractor_id}`)} />
+        </Card>
+      ) : null}
+      {worker.is_contractor ? (
+        <Card>
+          <H2>👥 Emberei ({crewOf.length})</H2>
+          {crewOf.length === 0 ? <Sub>Még nem vett fel embert — a saját appjában tudja felvenni.</Sub> : null}
+          {crewOf.map((c) => (
+            <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={{ flex: 1 }}>
+                <Body style={{ fontWeight: '600' }}>{c.name}</Body>
+                <Sub>{c.trade ?? '—'} · bér összesen {ft(crewTotals.get(c.id)?.earned ?? 0)} · kifizetetlen {ft(crewTotals.get(c.id)?.unpaid ?? 0)}</Sub>
+              </View>
+              <Btn title="›" kind="ghost" small onPress={() => router.push(`/worker/${c.id}`)} />
+            </View>
+          ))}
+          {crewOf.length ? <KV k="Emberek bére összesen (kifizetetlen)" v={ft([...crewTotals.values()].reduce((s, t) => s + t.unpaid, 0))} strong /> : null}
+        </Card>
+      ) : null}
+      {!pendingApproval && !worker.contractor_id ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} /> : null}
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <H2>{worker.name}</H2>

@@ -52,7 +52,7 @@ interface AuthCtx {
   signIn: (email: string, password: string) => Promise<string | null>;
   /** inviteToken: munkavállalói meghívó — a zárt regisztráció kapuján átenged */
   signUp: (email: string, password: string, displayName: string, inviteToken?: string,
-    extra?: { phone?: string; trade?: string }) => Promise<string | null>;
+    extra?: { phone?: string; trade?: string; is_contractor?: boolean }) => Promise<string | null>;
   signOut: () => Promise<void>;
 }
 
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, displayName: string, inviteToken?: string,
-    extra?: { phone?: string; trade?: string }) => {
+    extra?: { phone?: string; trade?: string; is_contractor?: boolean }) => {
     const { error } = await supabase.auth.signUp({
       email, password,
       options: {

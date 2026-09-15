@@ -3,7 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker } from '../ui/kit';
+import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker, Input, Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
@@ -25,10 +25,24 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
   const materials = useTable<TaskMaterial>('task_materials');
-  const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === wid);
-  const attendance = useTable<Attendance>('attendance').filter((a) => a.worker_id === wid);
+  // vállalkozó: a saját embereim (fiók nélkül) — az ő munkaidejük/bérük is idejön
+  const me = workers.find((w) => w.id === wid);
+  const crew = workers.filter((w) => w.contractor_id === wid).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const isContractor = !!me?.is_contractor;
+  const myIds = new Set([wid, ...crew.map((c) => c.id)]);
+  const allSessions = useTable<WorkSession>('work_sessions').filter((s) => myIds.has(s.worker_id));
+  const sessions = allSessions.filter((s) => s.worker_id === wid);
+  const allAttendance = useTable<Attendance>('attendance').filter((a) => myIds.has(a.worker_id));
+  const attendance = allAttendance.filter((a) => a.worker_id === wid);
+  const [crewOpen, setCrewOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newTrade, setNewTrade] = useState('');
+  const [crewBusy, setCrewBusy] = useState(false);
+  const [who, setWho] = useState<Set<string>>(new Set([wid]));
   const quotes = useTable<TaskQuote>('task_quotes');
-  const sheets = useTable<Timesheet>('timesheets').filter((t) => t.worker_id === wid);
+  const allSheets = useTable<Timesheet>('timesheets');
+  const sheets = allSheets.filter((t) => t.worker_id === wid);
   const [sheetBusy, setSheetBusy] = useState(false);
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
@@ -66,14 +80,38 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const acceptedActive = active.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at));
   const showWorkTime = true; // bejelentkezni feladat nélkül is lehet egy építkezésen
   const nowISO = () => new Date().toISOString();
+  // vállalkozónál kiválasztható, kik dolgoznak (ő + emberei); mindegyik saját menetet kap
   const startAt = (siteId: string) => {
-    insertRow('work_sessions', { worker_id: wid, task_id: null, site_id: siteId, started_at: nowISO(), ended_at: null, note: null });
+    const ids = isContractor && crew.length ? [...who] : [wid];
+    for (const id of ids) {
+      if (allSessions.some((s) => s.worker_id === id && !s.ended_at)) continue;
+      insertRow('work_sessions', { worker_id: id, task_id: null, site_id: siteId, started_at: nowISO(), ended_at: null, note: null });
+    }
     setStartOpen(false); setStartSite(null);
   };
   const onStart = () => {
-    if (activeSites.length === 1) { startAt(activeSites[0].id); return; }
+    if (activeSites.length === 1 && !(isContractor && crew.length)) { startAt(activeSites[0].id); return; }
     setStartSite(activeSites[0]?.id ?? null);
     setStartOpen(true);
+  };
+  const stopAll = () => {
+    for (const s of allSessions) if (!s.ended_at) updateRow('work_sessions', s.id, { ended_at: nowISO() });
+  };
+  const crewRunning = allSessions.filter((s) => !s.ended_at && s.worker_id !== wid);
+  const addMember = async () => {
+    if (!newName.trim()) return;
+    setCrewBusy(true);
+    try {
+      await callRpc('contractor_add_member', { p_name: newName.trim(), p_phone: newPhone.trim() || null, p_trade: newTrade.trim() || null });
+      void syncNow();
+      setNewName(''); setNewPhone(''); setNewTrade('');
+      notify('Felvéve 👥', 'Az embered mostantól bejelentkeztethető; a bére hozzád kerül.');
+    } catch (e: any) { notify('Hiba', String(e?.message ?? e)); } finally { setCrewBusy(false); }
+  };
+  const removeMember = async (c: Worker) => {
+    if (!await confirmDialog('Ember törlése', `${c.name} lekerül az embereid közül (a korábbi munkaideje megmarad).`, 'Törlés', true)) return;
+    try { await callRpc('contractor_remove_member', { p_worker: c.id }); void syncNow(); }
+    catch (e: any) { notify('Hiba', String(e?.message ?? e)); }
   };
 
   const todayHours = useMemo(() => {
@@ -85,20 +123,23 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   // heti óralap: az elmúlt 4 hét, amelyiken volt munkaidő
   const todayIso = new Date().toISOString().slice(0, 10);
   const thisWeek = weekStartISO(todayIso);
+  const people = [{ id: wid, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))];
   const weeks = Array.from({ length: 4 }, (_, i) => {
     const d = new Date(`${thisWeek}T12:00:00`); d.setDate(d.getDate() - 7 * i);
     const week = d.toISOString().slice(0, 10);
-    const own = sessions.filter((s) => s.ended_at && weekStartISO(s.started_at.slice(0, 10)) === week);
-    const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
-    const amount = attendance.filter((a) => a.pay_basis !== 'presence' && weekStartISO(a.work_date) === week)
-      .reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
-    return { week, hours, amount, sheet: sheets.find((t) => t.week_start === week) ?? null };
-  }).filter((w) => w.hours > 0 || w.amount > 0 || w.sheet);
-  const submitSheet = async (week: string) => {
-    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a fő felhasználók jóváhagyják, utána fizethető ki a béred. Beküldöd?`, 'Beküldés')) return;
+    return people.map((p) => {
+      const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && weekStartISO(s.started_at.slice(0, 10)) === week);
+      const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
+      const amount = allAttendance.filter((a) => a.worker_id === p.id && a.pay_basis !== 'presence' && weekStartISO(a.work_date) === week)
+        .reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
+      return { week, person: p, hours, amount, sheet: allSheets.find((t) => t.worker_id === p.id && t.week_start === week) ?? null };
+    });
+  }).flat().filter((w) => w.hours > 0 || w.amount > 0 || w.sheet);
+  const submitSheet = async (week: string, workerId?: string) => {
+    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a fő felhasználók jóváhagyják, utána fizethető ki a bér. Beküldöd?`, 'Beküldés')) return;
     setSheetBusy(true);
     try {
-      await callRpc('submit_timesheet', { p_week_start: week });
+      await callRpc('submit_timesheet', { p_week_start: week, p_worker: workerId ?? null });
       void syncNow();
       notify('Óralap beküldve 🗓️', 'Értesítést kapsz, amint jóváhagyják.');
     } catch (e: any) {
@@ -124,21 +165,65 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 ma {fmtHours(todayHours)}
               </Sub>
             </View>
-            {openSession
-              ? <Btn title="⏹ Befejezés" kind="danger" small onPress={() => updateRow('work_sessions', openSession.id, { ended_at: nowISO() })} />
+            {openSession || crewRunning.length
+              ? <Btn title={crewRunning.length ? `⏹ Befejezés (${crewRunning.length + (openSession ? 1 : 0)} fő)` : '⏹ Befejezés'} kind="danger" small onPress={stopAll} />
               : <Btn title="▶ Kezdés" kind="secondary" small onPress={onStart} />}
           </View>
+          {crewRunning.length ? <Sub>👥 Dolgoznak: {crewRunning.map((s) => workers.find((w) => w.id === s.worker_id)?.name ?? '?').join(', ')}</Sub> : null}
           {startOpen && !openSession ? (
             <View style={{ gap: S.sm, paddingTop: S.sm }}>
               {activeSites.length === 0
                 ? <Sub style={{ color: C.warning }}>Nincs aktív építkezés, ahová be tudnál jelentkezni — kérdezd meg a fő felhasználókat.</Sub>
                 : <Picker label="Melyik építkezésen dolgozol?" items={activeSites} selectedId={startSite} getId={(s) => s.id}
                     getLabel={(s) => `${s.name}${s.address ? ` · ${s.address}` : ''}`} onSelect={setStartSite} placeholder="Válassz építkezést…" />}
+              {isContractor && crew.length ? (
+                <View style={{ gap: 2 }}>
+                  <Sub style={{ fontWeight: '700' }}>Ki dolgozik?</Sub>
+                  {people.map((p) => (
+                    <Check key={p.id} checked={who.has(p.id)} onToggle={() => setWho((s) => { const n = new Set(s); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
+                  ))}
+                </View>
+              ) : null}
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setStartOpen(false)} /></View>
-                <View style={{ flex: 1 }}><Btn title="▶ Bejelentkezés" small disabled={!startSite} onPress={() => startSite && startAt(startSite)} /></View>
+                <View style={{ flex: 1 }}><Btn title="▶ Bejelentkezés" small disabled={!startSite || (isContractor && crew.length > 0 && who.size === 0)} onPress={() => startSite && startAt(startSite)} /></View>
               </View>
               <Sub>A béred a munkaidőd alapján számolódik (órabér vagy napidíj), építkezésenként és naponta.</Sub>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {isContractor ? (
+        <Card style={{ paddingVertical: S.sm }}>
+          <Pressable onPress={() => setCrewOpen(!crewOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+            <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>👥 Embereim</Text>
+            <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }}>{crew.length ? `${crew.length} fő` : 'még senki'}</Text>
+            <Text style={{ color: C.sub, fontSize: 16 }}>{crewOpen ? '▾' : '▸'}</Text>
+          </Pressable>
+          {crewOpen ? (
+            <View style={{ gap: 6, paddingTop: 4 }}>
+              {crew.map((c) => {
+                const today = new Date().toISOString().slice(0, 10);
+                const h = allSessions.filter((s) => s.worker_id === c.id && s.started_at.slice(0, 10) === today).reduce((sum, s) => sum + sessionHours(s), 0);
+                return (
+                  <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 3 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: C.text, fontWeight: '600' }}>{c.name}</Text>
+                      <Sub>{c.trade ? `${c.trade} · ` : ''}{c.phones[0] ? `${c.phones[0]} · ` : ''}ma {fmtHours(h)}</Sub>
+                    </View>
+                    {allSessions.some((s) => s.worker_id === c.id && !s.ended_at) ? <Badge text="● dolgozik" color={C.success} /> : null}
+                    <Btn title="🗑️" kind="ghost" small onPress={() => void removeMember(c)} />
+                  </View>
+                );
+              })}
+              <Input label="Új ember neve" value={newName} onChangeText={setNewName} placeholder="pl. Kiss Béla" autoCapitalize="words" />
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 1 }}><Input label="Telefon" value={newPhone} onChangeText={setNewPhone} placeholder="+36 …" keyboardType="phone-pad" /></View>
+                <View style={{ flex: 1 }}><Input label="Szakma" value={newTrade} onChangeText={setNewTrade} placeholder="pl. segédmunkás" /></View>
+              </View>
+              <Btn title={crewBusy ? '…' : '+ Felveszem'} kind="secondary" small disabled={crewBusy || !newName.trim()} onPress={() => void addMember()} />
+              <Sub>Az embereid bére emberenként számolódik, de a kifizetés hozzád kerül. A fő felhasználók látják, ki mennyit dolgozott.</Sub>
             </View>
           ) : null}
         </Card>
@@ -191,14 +276,14 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         <Card style={{ paddingVertical: S.sm, gap: 6 }}>
           <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>🗓️ Heti óralap</Text>
           {weeks.map((w) => (
-            <View key={w.week} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+            <View key={`${w.week}-${w.person.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontWeight: '600' }}>{hd(w.week)} hete{w.week === thisWeek ? ' (folyó)' : ''}</Text>
+                <Text style={{ color: C.text, fontWeight: '600' }}>{hd(w.week)} hete{w.week === thisWeek ? ' (folyó)' : ''}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
                 <Sub>{fmtHours(w.hours)} · {ft(w.amount)}</Sub>
               </View>
               {w.sheet?.status === 'approved' ? <Badge text="jóváhagyva ✓" color={C.success} />
                 : w.sheet?.status === 'submitted' ? <Badge text="jóváhagyásra vár" color={C.warning} />
-                : <Btn title={w.sheet?.status === 'rejected' ? 'Újra beküld' : 'Beküldés'} kind="secondary" small disabled={sheetBusy} onPress={() => void submitSheet(w.week)} />}
+                : <Btn title={w.sheet?.status === 'rejected' ? 'Újra beküld' : 'Beküldés'} kind="secondary" small disabled={sheetBusy} onPress={() => void submitSheet(w.week, w.person.id === wid ? undefined : w.person.id)} />}
             </View>
           ))}
           {weeks.some((w) => w.sheet?.status === 'rejected') ? <Sub style={{ color: C.danger }}>Visszaküldött óralap: {weeks.find((w) => w.sheet?.status === 'rejected')?.sheet?.decision_note ?? 'nézd át, és küldd be újra.'}</Sub> : null}

@@ -20,7 +20,13 @@ import { wname } from '../../lib/tasks';
 export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
-  const workers = [...useTable<Worker>('workers')].filter((w) => !!w.approved_at).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  // a vállalkozók emberei (fiók nélkül) nem kapnak külön feladatot: a vállalkozó viszi őket
+  const workers = [...useTable<Worker>('workers')].filter((w) => !!w.approved_at && !w.contractor_id).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const [workerQ, setWorkerQ] = useState('');
+  const shownWorkers = workers.filter((w) => {
+    const q = workerQ.trim().toLowerCase();
+    return !q || `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q) || chosen.has(w.id);
+  });
   const isWorker = !!useTable<Profile>('profiles').find((p) => p.id === currentUser())?.worker_id;
 
   const [title, setTitle] = useState('');
@@ -167,10 +173,12 @@ export default function NewTask() {
       <Card>
         <H2>Kinek?</H2>
         <Sub>Több munkavállaló is kijelölhető — mindegyik külön fogadja el.</Sub>
-        {workers.map((w) => (
+        {workers.length > 6 ? <Input value={workerQ} onChangeText={setWorkerQ} placeholder="Keresés név / szakma szerint…" /> : null}
+        {shownWorkers.map((w) => (
           <Check key={w.id} checked={chosen.has(w.id)} onToggle={() => toggle(w.id)}
-            label={wname(w)} sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />
+            label={`${wname(w)}${w.is_contractor ? ' 👥' : ''}`} sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />
         ))}
+        {shownWorkers.length === 0 && workers.length > 0 ? <Sub>Nincs találat.</Sub> : null}
         {workers.length === 0 ? <Sub>Nincs munkavállaló felvéve.</Sub> : null}
       </Card>
 
@@ -179,7 +187,9 @@ export default function NewTask() {
         <Check checked={quote} onToggle={() => setQuote(!quote)}
           label="Ajánlatot kérek a munkavállalótól"
           sub="A munkavállaló megadja, mennyiért vállalja; a bérköltség az elfogadott ajánlat lesz." />
-        <Input label="Kiszámlázott érték (nettó Ft) — később is megadható" value={invoice} onChangeText={setInvoice} keyboardType="numeric" placeholder="pl. 250 000" />
+        {!quote
+          ? <Input label="Kiszámlázott érték (nettó Ft) — később is megadható" value={invoice} onChangeText={setInvoice} keyboardType="numeric" placeholder="pl. 250 000" />
+          : <Sub>A kiszámlázott értéket az ajánlat elfogadása után adhatod meg a feladat oldalán.</Sub>}
       </Card>
 
       <View style={{ paddingBottom: 8 }}>

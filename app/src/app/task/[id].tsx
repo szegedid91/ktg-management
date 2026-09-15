@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Linking, Pressable } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty, Picker } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty, Picker, Check } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useRow } from '../../lib/hooks';
 import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow, callRpc } from '../../lib/repo';
@@ -68,6 +68,7 @@ export default function TaskDetail() {
   const [dueEdit, setDueEdit] = useState<string | null>(null);
   const [subBusy, setSubBusy] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [crewWho, setCrewWho] = useState<Set<string> | null>(null);
   const me = getCurrentUserId();
   const myProfile = profiles.find((p) => p.id === me);
   const myWorkerId = myProfile?.worker_id ?? null;
@@ -169,11 +170,19 @@ export default function TaskDetail() {
     smartBack();
   };
 
+  // vállalkozó: az embereit is elindíthatja / leállíthatja ezen a feladaton
+  const crew = workers.filter((w) => w.contractor_id === myWorkerId);
+  const crewOpenSessions = sessions.filter((s) => !s.ended_at && crew.some((c) => c.id === s.worker_id));
   const startWork = () => {
-    insertRow('work_sessions', { worker_id: myWorkerId, task_id: task.id, site_id: task.site_id, started_at: nowISO(), ended_at: null, note: null });
+    const ids = crew.length ? [...(crewWho ?? new Set([myWorkerId!]))] : [myWorkerId];
+    for (const id of ids) {
+      if (sessions.some((s) => s.worker_id === id && !s.ended_at)) continue;
+      insertRow('work_sessions', { worker_id: id, task_id: task.id, site_id: task.site_id, started_at: nowISO(), ended_at: null, note: null });
+    }
   };
   const stopWork = () => {
     if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
+    for (const s of crewOpenSessions) updateRow('work_sessions', s.id, { ended_at: nowISO() });
   };
 
   const markDone = async () => {
@@ -447,10 +456,18 @@ export default function TaskDetail() {
             ))}
           </View>
         ) : null}
+        {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
+          <View style={{ gap: 2 }}>
+            <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>
+            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => (
+              <Check key={p.id} checked={(crewWho ?? new Set([myWorkerId!])).has(p.id)} onToggle={() => setCrewWho((s) => { const n = new Set(s ?? [myWorkerId!]); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
+            ))}
+          </View>
+        ) : null}
         {isWorker && myAssignment && active ? (
-          openSession
-            ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={stopWork} />
-            : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={startWork} />
+          openSession || crewOpenSessions.length
+            ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
+            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={startWork} />
         ) : null}
       </Section>
       )}

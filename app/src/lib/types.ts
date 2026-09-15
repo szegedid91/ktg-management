@@ -102,6 +102,10 @@ export interface Worker extends BaseRow {
    *  jóváhagyására vár (nem tud belépni) */
   approved_at: string | null;
   approved_by: UUID | null;
+  /** vállalkozó: saját embereket hoz; azok bére hozzá kerül */
+  is_contractor: boolean;
+  /** ha ki van töltve: ennek a vállalkozónak az embere (fiók nélkül) */
+  contractor_id: UUID | null;
 }
 
 export interface Expense extends BaseRow {

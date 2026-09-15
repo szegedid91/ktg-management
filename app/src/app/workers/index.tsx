@@ -34,6 +34,9 @@ export default function Workers() {
     .filter((w) => !!w.approved_at)
     .filter((w) => `${w.name} ${w.nickname ?? ''}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  // a vállalkozó emberei közvetlenül a vállalkozó alatt
+  const ordered = filtered.filter((w) => !w.contractor_id).flatMap((w) => [w, ...filtered.filter((c) => c.contractor_id === w.id)])
+    .concat(filtered.filter((w) => w.contractor_id && !filtered.some((c) => c.id === w.contractor_id)));
 
   return (
     <Screen>
@@ -54,11 +57,12 @@ export default function Workers() {
       ) : null}
       <Input value={q} onChangeText={setQ} placeholder="Keresés név szerint…" />
       {filtered.length === 0 ? <Empty text="Nincs munkavállaló." /> : null}
-      {filtered.map((w) => (
+      {ordered.map((w) => (
         <Row key={w.id} onPress={() => router.push(`/worker/${w.id}`)}>
           <View style={{ flex: 1 }}>
-            <Body style={{ fontWeight: '700' }}>{w.name}{w.nickname ? ` „${w.nickname}”` : ''}</Body>
+            <Body style={{ fontWeight: '700' }}>{w.contractor_id ? '   ↳ ' : ''}{w.name}{w.nickname ? ` „${w.nickname}”` : ''}{w.is_contractor ? ' 👥' : ''}</Body>
             <Sub>
+              {w.contractor_id ? `${workers.find((c) => c.id === w.contractor_id)?.name ?? 'vállalkozó'} embere · ` : ''}
               {w.trade ? `${w.trade} · ` : ''}
               {w.worker_type === 'company' ? 'céges' : 'magánszemély'}
               {w.phones[0] ? ` · ${w.phones[0]}` : ''}
