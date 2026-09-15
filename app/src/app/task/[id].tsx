@@ -66,6 +66,8 @@ export default function TaskDetail() {
   const subtasks = useTable<TaskSubtask>('task_subtasks').filter((s) => s.task_id === id).sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
   const [newSub, setNewSub] = useState('');
   const [dueEdit, setDueEdit] = useState<string | null>(null);
+  // feladat adatainak szerkesztése (fő felhasználó): cím, kód, részletek, helyszín
+  const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null } | null>(null);
   const [subBusy, setSubBusy] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [crewWho, setCrewWho] = useState<Set<string> | null>(null);
@@ -393,8 +395,31 @@ export default function TaskDetail() {
           {task.quote_accepted_at ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
           {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
         </View>
-        <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
-        {task.details ? <Body>{task.details}</Body> : null}
+        {edit ? (
+          <View style={{ gap: S.sm }}>
+            <Input label="Feladat címe *" value={edit.title} onChangeText={(v) => setEdit({ ...edit, title: v })} />
+            <Input label="Kód (hibakód / feladatkód)" value={edit.code} onChangeText={(v) => setEdit({ ...edit, code: v })} autoCapitalize="none" />
+            <Input label="Részletek" value={edit.details} onChangeText={(v) => setEdit({ ...edit, details: v })} multiline />
+            <Picker label="Helyszín" items={sites.filter((x) => x.status === 'active' || x.id === edit.site_id).sort((x, y) => x.name.localeCompare(y.name, 'hu'))}
+              selectedId={edit.site_id} getId={(x) => x.id} getLabel={(x) => `${x.name}${x.address ? ` · ${x.address}` : ''}`}
+              onSelect={(sid) => setEdit({ ...edit, site_id: sid })} placeholder="Válassz helyszínt…" allowNull nullLabel="Nincs helyszín" />
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setEdit(null)} /></View>
+              <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={!edit.title.trim()} onPress={() => {
+                updateRow('worker_tasks', task.id, {
+                  title: edit.title.trim(), code: edit.code.trim() || null, details: edit.details.trim() || null, site_id: edit.site_id,
+                });
+                setEdit(null);
+                notify('Mentve ✅', 'A feladat adatai frissültek — a munkavállaló is az újat látja.');
+              }} /></View>
+            </View>
+          </View>
+        ) : (
+          <>
+            <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
+            {task.details ? <Body>{task.details}</Body> : null}
+          </>
+        )}
         <Divider />
         <KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} />
         <KV k="Kiadta" v={creator} />
@@ -423,6 +448,8 @@ export default function TaskDetail() {
                 <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
                 <Btn title={task.priority ? '🆘 SOS levétele' : '🆘 SOS'} kind="ghost" small
                   onPress={() => updateRow('worker_tasks', task.id, { priority: task.priority ? 0 : 1 })} />
+                {!edit ? <Btn title="✏️ Szerkesztés" kind="ghost" small
+                  onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null })} /> : null}
               </View>
             ) : null}
           </View>
