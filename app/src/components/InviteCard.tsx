@@ -81,7 +81,7 @@ export function InviteCard({ workerId, workerName, contractor, email }: { worker
           <Sub>{contractor
             ? 'Az embered a linkkel vagy a QR-kód beolvasásával regisztrál, és automatikusan hozzád kerül: a bére emberenként számolódik, de a kifizetés hozzád megy. A meghívó 7 napig érvényes, több ember is használhatja.'
             : generic
-            ? 'Nem kell előre felvenned: a munkavállaló a linkkel vagy a QR-kód beolvasásával regisztrál, és maga adja meg a nevét, becenevét, telefonszámát — a munkavállalói profilja ebből jön létre. A meghívó 7 napig érvényes, több munkavállaló is használhatja (pl. kivetített QR).'
+            ? 'Nem kell előre felvenned: a munkavállaló a linkkel vagy a QR-kód beolvasásával regisztrál, és maga adja meg a nevét, telefonszámát, szakmáját — a munkavállalói profilja ebből jön létre (becenevet csak te adhatsz neki). A meghívó 7 napig érvényes, több munkavállaló is használhatja (pl. kivetített QR).'
             : 'Ha a munkavállaló ezzel a meghívóval regisztrál, a fiókja ehhez a profilhoz kapcsolódik: a korábban rögzített napjait, feladatait és bérét is látja. A meghívó 7 napig érvényes, egyszer használható.'}</Sub>
           {!generic && !contractor ? (
             email
@@ -92,7 +92,6 @@ export function InviteCard({ workerId, workerName, contractor, email }: { worker
             <Btn title={busy ? '…' : !generic && !contractor ? 'Link / QR-kód készítése' : 'Meghívó készítése'} kind="secondary" onPress={() => void makeLink()} disabled={busy} />
           ) : (
             <>
-              <Text selectable style={{ fontSize: 12, color: C.sub }}>{link}</Text>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Küldés / másolás" small onPress={() => void share()} /></View>
                 <View style={{ flex: 1 }}><Btn title="QR-kód mutatása" kind="secondary" small onPress={() => setQr(true)} /></View>

@@ -7,7 +7,6 @@ import { C } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
 import { Worker, Profile } from '../../lib/types';
 import { copyText } from '../../lib/clipboard';
-import { notify } from '../../lib/dialogs';
 
 export function CallButton({ phone, small }: { phone: string; small?: boolean }) {
   return (
@@ -27,21 +26,30 @@ export function CallButton({ phone, small }: { phone: string; small?: boolean })
   );
 }
 
-/** Telefonszám vágólapra másolása (a gyorshívó mellé) */
-export function CopyButton({ text, small, label = 'Telefonszám' }: { text: string; small?: boolean; label?: string }) {
+/** Telefonszám vágólapra másolása (a gyorshívó mellé): felugró ablak helyett
+ *  a gomb rövid időre zöldre vált és pipát mutat. */
+export function CopyButton({ text, small }: { text: string; small?: boolean; label?: string }) {
+  const [state, setState] = useState<'idle' | 'done' | 'fail'>('idle');
   return (
     <Pressable
       onPress={(e) => {
         // @ts-ignore – web esemény
         e?.stopPropagation?.();
-        void copyText(text).then((ok) => notify(ok ? 'Kimásolva' : 'Nem sikerült', ok ? `${label} a vágólapon: ${text}` : 'A vágólap nem érhető el — jelöld ki és másold kézzel.'));
+        void copyText(text).then((ok) => {
+          setState(ok ? 'done' : 'fail');
+          setTimeout(() => setState('idle'), 1200);
+        });
       }}
       style={{
-        backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 999,
+        backgroundColor: state === 'done' ? C.success : state === 'fail' ? C.danger : C.card,
+        borderWidth: 1, borderColor: state === 'idle' ? C.border : 'transparent', borderRadius: 999,
         paddingHorizontal: small ? 10 : 14, paddingVertical: small ? 6 : 9,
+        transform: [{ scale: state === 'idle' ? 1 : 1.12 }],
       }}
     >
-      <Text style={{ color: C.text, fontWeight: '700', fontSize: small ? 13 : 15 }}>📋</Text>
+      <Text style={{ color: state === 'idle' ? C.text : '#fff', fontWeight: '700', fontSize: small ? 13 : 15 }}>
+        {state === 'done' ? '✓' : state === 'fail' ? '✕' : '📋'}
+      </Text>
     </Pressable>
   );
 }

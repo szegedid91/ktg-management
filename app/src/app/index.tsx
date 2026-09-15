@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router, Redirect } from 'expo-router';
-import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty, Loading } from '../ui/kit';
+import { Screen, Card, H2, Sub, Money, Btn, KV, Badge, Empty, Loading, Input } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useSyncStatus } from '../lib/hooks';
 import { ft, todayISO, hd, hdt } from '../lib/format';
@@ -91,6 +91,7 @@ function DashboardInner() {
     r.status === 'pending' && r.proposed_by !== me && !!myProfile && !myProfile.is_admin && !myProfile.worker_id);
   // az összegek alapból rejtettek — a fenti szem ikon fedi fel mindet
   const [showBalance, setShowBalance] = useState(false);
+  const [siteQ, setSiteQ] = useState('');
   const mask = (n: number) => (showBalance ? ft(n) : '••• Ft');
 
   const month = todayISO().slice(0, 7);
@@ -295,9 +296,13 @@ function DashboardInner() {
           <Badge text={`${activeSites.length} db`} />
         </View>
         {activeSites.length === 0 ? <Empty text="Nincs aktív építkezés. Hozz létre egyet!" /> : null}
-        {activeSites.map((s) => (
-          <Btn key={s.id} title={s.name} kind="ghost" onPress={() => router.push(`/site/${s.id}`)} />
-        ))}
+        {activeSites.length > 3 ? <Input value={siteQ} onChangeText={setSiteQ} placeholder="Keresés név vagy cím szerint…" /> : null}
+        {activeSites
+          .filter((s) => !siteQ.trim() || `${s.name} ${s.address ?? ''}`.toLowerCase().includes(siteQ.trim().toLowerCase()))
+          .map((s) => (
+            <Btn key={s.id} title={s.name} kind="ghost" onPress={() => router.push(`/site/${s.id}`)} />
+          ))}
+        {siteQ.trim() && !activeSites.some((s) => `${s.name} ${s.address ?? ''}`.toLowerCase().includes(siteQ.trim().toLowerCase())) ? <Sub>Nincs találat.</Sub> : null}
         {closedSites.length > 0 ? (
           <Pressable onPress={() => router.push('/sites?filter=closed')}>
             <Sub style={{ textAlign: 'center', paddingVertical: 6 }}>
