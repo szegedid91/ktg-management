@@ -53,7 +53,8 @@ const STATUS_COLOR: Record<string, string> = {
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const task = useRow<WorkerTask>('worker_tasks', id);
-  const assignees = useTable<TaskAssignee>('task_assignees').filter((a) => a.task_id === id);
+  const assigneesAll = useTable<TaskAssignee>('task_assignees', true).filter((a) => a.task_id === id);
+  const assignees = assigneesAll.filter((a) => !a.deleted_at);
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
   const profiles = useTable<Profile>('profiles');
@@ -68,6 +69,27 @@ export default function TaskDetail() {
   const [dueEdit, setDueEdit] = useState<string | null>(null);
   // feladat adatainak szerkesztése (fő felhasználó): cím, kód, részletek, helyszín
   const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null } | null>(null);
+  // kiosztás módosítása: hozzáadás / levétel (elfogadott munkavállalónál figyelmeztetéssel)
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignQ, setAssignQ] = useState('');
+  const assignable = workers.filter((w) => !!w.approved_at && !w.contractor_id).sort((x, y) => x.name.localeCompare(y.name, 'hu'));
+  const toggleAssignee = async (w: Worker) => {
+    if (!task) return;
+    const row = assigneesAll.find((a) => a.worker_id === w.id);
+    if (row && !row.deleted_at) {
+      if (row.acknowledged_at) {
+        const ok = await confirmDialog('Már elfogadta a feladatot',
+          `${wname(w)} már elfogadta ezt a feladatot${task.quote_accepted_at ? ' (elfogadott ajánlattal)' : ''}. Ha leveszed, értesítést kap; a rögzített munkaideje és bére megmarad.
+
+Biztosan leveszed?`, 'Levétel', true);
+        if (!ok) return;
+      }
+      softDeleteRow('task_assignees', row.id);
+      return;
+    }
+    if (row) updateRow('task_assignees', row.id, { deleted_at: null, acknowledged_at: null });
+    else insertRow('task_assignees', { task_id: task.id, worker_id: w.id });
+  };
   const [subBusy, setSubBusy] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [crewWho, setCrewWho] = useState<Set<string> | null>(null);
@@ -436,7 +458,27 @@ export default function TaskDetail() {
             </View>
           )
         ) : null}
-        <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '—'} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+          <View style={{ flex: 1 }}><KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '—'} /></View>
+          {!isWorker && active ? <Btn title={assignOpen ? 'Kész' : 'Módosít'} kind="ghost" small onPress={() => setAssignOpen(!assignOpen)} /> : null}
+        </View>
+        {assignOpen && !isWorker && active ? (
+          <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
+            <Sub>Pipáld ki, kinek szóljon a feladat. Az új munkavállaló értesítést kap és elfogadja; a levett munkavállaló is értesül.</Sub>
+            {assignable.length > 6 ? <Input value={assignQ} onChangeText={setAssignQ} placeholder="Keresés név / szakma szerint…" /> : null}
+            {assignable.filter((w) => {
+              const q = assignQ.trim().toLowerCase();
+              return !q || `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q) || assignees.some((a) => a.worker_id === w.id);
+            }).map((w) => {
+              const row = assignees.find((a) => a.worker_id === w.id);
+              return (
+                <Check key={w.id} checked={!!row} onToggle={() => void toggleAssignee(w)}
+                  label={`${wname(w)}${w.is_contractor ? ' 👥' : ''}${row?.acknowledged_at ? ' ✓ elfogadta' : row ? ' ⏳' : ''}`}
+                  sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />
+              );
+            })}
+          </View>
+        ) : null}
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {(task.photo_paths ?? []).length > 0 || !isWorker ? (
           <View style={{ gap: 4 }}>
