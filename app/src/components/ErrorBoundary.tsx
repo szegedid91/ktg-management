@@ -13,8 +13,15 @@ const KEY = 'ktg:last-crash';
 export function rememberCrash(msg: string) {
   try { if (Platform.OS === 'web') localStorage.setItem(KEY, `${new Date().toISOString()} · ${APP_VERSION}\n${msg}`); } catch { /* nincs tároló */ }
 }
+/** Az utolsó hiba — csak ha a most futó verzióból származik; egy régebbi
+ *  verzió hibáját frissítés után töröljük, hogy ne tűnjön élőnek. */
 export function lastCrash(): string | null {
-  try { return Platform.OS === 'web' ? localStorage.getItem(KEY) : null; } catch { return null; }
+  try {
+    if (Platform.OS !== 'web') return null;
+    const v = localStorage.getItem(KEY);
+    if (v && !v.includes(APP_VERSION)) { localStorage.removeItem(KEY); return null; }
+    return v;
+  } catch { return null; }
 }
 
 export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
