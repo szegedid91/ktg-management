@@ -9,7 +9,7 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { isActiveTask, wname, openQuotes, isOverdue } from '../lib/tasks';
 import { todayISO } from '../lib/format';
-import { TaskRow, STATUS_COLOR } from './TaskRow';
+import { TaskRow, STATUS_COLOR, UNASSIGNED_COLOR } from './TaskRow';
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
@@ -115,7 +115,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     <View style={{ gap: S.sm }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         <Chip label="Aktív" count={counts.active} on={filter === 'active'} onPress={() => { setFilter('active'); setLimit(PAGE); }} />
-        {counts.unassigned > 0 ? <Chip label="📋 Kiosztatlan" count={counts.unassigned} color={C.warning} on={filter === 'unassigned'} onPress={() => { setFilter('unassigned'); setLimit(PAGE); }} /> : null}
+        {counts.unassigned > 0 ? <Chip label="📋 Kiosztatlan" count={counts.unassigned} color={UNASSIGNED_COLOR} on={filter === 'unassigned'} onPress={() => { setFilter('unassigned'); setLimit(PAGE); }} /> : null}
         <Chip label="Elfogadásra vár" count={counts.assigned} color={STATUS_COLOR.assigned} on={filter === 'assigned'} onPress={() => { setFilter('assigned'); setLimit(PAGE); }} />
         <Chip label="Folyamatban" count={counts.acknowledged} color={STATUS_COLOR.acknowledged} on={filter === 'acknowledged'} onPress={() => { setFilter('acknowledged'); setLimit(PAGE); }} />
         <Chip label="● Fut a munka" count={counts.running} color={C.success} on={filter === 'running'} onPress={() => { setFilter('running'); setLimit(PAGE); }} />

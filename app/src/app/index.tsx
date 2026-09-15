@@ -155,7 +155,7 @@ function DashboardInner() {
     pendingTimesheets.length ? { key: 'timesheets', icon: '🗓️', title: 'Jóváhagyásra váró óralap', count: pendingTimesheets.length,
       detail: `összesen ${ft(pendingTimesheets.reduce((s, t) => s + Number(t.amount), 0))} · ${pendingTimesheets.reduce((s, t) => s + Number(t.hours), 0).toFixed(1)} óra`, color: '#B7791F', href: '/timesheets' } : null,
     unassignedTasks.length ? { key: 'unassigned', icon: '📋', title: 'Kiosztatlan feladat', count: unassignedTasks.length,
-      detail: unassignedTasks.slice(0, 3).map((t) => t.code || t.title).join(', '), color: C.warning, href: '/tasks?filter=unassigned' } : null,
+      detail: unassignedTasks.slice(0, 3).map((t) => t.code || t.title).join(', '), color: '#6B46C1', href: '/tasks?filter=unassigned' } : null,
     pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
       detail: pendingPrio ? `ebből ${pendingPrio} SOS 🆘` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
     quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,

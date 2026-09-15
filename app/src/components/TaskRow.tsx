@@ -12,6 +12,8 @@ import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote,
 export const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
 };
+/** kiosztatlan feladat: lila, hogy ne keveredjen az „elfogadásra vár” borostyánnal */
+export const UNASSIGNED_COLOR = '#6B46C1';
 export const STATUS_SHORT: Record<string, string> = {
   assigned: 'elfogadásra vár', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva',
 };
@@ -25,10 +27,10 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
   const site = sites.find((s) => s.id === task.site_id);
   const matCost = materials.reduce((s, m) => s + Number(m.amount), 0);
   const unpriced = materials.filter((m) => !pricing.some((p) => p.material_id === m.id)).length;
-  const color = STATUS_COLOR[task.status] ?? C.sub;
   const quote = quoteLabel(task, quotes, myWorkerId);
   const overdue = isOverdue(task, todayISO());
   const unassigned = assignees.length === 0 && (task.status === 'assigned' || task.status === 'acknowledged');
+  const color = unassigned ? UNASSIGNED_COLOR : (STATUS_COLOR[task.status] ?? C.sub);
   const status = quote ?? (unassigned ? 'kiosztatlan' : `${STATUS_SHORT[task.status]}${task.status === 'assigned' && assignees.length > 1 ? ` ${acked}/${assignees.length}` : ''}`);
   return (
     <Pressable
