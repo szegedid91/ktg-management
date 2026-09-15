@@ -116,7 +116,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
         <Chip label="Elfogadásra vár" count={counts.assigned} color={STATUS_COLOR.assigned} on={filter === 'assigned'} onPress={() => { setFilter('assigned'); setLimit(PAGE); }} />
         <Chip label="Folyamatban" count={counts.acknowledged} color={STATUS_COLOR.acknowledged} on={filter === 'acknowledged'} onPress={() => { setFilter('acknowledged'); setLimit(PAGE); }} />
         <Chip label="● Fut a munka" count={counts.running} color={C.success} on={filter === 'running'} onPress={() => { setFilter('running'); setLimit(PAGE); }} />
-        {counts.priority > 0 ? <Chip label="⚡ Prioritás" count={counts.priority} color={C.danger} on={filter === 'priority'} onPress={() => { setFilter('priority'); setLimit(PAGE); }} /> : null}
+        {counts.priority > 0 ? <Chip label="🆘 SOS" count={counts.priority} color={C.danger} on={filter === 'priority'} onPress={() => { setFilter('priority'); setLimit(PAGE); }} /> : null}
         {counts.quote > 0 ? <Chip label="💬 Ajánlat" count={counts.quote} color={C.primary} on={filter === 'quote'} onPress={() => { setFilter('quote'); setLimit(PAGE); }} /> : null}
         {counts.overdue > 0 ? <Chip label="⏰ Késik" count={counts.overdue} color={C.danger} on={filter === 'overdue'} onPress={() => { setFilter('overdue'); setLimit(PAGE); }} /> : null}
         {counts.unpriced > 0 ? <Chip label="📦 Beárazandó" count={counts.unpriced} color={C.warning} on={filter === 'unpriced'} onPress={() => { setFilter('unpriced'); setLimit(PAGE); }} /> : null}

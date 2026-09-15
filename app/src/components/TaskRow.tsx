@@ -40,7 +40,7 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Text style={{ fontWeight: '700', fontSize: 14, color: C.text, flex: 1 }} numberOfLines={1}>
-          {task.priority ? '⚡ ' : ''}{task.code ? `${task.code} · ` : ''}{task.title}
+          {task.priority ? '🆘 ' : ''}{task.code ? `${task.code} · ` : ''}{task.title}
         </Text>
         {running ? <Text style={{ fontSize: 11, color: C.success, fontWeight: '800' }}>● fut</Text> : null}
         {task.due_date && task.status !== 'done' && task.status !== 'cancelled' ? (

@@ -43,6 +43,9 @@ function Section({ title, summary, defaultOpen = false, accent, children }: {
   );
 }
 
+// részfeladatok: egyelőre kikapcsolva a felületen (az adatmodell megmarad)
+const SUBTASKS_ENABLED = false;
+
 const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
 };
@@ -376,7 +379,7 @@ export default function TaskDetail() {
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />
-          {task.priority ? <Badge text="⚡ prioritás" color={C.danger} /> : null}
+          {task.priority ? <Badge text="🆘 SOS" color={C.danger} /> : null}
           {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
           {task.quote_accepted_at ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
           {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
@@ -409,7 +412,7 @@ export default function TaskDetail() {
             {!isWorker && active ? (
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
-                <Btn title={task.priority ? '⚡ Prioritás levétele' : '⚡ Prioritásos'} kind="ghost" small
+                <Btn title={task.priority ? '🆘 SOS levétele' : '🆘 SOS'} kind="ghost" small
                   onPress={() => updateRow('worker_tasks', task.id, { priority: task.priority ? 0 : 1 })} />
               </View>
             ) : null}
@@ -453,7 +456,7 @@ export default function TaskDetail() {
       )}
 
       {/* ---------- részfeladatok ---------- */}
-      {subtasks.length > 0 || (!isWorker && active) ? (
+      {SUBTASKS_ENABLED && (subtasks.length > 0 || (!isWorker && active)) ? (
         <Section title="☑ Részfeladatok" defaultOpen={subtasks.some((s) => !s.done_at)}
           summary={subtasks.length ? `${subtasks.filter((s) => s.done_at).length}/${subtasks.length} kész` : 'nincs'}>
           {subtasks.map((s, i) => (

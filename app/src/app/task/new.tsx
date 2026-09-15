@@ -1,8 +1,8 @@
 // Új feladat kiadása egy vagy több munkavállalónak (+ ajánlatkérés)
 
 import React, { useState } from 'react';
-import { View } from 'react-native';
-import { S } from '../../ui/theme';
+import { View, Text, Pressable } from 'react-native';
+import { C, S } from '../../ui/theme';
 import { useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Input, Btn, Picker, Check, Empty } from '../../ui/kit';
@@ -37,8 +37,9 @@ export default function NewTask() {
   const templates = useTable<TaskTemplate>('task_templates').sort((a, b) => a.name.localeCompare(b.name, 'hu'));
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState('');
-  const [subtasks, setSubtasks] = useState<{ title: string; photo_required: boolean }[]>([]);
-  const [newSub, setNewSub] = useState('');
+  // részfeladatok egyelőre nincsenek a felületen (a sablon mező üres marad)
+  const subtasks: { title: string; photo_required: boolean }[] = [];
+  const [dueOpen, setDueOpen] = useState(false);
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
@@ -51,14 +52,7 @@ export default function NewTask() {
     if (t.code_prefix && !code) setCode(t.code_prefix);
     setPriority(t.priority > 0);
     setQuote(t.quote_requested);
-    setSubtasks((t.subtasks ?? []).map((s) => ({ title: s.title, photo_required: !!s.photo_required })));
-    if (t.due_days != null) setDueDate(addDaysISO(todayISO(), t.due_days));
-  };
-  const addSub = () => {
-    const v = newSub.trim();
-    if (!v) return;
-    setSubtasks((l) => [...l, { title: v, photo_required: false }]);
-    setNewSub('');
+    if (t.due_days != null) { setDueDate(addDaysISO(todayISO(), t.due_days)); setDueOpen(true); }
   };
 
   const addPhoto = async (fromCamera: boolean) => {
@@ -136,35 +130,29 @@ export default function NewTask() {
         <Input label="Feladat címe *" value={title} onChangeText={setTitle} placeholder="pl. Csempézés a fürdőben" />
         <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
         <Input label="Részletek" value={details} onChangeText={setDetails} placeholder="Mit, hol, mivel…" multiline />
-        <Check checked={priority} onToggle={() => setPriority(!priority)} label="⚡ Prioritásos (sürgős) feladat" sub="A listák elején, kiemelve jelenik meg." />
+        <Check checked={priority} onToggle={() => setPriority(!priority)} label="🆘 SOS feladat" sub="Sürgős: a listák elején, kiemelve jelenik meg." />
         <Picker label="Helyszín (építkezés) *" items={sites} selectedId={site} getId={(s) => s.id}
           getLabel={(s) => s.address ? `${s.name} — ${s.address}` : s.name} onSelect={setSite}
           />
-        <Input label="Határidő (ÉÉÉÉ-HH-NN, opcionális)" value={dueDate} onChangeText={setDueDate} placeholder={`pl. ${addDaysISO(todayISO(), 7)}`} />
-        <View style={{ flexDirection: 'row', gap: S.sm }}>
-          {[3, 7, 14].map((d) => (
-            <View key={d} style={{ flex: 1 }}><Btn title={`+${d} nap`} kind="ghost" small onPress={() => setDueDate(addDaysISO(todayISO(), d))} /></View>
-          ))}
-        </View>
-      </Card>
-
-      <Card>
-        <H2>☑ Részfeladatok</H2>
-        <Sub>Lépések, amiket a munkavállaló sorban pipál; a kötelező fotósat csak fotóval tudja késznek jelölni.</Sub>
-        {subtasks.map((s, i) => (
-          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-            <Sub style={{ width: 22 }}>{i + 1}.</Sub>
-            <View style={{ flex: 1 }}><Check checked={s.photo_required} onToggle={() => setSubtasks((l) => l.map((x, j) => j === i ? { ...x, photo_required: !x.photo_required } : x))} label={s.title} sub={s.photo_required ? '📷 fotó kötelező' : 'fotó nem kötelező'} /></View>
-            <Btn title="🗑️" kind="ghost" small onPress={() => setSubtasks((l) => l.filter((_, j) => j !== i))} />
-          </View>
-        ))}
-        <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
-          <View style={{ flex: 1 }}><Input label="Új lépés" value={newSub} onChangeText={setNewSub} placeholder="pl. Aljzat kiegyenlítése" /></View>
-          <Btn title="+ Hozzáad" kind="secondary" small onPress={addSub} disabled={!newSub.trim()} />
-        </View>
+        <Pressable onPress={() => setDueOpen(!dueOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4 }}>
+          <Text style={{ fontWeight: '700', color: C.text, flex: 1 }}>📅 Határidő{dueDate ? `: ${dueDate}` : ''}</Text>
+          <Text style={{ color: C.sub }}>{dueOpen ? '▾' : '▸ beállítás'}</Text>
+        </Pressable>
+        {dueOpen ? (
+          <>
+            <Input label="Határidő (ÉÉÉÉ-HH-NN)" value={dueDate} onChangeText={setDueDate} placeholder={`pl. ${addDaysISO(todayISO(), 7)}`} />
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              {[3, 7, 14].map((d) => (
+                <View key={d} style={{ flex: 1 }}><Btn title={`+${d} nap`} kind="ghost" small onPress={() => setDueDate(addDaysISO(todayISO(), d))} /></View>
+              ))}
+              <View style={{ flex: 1 }}><Btn title="Törlés" kind="ghost" small onPress={() => setDueDate('')} /></View>
+            </View>
+          </>
+        ) : null}
         <Check checked={saveAsTemplate} onToggle={() => setSaveAsTemplate(!saveAsTemplate)} label="Mentés sablonként" sub="Legközelebb egy kattintással kitölthető." />
         {saveAsTemplate ? <Input label="Sablon neve" value={templateName} onChangeText={setTemplateName} placeholder="pl. Fürdő burkolás" /> : null}
       </Card>
+
 
       <Card>
         <H2>📷 Fotók a feladathoz</H2>

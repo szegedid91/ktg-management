@@ -151,7 +151,7 @@ function DashboardInner() {
     pendingTimesheets.length ? { key: 'timesheets', icon: '🗓️', title: 'Jóváhagyásra váró óralap', count: pendingTimesheets.length,
       detail: `összesen ${ft(pendingTimesheets.reduce((s, t) => s + Number(t.amount), 0))} · ${pendingTimesheets.reduce((s, t) => s + Number(t.hours), 0).toFixed(1)} óra`, color: '#B7791F', href: '/timesheets' } : null,
     pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
-      detail: pendingPrio ? `ebből ${pendingPrio} prioritásos ⚡` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
+      detail: pendingPrio ? `ebből ${pendingPrio} SOS 🆘` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
     quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,
       detail: `${submittedQuotes.length} ajánlat · összesen ${ft(submittedQuotes.reduce((s, q) => s + Number(q.amount ?? 0), 0))}`, color: C.primary, href: '/tasks?filter=quote' } : null,
     unpricedMaterials.length ? { key: 'unpriced', icon: '📦', title: 'Beárazandó anyagköltség', count: unpricedMaterials.length,
