@@ -8,7 +8,6 @@ import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Input, Btn, Picker, Check, Empty } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
 import { insertRow, newId, getCurrentUserId as currentUser } from '../../lib/repo';
-import { parseAmount } from '../../lib/format';
 import { getCurrentUserId } from '../../lib/repo';
 import { notify } from '../../lib/dialogs';
 import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
@@ -36,7 +35,6 @@ export default function NewTask() {
   const [chosen, setChosen] = useState<Set<string>>(new Set(workerId ? [workerId] : []));
   const [quote, setQuote] = useState(false);
   const [priority, setPriority] = useState(false);
-  const [invoice, setInvoice] = useState('');
   const [saving, setSaving] = useState(false);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   // sablon, határidő, részfeladatok
@@ -110,7 +108,6 @@ export default function NewTask() {
         subtasks, created_by: getCurrentUserId(),
       });
     }
-    if (invoice.trim()) insertRow('task_finance', { task_id: taskId, invoice_net: parseAmount(invoice) });
     for (const wid of chosen) insertRow('task_assignees', { task_id: taskId, worker_id: wid });
     if (photoFails) notify('Fotó', `${photoFails} fotót nem sikerült feltölteni (internet?) — a feladat nélkülük ment ki.`);
     notify(quote ? 'Ajánlatkérés kiküldve 💬' : 'Feladat kiadva 🛠️',
@@ -183,13 +180,11 @@ export default function NewTask() {
       </Card>
 
       <Card>
-        <H2>Ár és számlázás</H2>
+        <H2>Ajánlat</H2>
         <Check checked={quote} onToggle={() => setQuote(!quote)}
           label="Ajánlatot kérek a munkavállalótól"
           sub="A munkavállaló megadja, mennyiért vállalja; a bérköltség az elfogadott ajánlat lesz." />
-        {!quote
-          ? <Input label="Kiszámlázott érték (nettó Ft) — később is megadható" value={invoice} onChangeText={setInvoice} keyboardType="numeric" placeholder="pl. 250 000" />
-          : <Sub>A kiszámlázott értéket az ajánlat elfogadása után adhatod meg a feladat oldalán.</Sub>}
+        <Sub>A kiszámlázott értéket később, a feladat oldalán adhatod meg.</Sub>
       </Card>
 
       <View style={{ paddingBottom: 8 }}>
