@@ -88,7 +88,7 @@ export default function SiteDetail() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
         <Badge text={closed ? 'lezárt' : 'aktív'} color={closed ? C.sub : C.success} />
         {site.address ? <Sub style={{ flex: 1 }}>{site.address}</Sub> : null}
-        {site.address ? <Btn title="🧭 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+        {site.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
       </View>
       {closed ? <Sub style={{ color: C.warning }}>Ez az építkezés lezárt, csak olvasható.</Sub> : null}
 

@@ -174,7 +174,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                   <Text style={{ color: C.text, fontWeight: e.work_date === todayISO() ? '800' : '600' }}>{e.work_date === todayISO() ? 'Ma' : hd(e.work_date)} · {site?.name ?? '?'}{isContractor && crew.length && e.worker_id !== wid ? ` · ${workers.find((w) => w.id === e.worker_id)?.name ?? ''}` : ''}</Text>
                   <Sub>{site?.address ?? ''}{e.note ? ` · ${e.note}` : ''}</Sub>
                 </View>
-                {site?.address ? <Btn title="🧭" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+                {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
               </View>
             );
           })}

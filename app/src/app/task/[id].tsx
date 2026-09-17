@@ -487,7 +487,7 @@ Biztosan leveszed?`, 'Levétel', true);
         <Divider />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
-          {site?.address ? <Btn title="🧭" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+          {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
         </View>
         <KV k="Kiadta" v={creator} />
         <KV k="Rögzítve" v={hdt(task.created_at)} />
