@@ -31,7 +31,6 @@ export function TaskNotes({ taskId, isWorker }: { taskId: string; isWorker: bool
     if (toWorkers && !await confirmDialog(CONFIRM_TITLE, CONFIRM_BODY, 'Igen, rögzítem')) return;
     insertRow('task_notes', { task_id: taskId, body, visible_to_workers: toWorkers });
     setText(''); setToWorkers(false);
-    notify('Megjegyzés rögzítve 📝', toWorkers ? 'A munkavállaló(k) is látják, értesítést kapnak.' : 'Csak a fő felhasználók látják.');
   };
   const startEdit = (n: TaskNote) => { setEditId(n.id); setEditText(n.body); setEditVis(n.visible_to_workers); };
   const saveEdit = async (n: TaskNote) => {
