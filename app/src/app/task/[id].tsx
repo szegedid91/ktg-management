@@ -72,6 +72,12 @@ export default function TaskDetail() {
   const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null } | null>(null);
   // kiosztás módosítása: hozzáadás / levétel (elfogadott munkavállalónál figyelmeztetéssel)
   const [assignOpen, setAssignOpen] = useState(false);
+  // utólagos rögzítés (a munka már megtörtént): munkaidő felvitele, készre állítás
+  const [retroOpen, setRetroOpen] = useState(false);
+  const [retroWorker, setRetroWorker] = useState<string | null>(null);
+  const [retroDate, setRetroDate] = useState(todayISO());
+  const [retroStart, setRetroStart] = useState('07:00');
+  const [retroEnd, setRetroEnd] = useState('15:00');
   const [assignQ, setAssignQ] = useState('');
   const assignable = workers.filter((w) => !!w.approved_at && !w.contractor_id).sort((x, y) => x.name.localeCompare(y.name, 'hu'));
   const toggleAssignee = async (w: Worker) => {
@@ -238,14 +244,14 @@ Biztosan leveszed?`, 'Levétel', true);
   const submitMaterial = async () => {
     const amount = parseAmount(matAmount);
     if (amount <= 0) { notify('Hiba', 'Adj meg összeget.'); return; }
-    if (matPhotos.length === 0) { notify('Fotó kötelező', 'Anyagköltséghez a számla/blokk fotója kötelező.'); return; }
+    if (isWorker && matPhotos.length === 0) { notify('Fotó kötelező', 'Anyagköltséghez a számla/blokk fotója kötelező.'); return; }
     setBusy(true);
     try {
       const paths: string[] = [];
       for (const ph of matPhotos) paths.push(await uploadTaskPhoto(ph.base64, `${task.id}/material`));
-      insertRow('task_materials', { task_id: task.id, worker_id: myWorkerId, amount, note: matNote.trim() || null, photo_path: paths[0], photo_paths: paths });
+      insertRow('task_materials', { task_id: task.id, worker_id: isWorker ? myWorkerId : (retroWorker ?? assignees[0]?.worker_id ?? null), amount, note: matNote.trim() || null, photo_path: paths[0] ?? null, photo_paths: paths });
       setMatOpen(false); setMatAmount(''); setMatNote(''); setMatPhotos([]);
-      notify('Anyagköltség rögzítve 📦', `${ft(amount)} · ${paths.length} fotóval.`);
+      notify('Anyagköltség rögzítve 📦', `${ft(amount)}${paths.length ? ` · ${paths.length} fotóval` : ''}.`);
     } catch {
       notify('Hiba', 'A fotó feltöltéséhez internet kell — próbáld újra kapcsolattal.');
     } finally {
@@ -254,6 +260,32 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   // ---------- partneri műveletek ----------
+  const retroLocal = (date: string, hm: string) => {
+    const m = hm.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !m) return null;
+    const d = new Date(`${date}T${String(m[1]).padStart(2, '0')}:${m[2]}:00`);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  };
+  const addRetroSession = () => {
+    const wid = retroWorker ?? (assignees.length === 1 ? assignees[0].worker_id : null);
+    if (!wid) { notify('Kinek?', 'Válaszd ki, ki dolgozott — előbb oszd ki a feladatot (Kiosztva · Módosít).'); return; }
+    if (!task.site_id) { notify('Helyszín kell', 'Állíts be helyszínt a feladathoz (✏️ Szerkesztés).'); return; }
+    const s0 = retroLocal(retroDate, retroStart); const e0 = retroLocal(retroDate, retroEnd);
+    if (!s0 || !e0) { notify('Hiba', 'Dátum ÉÉÉÉ-HH-NN, idők ÓÓ:PP formában.'); return; }
+    if (e0 <= s0) { notify('Hiba', 'A befejezés a kezdés után kell legyen.'); return; }
+    if (new Date(e0).getTime() - new Date(s0).getTime() > 16 * 3.6e6) { notify('Hiba', 'Legfeljebb 16 óra egy menet.'); return; }
+    insertRow('work_sessions', { worker_id: wid, site_id: task.site_id, task_id: task.id, started_at: s0, ended_at: e0 });
+    const asg = assignees.find((x) => x.worker_id === wid);
+    if (asg && !asg.acknowledged_at) updateRow('task_assignees', asg.id, { acknowledged_at: nowISO() });
+    notify('Munkaidő rögzítve ⏱', `${workerName(wid)} · ${hd(retroDate)} ${retroStart}–${retroEnd}. A bér automatikusan képződik (megkezdett órák).`);
+  };
+  const markDoneByPartner = async () => {
+    if (assignees.length === 0 && !await confirmDialog('Nincs kiosztva', 'A feladat senkihez sincs rendelve. Így is késznek jelölöd?', 'Kész')) return;
+    if (assignees.length > 0 && !await confirmDialog('Készre állítás', `A feladat késznek lesz jelölve (${assignees.map((x) => workerName(x.worker_id)).join(', ')}). Rendben?`, 'Kész')) return;
+    assignees.filter((x) => !x.acknowledged_at).forEach((x) => updateRow('task_assignees', x.id, { acknowledged_at: nowISO() }));
+    updateRow('worker_tasks', task.id, { status: 'done', done_at: nowISO() });
+    notify('Kész ✔', 'A feladat lezárva. Ha ajánlatos volt, a bér az elfogadott ajánlat; egyébként a rögzített munkaidő alapján.');
+  };
   const saveInvoice = () => {
     const v = (invoiceStr ?? '').trim();
     const val = v ? parseAmount(v) : null;
@@ -668,6 +700,36 @@ Biztosan leveszed?`, 'Levétel', true);
         </Section>
       ) : null}
 
+      {/* ---------- utólagos rögzítés (fő felhasználó) ---------- */}
+      {!isWorker && active ? (
+        <Card style={{ paddingVertical: S.sm }}>
+          <Pressable onPress={() => setRetroOpen(!retroOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+            <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>🕓 Utólagos rögzítés</Text>
+            <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }}>ha a munka már megtörtént</Text>
+            <Text style={{ color: C.sub, fontSize: 16 }}>{retroOpen ? '▾' : '▸'}</Text>
+          </Pressable>
+          {retroOpen ? (
+            <View style={{ gap: S.sm, paddingTop: S.sm }}>
+              <Sub>Ha a feladatot utólag viszed fel: add meg, ki és mennyit dolgozott, rögzítsd az anyagköltséget (📦 lent), majd jelöld késznek. A bér a munkaidőből képződik (órabérnél megkezdett órák), ajánlatos feladatnál az elfogadott ajánlat.</Sub>
+              {assignees.length === 0
+                ? <Sub style={{ color: C.warning }}>Még senkihez sincs rendelve — a fenti „Kiosztva · Módosít” gombbal add meg, ki dolgozott.</Sub>
+                : assignees.length > 1
+                ? <Picker label="Ki dolgozott?" items={assignees.map((x) => ({ id: x.worker_id, name: workerName(x.worker_id) }))}
+                    selectedId={retroWorker ?? assignees[0].worker_id} getId={(x) => x.id} getLabel={(x) => x.name} onSelect={setRetroWorker} placeholder="Válassz…" />
+                : <Sub>Munkavállaló: <Text style={{ fontWeight: '700', color: C.text }}>{workerName(assignees[0].worker_id)}</Text></Sub>}
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 2 }}><Input label="Nap (ÉÉÉÉ-HH-NN)" value={retroDate} onChangeText={setRetroDate} placeholder={todayISO()} /></View>
+                <View style={{ flex: 1 }}><Input label="Kezdés" value={retroStart} onChangeText={setRetroStart} placeholder="07:00" /></View>
+                <View style={{ flex: 1 }}><Input label="Befejezés" value={retroEnd} onChangeText={setRetroEnd} placeholder="15:00" /></View>
+              </View>
+              <Btn title="⏱ Munkaidő rögzítése" kind="secondary" small disabled={assignees.length === 0} onPress={addRetroSession} />
+              <Sub style={{ fontSize: 11 }}>Több napot is felvihetsz egymás után; a rögzített menetek a ⏱ Munkaidő résznél látszanak és ott javíthatók.</Sub>
+              <Btn title="✔ Késznek jelölöm" onPress={() => void markDoneByPartner()} />
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
       {/* ---------- munkavállalói műveletek ---------- */}
       {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
         <Card style={{ borderColor: C.accent }}>
@@ -734,23 +796,23 @@ Biztosan leveszed?`, 'Levétel', true);
         {materials.length > 0 ? (
           <KV k="Anyag összesen (beszerzés)" v={ft(mat.cost)} strong />
         ) : null}
-        {isWorker && myAssignment && active ? (
+        {(isWorker ? !!myAssignment : true) && active ? (
           !matOpen ? (
-            <Btn title="+ Anyagköltség hozzáadása (fotóval)" kind="secondary" onPress={() => setMatOpen(true)} />
+            <Btn title={isWorker ? '+ Anyagköltség hozzáadása (fotóval)' : '+ Anyagköltség hozzáadása'} kind="secondary" onPress={() => setMatOpen(true)} />
           ) : (
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />
               <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó 2 zsák" />
-              <Sub>Számla / blokk fotója kötelező — több kép is csatolható egy tételhez (a galériában egyszerre több is kijelölhető):</Sub>
+              <Sub>{isWorker ? 'Számla / blokk fotója kötelező — több kép is csatolható egy tételhez (a galériában egyszerre több is kijelölhető):' : 'Számla / blokk fotója (fő felhasználónál nem kötelező):'}</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>
               </View>
-              {matPhotos.length ? <PhotoThumbs local={matPhotos} onRemoveLocal={(i) => setMatPhotos((ps) => ps.filter((_, j) => j !== i))} /> : <Sub style={{ color: C.warning }}>még nincs fotó (több is csatolható)</Sub>}
+              {matPhotos.length ? <PhotoThumbs local={matPhotos} onRemoveLocal={(i) => setMatPhotos((ps) => ps.filter((_, j) => j !== i))} /> : isWorker ? <Sub style={{ color: C.warning }}>még nincs fotó (több is csatolható)</Sub> : null}
               {matPhotos.length ? <Btn title={ocrBusy ? 'Felismerés…' : '🤖 Összeg felismerése a fotóból'} kind="ghost" small disabled={ocrBusy} onPress={() => void recognizeMaterial()} /> : null}
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setMatOpen(false)} /></View>
-                <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || matPhotos.length === 0} /></View>
+                <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || (isWorker && matPhotos.length === 0)} /></View>
               </View>
             </View>
           )
