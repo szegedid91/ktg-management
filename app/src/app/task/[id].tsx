@@ -12,6 +12,7 @@ import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow, callRp
 import { syncNow } from '../../lib/sync';
 import { smartBack } from '../../lib/nav';
 import { SessionEditor } from '../../components/SessionEditor';
+import { TaskNotes } from '../../components/TaskNotes';
 import { ft, hd, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
@@ -22,8 +23,7 @@ import {
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask,
-} from '../../lib/types';
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote } from '../../lib/types';
 import { isOverdue } from '../../lib/tasks';
 import { todayISO } from '../../lib/format';
 
@@ -73,6 +73,7 @@ export default function TaskDetail() {
   // kiosztás módosítása: hozzáadás / levétel (elfogadott munkavállalónál figyelmeztetéssel)
   const [assignOpen, setAssignOpen] = useState(false);
   // utólagos rögzítés (a munka már megtörtént): munkaidő felvitele, készre állítás
+  const noteCount = useTable<TaskNote>('task_notes').filter((n) => n.task_id === id).length;
   const [retroOpen, setRetroOpen] = useState(false);
   const [retroWorker, setRetroWorker] = useState<string | null>(null);
   const [retroDate, setRetroDate] = useState(todayISO());
@@ -480,6 +481,7 @@ Biztosan leveszed?`, 'Levétel', true);
         <Divider />
         <KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} />
         <KV k="Kiadta" v={creator} />
+        <KV k="Rögzítve" v={hdt(task.created_at)} />
         {!isWorker && active ? (
           dueEdit === null ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -699,6 +701,10 @@ Biztosan leveszed?`, 'Levétel', true);
           ) : null}
         </Section>
       ) : null}
+
+      <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={noteCount > 0}>
+        <TaskNotes taskId={task.id} isWorker={isWorker} />
+      </Section>
 
       {/* ---------- utólagos rögzítés (fő felhasználó) ---------- */}
       {!isWorker && active ? (

@@ -5,7 +5,7 @@ import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { C, S } from '../ui/theme';
-import { ft, todayISO } from '../lib/format';
+import { ft, todayISO, hd } from '../lib/format';
 import { wname, quoteLabel, isOverdue } from '../lib/tasks';
 import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, Worker, Site } from '../lib/types';
 
@@ -54,7 +54,7 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
         <Text style={{ fontSize: 11, color: quote ? C.primary : color, fontWeight: '700' }} numberOfLines={1}>{status}</Text>
       </View>
       <Text style={{ fontSize: 12, color: C.sub }} numberOfLines={1}>
-        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')}
+        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')} · {hd(task.created_at.slice(0, 10))}
         {matCost > 0 ? ` · 📦 ${ft(matCost)}${unpriced ? ` (${unpriced} beárazandó)` : ''}` : ''}
       </Text>
     </Pressable>

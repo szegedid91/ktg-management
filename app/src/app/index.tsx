@@ -126,6 +126,10 @@ function DashboardInner() {
   const today = todayISO();
   const unassignedTasks = activeTasks.filter((t) => !assignees.some((a) => a.task_id === t.id));
   const pendingTasks = activeTasks.filter((t) => t.status === 'assigned' && assignees.some((a) => a.task_id === t.id));
+  // 3+ napja kiosztott, de el nem fogadott feladatok (a kiosztás idejétől számítva)
+  const staleCutoff = new Date(Date.now() - 3 * 864e5).toISOString();
+  const staleTasks = pendingTasks.filter((t) => assignees.some((a) => a.task_id === t.id && !a.acknowledged_at && a.created_at < staleCutoff));
+  const staleSos = staleTasks.some((t) => t.priority > 0);
   const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
   const submittedQuotes = quotes.filter((q) => q.status === 'submitted' && activeTasks.some((t) => t.id === q.task_id));
   const quoteTasks = activeTasks.filter((t) => submittedQuotes.some((q) => q.task_id === t.id));
@@ -269,6 +273,26 @@ function DashboardInner() {
           )
         ) : <Sub>Egyenleg betöltése…</Sub>}
       </Card>
+
+      {staleTasks.length ? (
+        <Card style={{ borderColor: C.danger, borderWidth: staleSos ? 3 : 1, backgroundColor: staleSos ? C.dangerBg : C.card }}>
+          <Text style={{ fontWeight: '900', fontSize: staleSos ? 18 : 15, color: C.danger }}>
+            {staleSos ? '🆘 SÜRGŐS — 3 napja nem fogadták el' : '⚠️ 3 napja nem fogadták el'} ({staleTasks.length})
+          </Text>
+          <Sub>Kiosztott feladat, amit a munkavállaló 3 napja nem fogadott el — szólj rá, vagy oszd ki másnak (feladat oldal · Kiosztva · Módosít).</Sub>
+          {staleTasks.map((t) => {
+            const asg = assignees.filter((a) => a.task_id === t.id && !a.acknowledged_at);
+            const since = asg.map((a) => a.created_at).sort()[0];
+            return (
+              <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)}
+                style={{ backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1, borderColor: t.priority ? C.danger : C.border, borderLeftWidth: 4, borderLeftColor: C.danger, padding: S.sm, gap: 2 }}>
+                <Text style={{ fontWeight: '800', color: t.priority ? C.danger : C.text }} numberOfLines={1}>{t.priority ? '🆘 ' : ''}{t.code ? `${t.code} · ` : ''}{t.title}</Text>
+                <Sub>👷 {asg.map((a) => wname(workers.find((w) => w.id === a.worker_id))).join(', ')} · kiosztva {hd(since?.slice(0, 10))} · {Math.floor((Date.now() - new Date(since).getTime()) / 864e5)} napja</Sub>
+              </Pressable>
+            );
+          })}
+        </Card>
+      ) : null}
 
       <View style={{ gap: S.sm }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
