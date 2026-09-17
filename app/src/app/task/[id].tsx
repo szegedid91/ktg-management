@@ -485,6 +485,19 @@ Biztosan leveszed?`, 'Levétel', true);
           </>
         )}
         <Divider />
+        {isWorker ? (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+              <Sub style={{ flex: 1 }}>📍 {site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : 'nincs helyszín'}</Sub>
+              {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+            </View>
+            <Sub>
+              Kiadta: {creator} · {hdt(task.created_at)}
+              {assignees.length > 1 ? ` · veled: ${assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}` : ''}
+            </Sub>
+          </>
+        ) : (
+          <>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
           {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
@@ -526,6 +539,8 @@ Biztosan leveszed?`, 'Levétel', true);
           </View>
         ) : null}
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
+          </>
+        )}
         {(task.photo_paths ?? []).length > 0 || !isWorker ? (
           <View style={{ gap: 4 }}>
             <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
@@ -551,8 +566,51 @@ Biztosan leveszed?`, 'Levétel', true);
         ) : null}
       </Card>
 
+      {/* ---------- munkavállalói műveletek ---------- */}
+      {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
+        <Card style={{ borderColor: C.accent }}>
+          {!myAssignment.acknowledged_at ? (
+            <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
+          ) : (
+            <>
+        {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
+          <View style={{ gap: 2 }}>
+            <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>
+            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => (
+              <Check key={p.id} checked={(crewWho ?? new Set([myWorkerId!])).has(p.id)} onToggle={() => setCrewWho((s) => { const n = new Set(s ?? [myWorkerId!]); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
+            ))}
+          </View>
+        ) : null}
+        {isWorker && myAssignment && active ? (
+          openSession || crewOpenSessions.length
+            ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
+            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={startWork} />
+        ) : null}
+              {startedByMe ? <Btn title="Kész ✔" onPress={() => void markDone()} /> : null}
+              {!failOpen ? (
+                <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" small onPress={() => setFailOpen(true)} />
+              ) : (
+                <View style={{ gap: S.sm }}>
+                  <Sub>Kötelező leírni, miért nem sikerült. Több fotót is csatolhatsz.</Sub>
+                  <Input label="Indoklás *" value={failReason} onChangeText={setFailReason} multiline placeholder="pl. hiányzik az anyag / nem lehetett bejutni…" />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'fail')} /></View>
+                    <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'fail')} /></View>
+                  </View>
+                  <PhotoThumbs local={failPhotos} onRemoveLocal={(i) => setFailPhotos((ps) => ps.filter((_, j) => j !== i))} />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setFailOpen(false)} /></View>
+                    <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Küldés'} kind="danger" onPress={() => void submitFail()} disabled={busy || failReason.trim().length < 3} /></View>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+        </Card>
+      ) : null}
+
       {isWorker && !acked ? null : (
-      <Section title="⏱ Munkaidő" defaultOpen={isWorker}
+      <Section title="⏱ Munkaidő" defaultOpen={false}
         summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
         {timing?.startedAt ? (
           <>
@@ -567,19 +625,6 @@ Biztosan leveszed?`, 'Levétel', true);
               <SessionEditor key={s.id} session={s} label={workerName(s.worker_id)} editable={!isWorker} />
             ))}
           </View>
-        ) : null}
-        {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
-          <View style={{ gap: 2 }}>
-            <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>
-            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => (
-              <Check key={p.id} checked={(crewWho ?? new Set([myWorkerId!])).has(p.id)} onToggle={() => setCrewWho((s) => { const n = new Set(s ?? [myWorkerId!]); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
-            ))}
-          </View>
-        ) : null}
-        {isWorker && myAssignment && active ? (
-          openSession || crewOpenSessions.length
-            ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
-            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={startWork} />
         ) : null}
       </Section>
       )}
@@ -745,42 +790,9 @@ Biztosan leveszed?`, 'Levétel', true);
         </Card>
       ) : null}
 
-      {/* ---------- munkavállalói műveletek ---------- */}
-      {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
-        <Card style={{ borderColor: C.accent }}>
-          <H2>Teendőid</H2>
-          {!myAssignment.acknowledged_at ? (
-            <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
-          ) : (
-            <>
-              {startedByMe
-                ? <Btn title="Kész ✔" onPress={() => void markDone()} />
-                : <Sub style={{ color: C.warning }}>A feladat akkor jelölhető késznek, ha előtte elindítottad rajta a munkát (⏱ Munkaidő).</Sub>}
-              {!failOpen ? (
-                <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" onPress={() => setFailOpen(true)} />
-              ) : (
-                <View style={{ gap: S.sm }}>
-                  <Sub>Kötelező leírni, miért nem sikerült. Több fotót is csatolhatsz.</Sub>
-                  <Input label="Indoklás *" value={failReason} onChangeText={setFailReason} multiline placeholder="pl. hiányzik az anyag / nem lehetett bejutni…" />
-                  <View style={{ flexDirection: 'row', gap: S.sm }}>
-                    <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'fail')} /></View>
-                    <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'fail')} /></View>
-                  </View>
-                  <PhotoThumbs local={failPhotos} onRemoveLocal={(i) => setFailPhotos((ps) => ps.filter((_, j) => j !== i))} />
-                  <View style={{ flexDirection: 'row', gap: S.sm }}>
-                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setFailOpen(false)} /></View>
-                    <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Küldés'} kind="danger" onPress={() => void submitFail()} disabled={busy || failReason.trim().length < 3} /></View>
-                  </View>
-                </View>
-              )}
-            </>
-          )}
-        </Card>
-      ) : null}
-
       {/* ---------- anyagköltségek ---------- */}
       {isWorker && !acked ? null : (
-      <Section title="📦 Anyagköltség" defaultOpen={isWorker || mat.unpriced.length > 0}
+      <Section title="📦 Anyagköltség" defaultOpen={!isWorker && mat.unpriced.length > 0}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {materials.length === 0 ? <Sub>Nincs rögzített anyagköltség.</Sub> : null}
         {materials.map((m) => (
