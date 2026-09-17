@@ -1,4 +1,4 @@
-// Munkamenet (kezdés → befejezés) sora a fő felhasználónak, utólagos
+// Munkamenet (kezdés → befejezés) sora a vezetőnek, utólagos
 // javítással: ha a munkavállaló elfelejtette leállítani, itt lezárható vagy
 // az idők átírhatók. A bér a mentés után automatikusan újraszámolódik.
 
@@ -70,7 +70,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
             <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setOpen(false)} /></View>
             <View style={{ flex: 2 }}><Btn title="Mentés" small onPress={save} /></View>
           </View>
-          <Sub style={{ fontSize: 11 }}>A munkavállaló a saját menetét csak lezárni tudja; az utólagos javítás a fő felhasználók joga. Órabérnél minden megkezdett óra teljes óra.</Sub>
+          <Sub style={{ fontSize: 11 }}>A munkavállaló a saját menetét csak lezárni tudja; az utólagos javítás a vezetők joga. Órabérnél minden megkezdett óra teljes óra.</Sub>
         </View>
       ) : null}
     </View>

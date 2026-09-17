@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
   const { data: profiles } = await supabase.from('profiles').select('*');
   const tokenOf = (id: string) => profiles?.find((p) => p.id === id)?.push_token as string | null;
-  // cégszintű összesítők (heti, lejárt) csak a fő felhasználóknak
+  // cégszintű összesítők (heti, lejárt) csak a vezetőknek
   const partners = (profiles ?? []).filter((p) => p.worker_id == null);
   const clearDeadTokens = async (tokens: string[]) => {
     if (tokens.length) await supabase.from('profiles').update({ push_token: null }).in('push_token', tokens);

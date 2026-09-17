@@ -130,7 +130,7 @@ export default function EquipmentScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equipment, moves, sites]);
 
-  // Munkavállalói fiók: az eszközök a fő felhasználók (partnerek) területe.
+  // Munkavállalói fiók: az eszközök a vezetők (partnerek) területe.
   if (isWorker) {
     return (
       <Screen>

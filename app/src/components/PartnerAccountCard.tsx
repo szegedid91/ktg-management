@@ -1,4 +1,4 @@
-// Fő felhasználó profilja: név, e-mail, jelszó módosítása.
+// Vezető profilja: név, e-mail, jelszó módosítása.
 
 import React, { useEffect, useState } from 'react';
 import { Card, H2, Sub, Input, Btn } from '../ui/kit';

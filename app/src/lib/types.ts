@@ -98,7 +98,7 @@ export interface Worker extends BaseRow {
   commission_mode: 'percent' | 'fixed' | null;
   commission_value: number | null;
   commission_unit: 'hour' | 'day' | 'project' | null;
-  /** meghívóval regisztrált munkavállaló: amíg üres, egy fő felhasználó
+  /** meghívóval regisztrált munkavállaló: amíg üres, egy vezető
    *  jóváhagyására vár (nem tud belépni) */
   approved_at: string | null;
   approved_by: UUID | null;
@@ -400,7 +400,7 @@ export interface TaskMaterial extends BaseRow {
   photo_paths: string[];
 }
 
-/** Feladat pénzügye — csak a fő felhasználók látják (a munkavállaló nem) */
+/** Feladat pénzügye — csak a vezetők látják (a munkavállaló nem) */
 export interface TaskFinance {
   id: UUID;
   task_id: UUID;
@@ -411,7 +411,7 @@ export interface TaskFinance {
   deleted_at: string | null;
 }
 
-/** Anyagköltség továbbszámlázási ára — csak a fő felhasználók látják */
+/** Anyagköltség továbbszámlázási ára — csak a vezetők látják */
 export interface TaskMaterialPricing {
   id: UUID;
   material_id: UUID;
@@ -458,7 +458,7 @@ export interface WorkSession extends BaseRow {
 }
 
 // A szinkronizálható táblák nevei
-/** Megjegyzés a feladathoz (fő felhasználók írják; a munkavállaló csak a neki szánt, láthatóra állítottat látja) */
+/** Megjegyzés a feladathoz (vezetők írják; a munkavállaló csak a neki szánt, láthatóra állítottat látja) */
 export interface TaskNote extends BaseRow {
   task_id: UUID;
   body: string;

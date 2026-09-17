@@ -1,5 +1,5 @@
-// Megjegyzések egy feladathoz: a fő felhasználó ír, szerkeszt, töröl;
-// kétféle láthatóság (csak fő felhasználók / a munkavállaló is látja).
+// Megjegyzések egy feladathoz: a vezető ír, szerkeszt, töröl;
+// kétféle láthatóság (csak vezetők / a munkavállaló is látja).
 // Munkavállalónak látható megjegyzés rögzítése előtt megerősítés kell.
 
 import React, { useState } from 'react';
@@ -65,7 +65,7 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
             <>
               <Body>{n.body}</Body>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, flexWrap: 'wrap' }}>
-                {!isWorker ? <Badge text={n.visible_to_workers ? '👷 munkavállaló is látja' : '🔒 csak fő felhasználók'} color={n.visible_to_workers ? C.primary : C.sub} /> : null}
+                {!isWorker ? <Badge text={n.visible_to_workers ? '👷 munkavállaló is látja' : '🔒 csak vezetők'} color={n.visible_to_workers ? C.primary : C.sub} /> : null}
                 <Sub style={{ fontSize: 11, flex: 1 }}>{n.created_by === me ? 'én' : ((n as any).author_name ?? profiles.find((p) => p.id === n.created_by)?.display_name ?? '?')} · {hdt(n.updated_at !== n.created_at ? n.updated_at : n.created_at)}{n.updated_at !== n.created_at ? ' (szerk.)' : ''}</Sub>
                 {!isWorker || (canWrite && n.created_by === me) ? <Btn title="✏️" kind="ghost" small onPress={() => startEdit(n)} /> : null}
                 {!isWorker || (canWrite && n.created_by === me) ? <Btn title="🗑️" kind="ghost" small onPress={() => void remove(n)} /> : null}
@@ -78,12 +78,12 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
         <View style={{ gap: S.sm, paddingTop: 4 }}>
           <Input value={text} onChangeText={setText} placeholder="Új megjegyzés…" multiline />
           {!isWorker
-            ? <Check checked={toWorkers} onToggle={() => setToWorkers(!toWorkers)} label="A munkavállaló is lássa" sub="Bepipálva a kiosztott munkavállaló(k) is olvassák, és értesítést kapnak. Üresen csak a fő felhasználók látják." />
-            : <Text style={{ fontSize: 11, color: C.sub }}>A megjegyzésedet a feladat többi munkavállalója és a fő felhasználók látják, értesítést kapnak.</Text>}
+            ? <Check checked={toWorkers} onToggle={() => setToWorkers(!toWorkers)} label="A munkavállaló is lássa" sub="Bepipálva a kiosztott munkavállaló(k) is olvassák, és értesítést kapnak. Üresen csak a vezetők látják." />
+            : <Text style={{ fontSize: 11, color: C.sub }}>A megjegyzésedet a feladat többi munkavállalója és a vezetők látják, értesítést kapnak.</Text>}
           <Btn title="Megjegyzés rögzítése" kind="secondary" small disabled={!text.trim()} onPress={() => void add()} />
         </View>
       ) : null}
-      {isWorker && !canWrite && notes.length ? <Text style={{ fontSize: 11, color: C.sub }}>A fő felhasználók megjegyzései ehhez a feladathoz.</Text> : null}
+      {isWorker && !canWrite && notes.length ? <Text style={{ fontSize: 11, color: C.sub }}>A vezetők megjegyzései ehhez a feladathoz.</Text> : null}
     </View>
   );
 }

@@ -127,7 +127,7 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
     const extra = text.split(',').map((t) => t.trim()).filter(Boolean);
     setTrades([...trades.filter(isCommon), ...extra]);
   };
-  // közvetítő csak fő felhasználó lehet: admin és munkavállalói fiók nem
+  // közvetítő csak vezető lehet: admin és munkavállalói fiók nem
   const profiles = useTable<Profile>('profiles').filter((p) => !p.is_admin && !p.worker_id);
   const externals = useTable<ExternalPerson>('external_people');
   const settings = useTable<AppSettings>('app_settings')[0];

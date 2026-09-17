@@ -78,7 +78,7 @@ export default function TaskDetail() {
   const subtasks = useTable<TaskSubtask>('task_subtasks').filter((s) => s.task_id === id).sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
   const [newSub, setNewSub] = useState('');
   const [dueEdit, setDueEdit] = useState<string | null>(null);
-  // feladat adatainak szerkesztése (fő felhasználó): cím, kód, részletek, helyszín
+  // feladat adatainak szerkesztése (vezető): cím, kód, részletek, helyszín
   const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null } | null>(null);
   // kiosztás módosítása: hozzáadás / levétel (elfogadott munkavállalónál figyelmeztetéssel)
   const [assignOpen, setAssignOpen] = useState(false);
@@ -204,7 +204,7 @@ Biztosan leveszed?`, 'Levétel', true);
   };
   const declineQuote = async () => {
     if (!mine) return;
-    if (!await confirmDialog('Nem vállalom', 'Jelezzük a fő felhasználóknak, hogy nem vállalod ezt a munkát. A feladat lekerül a listádról.', 'Nem vállalom', true)) return;
+    if (!await confirmDialog('Nem vállalom', 'Jelezzük a vezetőknek, hogy nem vállalod ezt a munkát. A feladat lekerül a listádról.', 'Nem vállalom', true)) return;
     queueRpc('worker_task_action', { p_id: task.id, p_action: 'decline_quote', p_reason: declineReason.trim() || null }, [
       { table: 'task_quotes', id: mine.id, patch: { status: 'declined', decided_at: nowISO(), decision_note: declineReason.trim() || null } },
       ...(myAssignment ? [{ table: 'task_assignees' as const, id: myAssignment.id, patch: { deleted_at: nowISO() } }] : []),
@@ -768,7 +768,7 @@ Biztosan leveszed?`, 'Levétel', true);
         <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && active : true} />
       </Section>
 
-      {/* ---------- utólagos rögzítés (fő felhasználó) ---------- */}
+      {/* ---------- utólagos rögzítés (vezető) ---------- */}
       {!isWorker && active ? (
         <Card style={{ paddingVertical: S.sm }}>
           <Pressable onPress={() => setRetroOpen(!retroOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
@@ -838,7 +838,7 @@ Biztosan leveszed?`, 'Levétel', true);
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />
               <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó 2 zsák" />
-              <Sub>{isWorker ? 'Számla / blokk fotója kötelező — több kép is csatolható egy tételhez (a galériában egyszerre több is kijelölhető):' : 'Számla / blokk fotója (fő felhasználónál nem kötelező):'}</Sub>
+              <Sub>{isWorker ? 'Számla / blokk fotója kötelező — több kép is csatolható egy tételhez (a galériában egyszerre több is kijelölhető):' : 'Számla / blokk fotója (vezetőnél nem kötelező):'}</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>

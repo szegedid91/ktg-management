@@ -1,4 +1,4 @@
-// Szinkron-állapot sáv: függő és elutasított műveletek — a fő felhasználó
+// Szinkron-állapot sáv: függő és elutasított műveletek — a vezető
 // kezdőlapján és a munkavállalói kezdőlapon is, hogy a csendben visszagörgetett
 // (szerver által elutasított) rögzítés ne maradjon észrevétlen.
 

@@ -67,7 +67,7 @@ export default function Invite() {
 
         {!token || kind === 'invalid' ? (
           <Card>
-            <Body>{!token ? 'Ez a link nem tartalmaz meghívót.' : 'Ez a meghívó érvénytelen, lejárt vagy már felhasználták.'} Kérj új meghívó linket vagy QR-kódot a fő felhasználóktól.</Body>
+            <Body>{!token ? 'Ez a link nem tartalmaz meghívót.' : 'Ez a meghívó érvénytelen, lejárt vagy már felhasználták.'} Kérj új meghívó linket vagy QR-kódot a vezetőktől.</Body>
           </Card>
         ) : kind === 'loading' ? (
           <Card><Sub>Meghívó ellenőrzése…</Sub></Card>
@@ -93,10 +93,10 @@ export default function Invite() {
         ) : (
           <Card>
             <Sub>{personal
-              ? 'A fő felhasználók már felvették az adataidat — nézd át, javítsd, ha kell, és adj meg egy jelszót. A fiókod a meglévő profilodhoz kapcsolódik, a korábbi napjaidat is látod majd.'
+              ? 'A vezetők már felvették az adataidat — nézd át, javítsd, ha kell, és adj meg egy jelszót. A fiókod a meglévő profilodhoz kapcsolódik, a korábbi napjaidat is látod majd.'
               : viaContractor
               ? 'Egy vállalkozó meghívott a csapatába. Add meg az adataid — a profilod az ő embereként jön létre, a béred hozzá kerül (emberenként részletezve), és rögtön be tudsz lépni.'
-              : 'A fő felhasználók meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.'}</Sub>
+              : 'A vezetők meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.'}</Sub>
             <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />
             <Input label="Szakma" value={trade} onChangeText={setTrade} placeholder="pl. burkoló, villanyszerelő (ha van)" />

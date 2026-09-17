@@ -1,5 +1,5 @@
 // Munkavállalói fiók kapuja: a meghívóval regisztrált fiók addig nem
-// használhatja az appot, amíg egy fő felhasználó jóvá nem hagyja. A státuszt
+// használhatja az appot, amíg egy vezető jóvá nem hagyja. A státuszt
 // RPC-n kérdezzük (a függő fiók a saját munkavállaló-sorát sem látja), és
 // félpercenként + minden szinkron után újra ellenőrizzük.
 
@@ -56,8 +56,8 @@ export function WorkerApprovalGate() {
         </Text>
         <Sub style={{ textAlign: 'center' }}>
           {pending
-            ? `Szia ${me?.display_name ?? ''}! A fiókod elkészült, de egy fő felhasználónak még jóvá kell hagynia, mielőtt beléphetsz. Értesítést kapsz, amint megtörtént — ez az oldal magától frissül.`
-            : 'A fő felhasználók nem hagyták jóvá a regisztrációdat. Ha szerinted tévedés, kérdezz rá náluk.'}
+            ? `Szia ${me?.display_name ?? ''}! A fiókod elkészült, de egy vezetőnek még jóvá kell hagynia, mielőtt beléphetsz. Értesítést kapsz, amint megtörtént — ez az oldal magától frissül.`
+            : 'A vezetők nem hagyták jóvá a regisztrációdat. Ha szerinted tévedés, kérdezz rá náluk.'}
         </Sub>
         {pending ? <Btn title={checking ? 'Ellenőrzés…' : 'Frissítés'} kind="secondary" small disabled={checking} onPress={() => void check()} /> : null}
         <Btn title="Kijelentkezés" kind="ghost" small onPress={() => void signOut()} />

@@ -1,4 +1,4 @@
-// Óralapok (fő felhasználóknak): a munkavállalók heti óráinak és bérének
+// Óralapok (vezetőknek): a munkavállalók heti óráinak és bérének
 // áttekintése. Jóváhagyás nincs — a kifizetés a Kifizetetlen bérek oldalon
 // történik. A beküldött lapokon kívül a bért tartalmazó, lap nélküli heteket
 // is listázzuk.

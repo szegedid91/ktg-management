@@ -145,12 +145,12 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     });
   }).flat().filter((w) => w.hours > 0 || w.amount > 0 || w.sheet);
   const submitSheet = async (week: string, workerId?: string) => {
-    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a fő felhasználók értesítést kapnak róla. Beküldöd?`, 'Beküldés')) return;
+    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a vezetők értesítést kapnak róla. Beküldöd?`, 'Beküldés')) return;
     setSheetBusy(true);
     try {
       await callRpc('submit_timesheet', { p_week_start: week, p_worker: workerId ?? null });
       void syncNow();
-      notify('Óralap beküldve 🗓️', 'A fő felhasználók értesítést kaptak.');
+      notify('Óralap beküldve 🗓️', 'A vezetők értesítést kaptak.');
     } catch (e: any) {
       notify('Hiba', String(e?.message ?? e));
     } finally {
@@ -183,7 +183,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       {boss ? (
         <Card style={{ paddingVertical: S.sm, borderColor: C.primary }}>
           <Text style={{ fontWeight: '800', color: C.text }}>👥 {wname(boss)} csapatában dolgozol</Text>
-          <Sub>A béred emberenként számolódik, de a kifizetés a vállalkozódhoz kerül; az óralapot ő küldi be. A fő felhasználók látják, mennyit dolgoztál.</Sub>
+          <Sub>A béred emberenként számolódik, de a kifizetés a vállalkozódhoz kerül; az óralapot ő küldi be. A vezetők látják, mennyit dolgoztál.</Sub>
         </Card>
       ) : null}
       {showWorkTime ? (
@@ -207,7 +207,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
           {startOpen && !openSession ? (
             <View style={{ gap: S.sm, paddingTop: S.sm }}>
               {activeSites.length === 0
-                ? <Sub style={{ color: C.warning }}>Nincs aktív építkezés, ahová be tudnál jelentkezni — kérdezd meg a fő felhasználókat.</Sub>
+                ? <Sub style={{ color: C.warning }}>Nincs aktív építkezés, ahová be tudnál jelentkezni — kérdezd meg a vezetőket.</Sub>
                 : <Picker label="Melyik építkezésen dolgozol?" items={activeSites} selectedId={startSite} getId={(s) => s.id}
                     getLabel={(s) => `${s.name}${s.address ? ` · ${s.address}` : ''}`} onSelect={setStartSite} placeholder="Válassz építkezést…" />}
               {isContractor && crew.length ? (
@@ -258,7 +258,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 <View style={{ flex: 1 }}><Input label="Szakma" value={newTrade} onChangeText={setNewTrade} placeholder="pl. segédmunkás" /></View>
               </View>
               <Btn title={crewBusy ? '…' : '+ Felveszem'} kind="secondary" small disabled={crewBusy || !newName.trim()} onPress={() => void addMember()} />
-              <Sub>Az embereid bére emberenként számolódik, de a kifizetés hozzád kerül. A fő felhasználók látják, ki mennyit dolgozott.</Sub>
+              <Sub>Az embereid bére emberenként számolódik, de a kifizetés hozzád kerül. A vezetők látják, ki mennyit dolgozott.</Sub>
               <InviteCard contractor />
             </View>
           ) : null}

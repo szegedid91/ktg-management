@@ -1,6 +1,6 @@
 // Hívó azonosítása edge-funkcióban: a kérés Authorization fejlécéből
 // kiolvassuk a felhasználót, és a profiljából a szerepét. A pénzügyi
-// funkciók csak fő felhasználónak (partnernek) állnak rendelkezésre.
+// funkciók csak vezetőnek (partnernek) állnak rendelkezésre.
 // Munkavállalói fiók csak jóváhagyott, nem törölt munkavállalóval számít
 // bejelentkezettnek (az RLS-t az edge-funkció service-kulccsal megkerüli,
 // ezért itt külön ellenőrizzük).

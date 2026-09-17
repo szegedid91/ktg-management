@@ -37,10 +37,10 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
-    // csak fő felhasználó exportálhat — a munkavállalói fiók nem lát pénzügyet
+    // csak vezető exportálhat — a munkavállalói fiók nem lát pénzügyet
     const caller = await identifyCaller(req, supabase);
     if (!caller) return json({ error: 'Bejelentkezés szükséges.' }, 401);
-    if (!caller.isPartner) return json({ error: 'Az export csak a fő felhasználóknak érhető el.' }, 403);
+    if (!caller.isPartner) return json({ error: 'Az export csak a vezetőknek érhető el.' }, 403);
 
     let expQ = supabase.from('expenses').select('*, expense_categories(name), sites(name), profiles:created_by(display_name)')
       .gte('expense_date', from).lte('expense_date', to).is('deleted_at', null).order('expense_date');

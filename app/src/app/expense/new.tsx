@@ -307,7 +307,7 @@ function NewExpenseInner() {
   );
 }
 
-/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+/** Vezetői oldal: munkavállalói fiók nem nyithatja meg (a hookok
  *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
 export default function NewExpense() {
   if (useIsWorker()) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;

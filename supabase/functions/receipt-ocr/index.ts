@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   try {
-    // csak fő felhasználó, napi kvótával (fizetős AI-hívás)
+    // csak vezető, napi kvótával (fizetős AI-hívás)
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const caller = await identifyCaller(req, admin);
     if (!caller) return json({ error: 'Bejelentkezés szükséges.' }, 401);
