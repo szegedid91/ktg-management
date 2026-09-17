@@ -15,7 +15,6 @@ import { notify, confirmDialog } from '../lib/dialogs';
 import { TaskRow } from './TaskRow';
 import { InviteCard } from './InviteCard';
 import { SyncBanner } from './SyncBanner';
-import { Onboarding } from './Onboarding';
 import { openDirections } from '../lib/maps';
 import { router } from 'expo-router';
 import {
@@ -164,7 +163,6 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   return (
     <Screen>
       <SyncBanner />
-      <Onboarding worker />
       {schedule.length ? (
         <Card style={{ paddingVertical: S.sm, gap: 4 }}>
           <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>📆 Beosztásom</Text>
