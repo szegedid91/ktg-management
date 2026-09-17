@@ -5,7 +5,8 @@ import { Screen, Input, Row, Body, Sub, Btn, Empty, Badge } from '../../ui/kit';
 import { InviteCard } from '../../components/InviteCard';
 import { C } from '../../ui/theme';
 import { useTable } from '../../lib/hooks';
-import { Worker, Profile } from '../../lib/types';
+import { Worker, Profile, TaskAssignee, WorkerTask } from '../../lib/types';
+import { isActiveTask } from '../../lib/tasks';
 import { copyText } from '../../lib/clipboard';
 
 export function CallButton({ phone, small }: { phone: string; small?: boolean }) {
@@ -59,6 +60,15 @@ export default function Workers() {
   // kinek van saját (összekapcsolt) fiókja — a többinél jelezzük, hogy még nincs
   const withAccount = new Set(useTable<Profile>('profiles').map((p) => p.worker_id).filter(Boolean) as string[]);
   const [q, setQ] = useState('');
+  // aktív feladatok munkavállalónként: kiosztott / elfogadott / még nem elfogadott
+  const tasks = useTable<WorkerTask>('worker_tasks');
+  const activeIds = new Set(tasks.filter(isActiveTask).map((t) => t.id));
+  const assignees = useTable<TaskAssignee>('task_assignees').filter((a) => activeIds.has(a.task_id));
+  const loadOf = (wid: string) => {
+    const mine = assignees.filter((a) => a.worker_id === wid);
+    const acked = mine.filter((a) => a.acknowledged_at).length;
+    return { total: mine.length, acked, pending: mine.length - acked };
+  };
 
   const pending = workers.filter((w) => !w.approved_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const filtered = workers
@@ -101,6 +111,14 @@ export default function Workers() {
               {w.worker_type === 'company' ? 'céges' : 'magánszemély'}
               {w.phones[0] ? ` · ${w.phones[0]}` : ''}
             </Sub>
+            {(() => { const l = loadOf(w.id); return l.total ? (
+              <Text style={{ fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: C.text, fontWeight: '700' }}>🛠️ {l.total} feladat</Text>
+                <Text style={{ color: C.sub }}> · </Text>
+                <Text style={{ color: C.success, fontWeight: '700' }}>✓ {l.acked} elfogadva</Text>
+                {l.pending ? <><Text style={{ color: C.sub }}> · </Text><Text style={{ color: C.warning, fontWeight: '800' }}>⏳ {l.pending} nincs elfogadva</Text></> : null}
+              </Text>
+            ) : <Text style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>nincs aktív feladata</Text>; })()}
           </View>
           {w.phones[0] ? <CopyButton text={w.phones[0]} small /> : null}
           {w.phones[0] ? <CallButton phone={w.phones[0]} small /> : null}
