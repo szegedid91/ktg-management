@@ -1,9 +1,10 @@
+import { useIsWorker } from '../../lib/hooks';
 import React, { useState } from 'react';
 import { router } from 'expo-router';
-import { Screen, Card, Input, Btn } from '../../ui/kit';
+import { Screen, Card, Input, Btn, Empty } from '../../ui/kit';
 import { insertRow } from '../../lib/repo';
 
-export default function NewSite() {
+function NewSiteInner() {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [note, setNote] = useState('');
@@ -29,4 +30,11 @@ export default function NewSite() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function NewSite() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <NewSiteInner />;
 }

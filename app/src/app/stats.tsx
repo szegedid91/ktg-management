@@ -3,8 +3,8 @@ import { View, Text, Pressable } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { Screen, Card, H2, Sub, KV, Divider, Empty, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { useTable } from '../lib/hooks';
-import { ft, todayISO, monthName, hd, addDaysISO } from '../lib/format';
+import { useTable, useIsWorker } from '../lib/hooks';
+import { ft, todayISO, monthName, hd, addDaysISO, localDateISO } from '../lib/format';
 import { sessionHours, wname } from '../lib/tasks';
 import {
   Expense, Attendance, Invoice, Site, Worker, ExpenseCategory, Profile, ExternalPerson,
@@ -133,7 +133,7 @@ function Bars({ data }: { data: { label: string; cost: number; revenue: number }
   );
 }
 
-export default function Stats() {
+function StatsInner() {
   const [period, setPeriod] = useState<Period>('3months');
   // konkrét év / hónapok szűrés — ha év van választva, az felülírja a gyors gombokat;
   // több hónap is kijelölhető (nem-összefüggő is, pl. jan + márc)
@@ -331,7 +331,7 @@ export default function Stats() {
         const avgHourly = hoursP > 0 ? wage / hoursP : null;
         let last: string | null = null;
         for (const a of allAttendance) if (a.worker_id === w.id && (!last || a.work_date > last)) last = a.work_date;
-        for (const s of own) { const d = s.started_at.slice(0, 10); if (!last || d > last) last = d; }
+        for (const s of own) { const d = localDateISO(s.started_at); if (!last || d > last) last = d; }
         return { w, done: done.length, failed: failed.length, active: active.length, failRate, avgHoursPerDone, hoursP, hoursAll, wage, avgHourly, last };
       })
       .filter((x) => x.done + x.failed + x.active > 0 || x.hoursAll > 0 || x.wage > 0)
@@ -492,4 +492,11 @@ export default function Stats() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Stats() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <StatsInner />;
 }

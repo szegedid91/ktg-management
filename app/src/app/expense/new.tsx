@@ -7,9 +7,9 @@ import { View, Text, Image, ActivityIndicator, Pressable } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import * as ImagePicker from 'expo-image-picker';
-import { Screen, Card, Input, Btn, Sub, H2, Body } from '../../ui/kit';
+import { Screen, Card, Input, Btn, Sub, H2, Body, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { insertRow, newId, getCurrentUserId } from '../../lib/repo';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { fromGross } from '../../lib/calc';
@@ -35,7 +35,7 @@ function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () 
   );
 }
 
-export default function NewExpense() {
+function NewExpenseInner() {
   const { siteId } = useLocalSearchParams<{ siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
   const categories = useTable<ExpenseCategory>('expense_categories');
@@ -305,4 +305,11 @@ export default function NewExpense() {
       )}
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function NewExpense() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <NewExpenseInner />;
 }

@@ -4,14 +4,14 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, Sub, Btn, KV, Empty, Check, Body } from '../../ui/kit';
 import { S } from '../../ui/theme';
-import { useRow, useTable } from '../../lib/hooks';
+import { useRow, useTable, useIsWorker } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, markInvoicePaid } from '../../lib/repo';
 import { ft, hd, todayISO } from '../../lib/format';
 import { Invoice, Site, Profile } from '../../lib/types';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
-export default function InvoiceDetail() {
+function InvoiceDetailInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const invoice = useRow<Invoice>('invoices', id);
   const sites = useTable<Site>('sites');
@@ -63,4 +63,11 @@ export default function InvoiceDetail() {
       <Comments entityType="invoice" entityId={invoice.id} />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function InvoiceDetail() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <InvoiceDetailInner />;
 }

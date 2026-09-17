@@ -16,6 +16,7 @@ import { computeBalances } from '../lib/balances';
 import { unpaidWorkerPart, isActiveTask, wname } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
+import { SyncBanner } from '../components/SyncBanner';
 import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
@@ -128,7 +129,7 @@ function DashboardInner() {
   const pendingTasks = activeTasks.filter((t) => t.status === 'assigned' && assignees.some((a) => a.task_id === t.id));
   // 3+ napja kiosztott, de el nem fogadott feladatok (a kiosztás idejétől számítva)
   const staleCutoff = new Date(Date.now() - 3 * 864e5).toISOString();
-  const staleTasks = pendingTasks.filter((t) => assignees.some((a) => a.task_id === t.id && !a.acknowledged_at && a.created_at < staleCutoff));
+  const staleTasks = pendingTasks.filter((t) => assignees.some((a) => a.task_id === t.id && !a.acknowledged_at && a.updated_at < staleCutoff));
   const staleSos = staleTasks.some((t) => t.priority > 0);
   const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
   const submittedQuotes = quotes.filter((q) => q.status === 'submitted' && activeTasks.some((t) => t.id === q.task_id));
@@ -172,7 +173,7 @@ function DashboardInner() {
       detail: 'feladaton indított munkaidő', color: C.success, href: '/tasks?filter=running' } : null,
     unpaidWageCount ? { key: 'wages', icon: '👷', title: 'Kifizetetlen bér', count: unpaidWageCount,
       detail: `összesen ${ft(stats.unpaidWages)}`, color: '#B7791F', href: '/pending' } : null,
-    overdueInvoices.length ? { key: 'overdue', icon: '🧾', title: 'Lejárt, be nem folyt számla', count: overdueInvoices.length,
+    overdueInvoices.length ? { key: 'overdue-invoice', icon: '🧾', title: 'Lejárt, be nem folyt számla', count: overdueInvoices.length,
       detail: `összesen ${ft(overdueSum)} nettó`, color: C.danger, href: '/invoices' } : null,
   ].filter(Boolean) as { key: string; icon: string; title: string; count: number; detail: string; color: string; href: string }[];
 
@@ -208,43 +209,7 @@ function DashboardInner() {
         </Card>
       ) : null}
 
-      {sync.pendingOps > 0 ? (
-        <Card style={{ backgroundColor: C.warnBg, borderColor: C.accent }}>
-          <Sub style={{ color: C.warning }}>
-            ⏳ {sync.pendingOps} művelet vár szinkronizálásra{sync.lastError ? ` — ${sync.lastError}` : ''}
-          </Sub>
-        </Card>
-      ) : null}
-
-      {sync.failedOps > 0 ? (
-        <Card style={{ backgroundColor: C.dangerBg, borderColor: C.danger }}>
-          <Sub style={{ color: C.danger, fontWeight: '700' }}>
-            ⛔ {sync.failedOps} műveletet elutasított a szerver — ezek nem kerültek mentésre.
-          </Sub>
-          {store.getFailed()[0]?.lastError ? (
-            <Sub style={{ color: C.danger }}>{store.getFailed()[0].lastError}</Sub>
-          ) : null}
-          <View style={{ flexDirection: 'row', gap: S.sm }}>
-            <View style={{ flex: 1 }}>
-              <Btn title="Újrapróbálás" kind="secondary" small onPress={() => {
-                store.getFailed().forEach((o) => store.retryFailed(o.opId));
-                void syncNow();
-              }} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Btn title="Elvetés" kind="ghost" small onPress={() => {
-                void confirmDialog('Elutasított műveletek elvetése',
-                  'A sikertelen műveletek végleg törlődnek a sorból. A szerver állapota marad érvényben.',
-                  'Elvetés', true).then((ok) => {
-                  if (!ok) return;
-                  store.getFailed().forEach((o) => store.discardFailed(o.opId));
-                  void syncNow();
-                });
-              }} />
-            </View>
-          </View>
-        </Card>
-      ) : null}
+      <SyncBanner />
 
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

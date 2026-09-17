@@ -10,7 +10,7 @@ import { Screen, Card, H2, Sub, KV, Divider, Empty, Badge } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
-import { ft, hd, todayISO, addDaysISO } from '../lib/format';
+import { ft, hd, todayISO, addDaysISO, localDateISO } from '../lib/format';
 import { isActiveTask, unpaidWorkerPart, sessionHours, wname } from '../lib/tasks';
 import {
   Attendance, Invoice, Expense, WorkerTask, TaskAssignee, WorkSession, Worker, AppSettings, Profile,
@@ -130,7 +130,7 @@ export default function Cashflow() {
         if (!w) continue;
         const own = sessions.filter((s) => s.task_id === t.id && s.worker_id === w.id);
         const hours = own.reduce((s, x) => s + sessionHours(x, now), 0);
-        const days = new Set(own.map((x) => x.started_at.slice(0, 10))).size;
+        const days = new Set(own.map((x) => localDateISO(x.started_at))).size;
         const basis = w.default_pay_basis === 'daily' ? 'daily' : 'hourly';
         const raw = basis === 'daily' ? days * rateOf(w, 'daily') : hours * rateOf(w, 'hourly');
         // több munkavállalónál a lekönyvelt részt arányosan nem tudjuk szétosztani — csak a saját sorait vonjuk le

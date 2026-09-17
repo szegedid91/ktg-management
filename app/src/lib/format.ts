@@ -10,10 +10,17 @@ export function ft(amount: number | null | undefined): string {
   return `${sign}${grouped} Ft`;
 }
 
-/** "2026-08-26" vagy Date -> "2026.08.26." */
+/** Helyi naptári nap (ÉÉÉÉ-HH-NN) egy időbélyegből — a szerver is Budapest szerint napol */
+export function localDateISO(ts: string | Date = new Date()): string {
+  const d = typeof ts === 'string' ? new Date(ts) : ts;
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** "2026-08-26", timestamptz vagy Date -> "2026.08.26." (időbélyegnél helyi nap) */
 export function hd(date: string | Date | null | undefined): string {
   if (!date) return '–';
-  const d = typeof date === 'string' ? new Date(date.slice(0, 10) + 'T00:00:00') : date;
+  const d = typeof date === 'string' ? (date.length > 10 ? new Date(date) : new Date(date.slice(0, 10) + 'T00:00:00')) : date;
   if (isNaN(d.getTime())) return '–';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

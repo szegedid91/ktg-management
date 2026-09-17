@@ -4,7 +4,7 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Input, Picker } from '../../ui/kit';
 import { S } from '../../ui/theme';
-import { useRow, useTable } from '../../lib/hooks';
+import { useRow, useTable, useIsWorker } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { supabase } from '../../lib/supabase';
@@ -14,7 +14,7 @@ import { Comments } from '../../components/Comments';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
-export default function ExpenseDetail() {
+function ExpenseDetailInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const expense = useRow<Expense>('expenses', id);
   const photos = useTable<ExpensePhoto>('expense_photos').filter((p) => p.expense_id === id);
@@ -130,4 +130,11 @@ export default function ExpenseDetail() {
       <Comments entityType="expense" entityId={expense.id} />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function ExpenseDetail() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <ExpenseDetailInner />;
 }

@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCurrentUserId } from './repo';
 
 const TTL_MS = 10 * 60 * 1000;
 
@@ -27,7 +28,7 @@ async function writeRaw(key: string, value: string | null) {
 }
 
 export function useDraft<T extends object>(key: string, initial: () => T, omit: (keyof T)[] = []) {
-  const storageKey = `draft:${key}`;
+  const storageKey = `draft:${getCurrentUserId() ?? 'anon'}:${key}`; // fiókonként külön
   const [value, setValue] = useState<T>(initial);
   const [ready, setReady] = useState(false);
   const skipSave = useRef(true);
@@ -66,4 +67,17 @@ export function useDraft<T extends object>(key: string, initial: () => T, omit: 
   const base = JSON.stringify(initial());
   const dirty = JSON.stringify(value) !== base;
   return { value, setValue, clear, dirty, ready };
+}
+
+/** Minden piszkozat törlése (kijelentkezéskor). */
+export async function clearAllDrafts(): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      if (typeof localStorage === 'undefined') return;
+      Object.keys(localStorage).filter((k) => k.startsWith('draft:')).forEach((k) => localStorage.removeItem(k));
+      return;
+    }
+    const keys = await AsyncStorage.getAllKeys();
+    await AsyncStorage.multiRemove(keys.filter((k) => k.startsWith('draft:')));
+  } catch { /* nincs tároló */ }
 }

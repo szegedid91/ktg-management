@@ -66,7 +66,7 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
               <Body>{n.body}</Body>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, flexWrap: 'wrap' }}>
                 {!isWorker ? <Badge text={n.visible_to_workers ? '👷 munkavállaló is látja' : '🔒 csak fő felhasználók'} color={n.visible_to_workers ? C.primary : C.sub} /> : null}
-                <Sub style={{ fontSize: 11, flex: 1 }}>{n.created_by === me ? 'én' : (profiles.find((p) => p.id === n.created_by)?.display_name ?? '?')} · {hdt(n.updated_at !== n.created_at ? n.updated_at : n.created_at)}{n.updated_at !== n.created_at ? ' (szerk.)' : ''}</Sub>
+                <Sub style={{ fontSize: 11, flex: 1 }}>{n.created_by === me ? 'én' : ((n as any).author_name ?? profiles.find((p) => p.id === n.created_by)?.display_name ?? '?')} · {hdt(n.updated_at !== n.created_at ? n.updated_at : n.created_at)}{n.updated_at !== n.created_at ? ' (szerk.)' : ''}</Sub>
                 {!isWorker || (canWrite && n.created_by === me) ? <Btn title="✏️" kind="ghost" small onPress={() => startEdit(n)} /> : null}
                 {!isWorker || (canWrite && n.created_by === me) ? <Btn title="🗑️" kind="ghost" small onPress={() => void remove(n)} /> : null}
               </View>

@@ -5,9 +5,9 @@ import { unpaidWorkerPart } from '../../lib/tasks';
 import React, { useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Card, H2, Sub, Body } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Body, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { Attendance, Invoice } from '../../lib/types';
 
 function PendingRow({ icon, label, amount, count, href }: {
@@ -30,7 +30,7 @@ function PendingRow({ icon, label, amount, count, href }: {
   );
 }
 
-export default function PendingOverview() {
+function PendingOverviewInner() {
   const attendance = useTable<Attendance>('attendance');
   const invoices = useTable<Invoice>('invoices');
 
@@ -75,4 +75,11 @@ export default function PendingOverview() {
       />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function PendingOverview() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <PendingOverviewInner />;
 }

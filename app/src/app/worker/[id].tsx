@@ -4,7 +4,7 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Badge, Divider, Segmented } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { useRow, useTable } from '../../lib/hooks';
+import { useRow, useTable, useIsWorker } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow, callRpc } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings, WorkerTask, TaskAssignee, WorkSession } from '../../lib/types';
@@ -18,7 +18,7 @@ import { SessionEditor } from '../../components/SessionEditor';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { syncNow } from '../../lib/sync';
 
-export default function WorkerDetail() {
+function WorkerDetailInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const worker = useRow<Worker>('workers', id);
   const myTasks = useTable<TaskAssignee>('task_assignees').filter((a) => a.worker_id === id).map((a) => a.task_id);
@@ -357,4 +357,11 @@ export default function WorkerDetail() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function WorkerDetail() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <WorkerDetailInner />;
 }

@@ -3,12 +3,12 @@ import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, Row, Body, Money, Badge, Empty, Segmented } from '../ui/kit';
 import { C } from '../ui/theme';
-import { useTable, useOnlineView } from '../lib/hooks';
+import { useTable, useOnlineView, useIsWorker } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
 import { ft, todayISO } from '../lib/format';
 import { Site, SiteTotals, Expense } from '../lib/types';
 
-export default function Sites() {
+function SitesInner() {
   const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const sites = useTable<Site>('sites');
   const [filter, setFilter] = useState<'active' | 'closed' | 'all'>(
@@ -69,4 +69,11 @@ export default function Sites() {
       <Btn title="+ Új építkezés" kind="secondary" onPress={() => router.push('/site/new')} />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Sites() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <SitesInner />;
 }

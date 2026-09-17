@@ -96,16 +96,27 @@ Deno.serve(async (req) => {
   );
   const { job = 'drain' } = await req.json().catch(() => ({}));
 
-  // a digest/overdue csak cronból (service kulccsal) futhat — app-hívás
-  // csak a saját sorát üríttetheti (drain)
-  if (job !== 'drain') {
-    const auth = req.headers.get('Authorization') ?? '';
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    if (!serviceKey || auth !== `Bearer ${serviceKey}`) {
+  // a digest/overdue csak cronból (service kulccsal) futhat; a drain-t
+  // bejelentkezett felhasználó is kérheti, de akkor csak a SAJÁT sorai mennek ki
+  const auth = req.headers.get('Authorization') ?? '';
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const isService = !!serviceKey && auth === `Bearer ${serviceKey}`;
+  let onlyRecipient: string | null = null;
+  if (!isService) {
+    if (job !== 'drain') {
       return new Response(JSON.stringify({ error: 'Ez a feladat csak ütemezett (service) hívásból futtatható.' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: auth } } });
+    const { data: u } = await userClient.auth.getUser().catch(() => ({ data: { user: null } } as any));
+    if (!u?.user) {
+      return new Response(JSON.stringify({ error: 'Bejelentkezés szükséges.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    onlyRecipient = u.user.id;
   }
 
   const { data: profiles } = await supabase.from('profiles').select('*');
@@ -119,12 +130,15 @@ Deno.serve(async (req) => {
   let sentCount = 0;
 
   if (job === 'drain') {
-    const { data: queue } = await supabase
+    let q = supabase
       .from('notification_queue')
       .select('*')
       .is('sent_at', null)
+      .lt('attempts', 5) // tartósan hibás sor ne tartsa fel a többit
       .order('created_at')
       .limit(100);
+    if (onlyRecipient) q = q.eq('recipient', onlyRecipient);
+    const { data: queue } = await q;
     const rows = queue ?? [];
 
     // Web Push: VAPID kulcsok + a címzettek élő böngésző-feliratkozásai.
@@ -198,6 +212,15 @@ Deno.serve(async (req) => {
       await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() })
         .in('id', [...new Set(doneIds)]);
     }
+    // sikertelen sorok: próbálkozás-számláló; 5 után lezárjuk (az app-beli értesítés megvan)
+    const done = new Set(doneIds);
+    for (const n of rows) {
+      if (done.has(n.id)) continue;
+      const attempts = Number(n.attempts ?? 0) + 1;
+      await supabase.from('notification_queue')
+        .update(attempts >= 5 ? { attempts, sent_at: new Date().toISOString() } : { attempts })
+        .eq('id', n.id);
+    }
   }
 
   if (job === 'digest') {
@@ -230,7 +253,8 @@ Deno.serve(async (req) => {
     const messages = [];
     for (const p of partners) {
       if (!p.notify_overdue || !p.push_token) continue;
-      const cutoffDate = new Date(Date.now() - Number(p.overdue_days) * 86400_000).toISOString().slice(0, 10);
+      const overdueDays = Number(p.overdue_days ?? 7) || 7;
+      const cutoffDate = new Date(Date.now() - overdueDays * 86400_000).toISOString().slice(0, 10);
       const [{ data: wages }, { data: inv }] = await Promise.all([
         supabase.from('attendance').select('amount, commission_amount')
           .is('paid_at', null).is('deleted_at', null).neq('pay_basis', 'presence').lte('work_date', cutoffDate),
@@ -246,7 +270,7 @@ Deno.serve(async (req) => {
         messages.push({
           to: p.push_token,
           title: 'Régóta függő tételek ⏰',
-          body: `${p.overdue_days} napnál régebbi — ${parts.join(' · ')}`,
+          body: `${overdueDays} napnál régebbi — ${parts.join(' · ')}`,
         });
       }
     }

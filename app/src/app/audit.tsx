@@ -6,7 +6,7 @@ import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, Empty, Picker, Loading, Input } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { useTable, useOnlineView } from '../lib/hooks';
+import { useTable, useOnlineView, useIsWorker } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
 import { hdt, hd, ft, todayISO, addDaysISO } from '../lib/format';
 import {
@@ -89,7 +89,7 @@ const DATE_OPTIONS: { value: DateRange; label: string }[] = [
   { value: '30d', label: '30 nap' },
 ];
 
-export default function Audit() {
+function AuditInner() {
   const profiles = useTable<Profile>('profiles');
   const sites = useTable<Site>('sites', true);
   const workers = useTable<Worker>('workers', true);
@@ -382,4 +382,11 @@ export default function Audit() {
       ) : null}
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Audit() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <AuditInner />;
 }

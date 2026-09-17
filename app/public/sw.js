@@ -20,7 +20,10 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  // csak az app saját címe nyitható (külső URL-t a payload akkor sem irányíthat)
+  let target = new URL(String((event.notification.data && event.notification.data.url) || '/'), self.location.origin);
+  if (target.origin !== self.location.origin) target = new URL('/', self.location.origin);
+  const url = target.href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       // ha már nyitva az app, arra váltunk és odanavigálunk

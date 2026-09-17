@@ -1,14 +1,15 @@
+import { useIsWorker } from '../../lib/hooks';
 import React from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Btn } from '../../ui/kit';
+import { Screen, Btn, Empty } from '../../ui/kit';
 import { WorkerForm, emptyWorkerForm, formToRow, validateWorkerForm } from '../../components/WorkerForm';
 import { insertRow, callRpc } from '../../lib/repo';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { useDraft } from '../../lib/draft';
 import { S } from '../../ui/theme';
 
-export default function NewWorker() {
+function NewWorkerInner() {
   // a félbehagyott kitöltést 10 percig megőrizzük (a bankszámlaszám kivételével)
   const { value: form, setValue: setForm, clear, dirty } = useDraft('worker-new', emptyWorkerForm, ['bank_account']);
 
@@ -41,4 +42,11 @@ export default function NewWorker() {
       </View>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function NewWorker() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <NewWorkerInner />;
 }

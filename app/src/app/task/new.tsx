@@ -22,6 +22,7 @@ export default function NewTask() {
   // a vállalkozók emberei (fiók nélkül) nem kapnak külön feladatot: a vállalkozó viszi őket
   const workers = [...useTable<Worker>('workers')].filter((w) => !!w.approved_at && !w.contractor_id).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
   const [workerQ, setWorkerQ] = useState('');
+  const [chosen, setChosen] = useState<Set<string>>(new Set(workerId ? [workerId] : []));
   const shownWorkers = workers.filter((w) => {
     const q = workerQ.trim().toLowerCase();
     return !q || `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q) || chosen.has(w.id);
@@ -32,7 +33,6 @@ export default function NewTask() {
   const [code, setCode] = useState('');
   const [details, setDetails] = useState('');
   const [site, setSite] = useState<string | null>(siteId ?? null);
-  const [chosen, setChosen] = useState<Set<string>>(new Set(workerId ? [workerId] : []));
   const [quote, setQuote] = useState(false);
   const [priority, setPriority] = useState(false);
   const [saving, setSaving] = useState(false);

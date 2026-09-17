@@ -1,7 +1,8 @@
+import { localDateISO } from './format';
 // Feladat-számítások a lokális tükörből: munkaidő, bérköltség (idő- vagy
 // ajánlat-alapú), anyagköltség/továbbszámlázás, haszon.
 
-import { TaskMaterial, TaskMaterialPricing, TaskQuote, TaskStatus, Worker, WorkerTask, WorkSession } from './types';
+import { TaskMaterial, TaskMaterialPricing, TaskQuote, TaskStatus, Worker, WorkerTask, WorkSession, AppSettings } from './types';
 
 /** Munkavállaló megjelenített neve: becenév, ha van. */
 export function wname(w: { name: string; nickname?: string | null } | undefined | null): string {
@@ -79,6 +80,9 @@ export function quoteLabel(task: WorkerTask, quotes: TaskQuote[], myWorkerId?: s
     if (q.status === 'submitted') return 'visszaigazolásra vár';
     return QUOTE_STATUS_LABEL[q.status];
   }
+  // normál (nem ajánlatos) vagy már folyamatban lévő feladatnál a régi, lezárt
+  // ajánlat-sorok szövege nem takarhatja el a valódi állapotot
+  if (!task.quote_requested || task.status === 'acknowledged') return null;
   const open = openQuotes(task.id, quotes);
   const submitted = open.filter((q) => q.status === 'submitted');
   if (submitted.length === 1) return `ajánlat ${fmtFt(submitted[0].amount ?? 0)} · elfogadásra vár`;
@@ -123,7 +127,7 @@ export function taskTiming(task: WorkerTask, sessions: WorkSession[], now = Date
     ? own.reduce((min, s) => (s.started_at < min ? s.started_at : min), own[0].started_at)
     : null;
   const hours = own.reduce((sum, s) => sum + sessionHours(s, now), 0);
-  const days = new Set(own.map((s) => s.started_at.slice(0, 10))).size;
+  const days = new Set(own.map((s) => localDateISO(s.started_at))).size;
   const running = own.some((s) => !s.ended_at);
   const finishedAt = task.done_at ?? null;
   return { startedAt, finishedAt, hours, days, running };
@@ -132,21 +136,43 @@ export function taskTiming(task: WorkerTask, sessions: WorkSession[], now = Date
 /** Bérköltség: elfogadott ajánlat → az ajánlat; különben a munkavállaló
  *  elszámolási módja szerint idő-alapú (óra / nap / projekt). */
 export function taskWageCost(
-  task: WorkerTask, assigneeWorkers: Worker[], sessions: WorkSession[], now = Date.now(),
+  task: WorkerTask, assigneeWorkers: Worker[], sessions: WorkSession[], settings?: AppSettings | null, now = Date.now(),
 ): { total: number; parts: { worker: Worker; basis: string; amount: number; hours: number }[] } {
   if (task.quote_amount != null && task.quote_accepted_at) {
     return { total: Number(task.quote_amount), parts: [] };
   }
+  // díj a szerverrel egyezően: saját díj, különben a céges/magánszemély alapdíj
+  const rateOf = (w: Worker, k: 'hourly' | 'daily' | 'project'): number => {
+    const own = (w as any)[`${k}_rate`];
+    if (own != null && own !== '') return Number(own);
+    return settings ? Number((settings as any)[`${w.worker_type}_${k}_rate`] ?? 0) : 0;
+  };
+  // fn_worker_auto_basis: a beállított mód, ha van hozzá díj; különben napi, különben óra, különben projekt
+  const basisOf = (w: Worker): 'hourly' | 'daily' | 'project' => {
+    const pref = (w.default_pay_basis ?? 'hourly') as 'hourly' | 'daily' | 'project';
+    if (pref === 'hourly' && rateOf(w, 'hourly') > 0) return 'hourly';
+    if (pref === 'daily' && rateOf(w, 'daily') > 0) return 'daily';
+    if (pref === 'project' && rateOf(w, 'project') > 0) return 'project';
+    if (rateOf(w, 'hourly') > 0) return 'hourly';
+    if (rateOf(w, 'daily') > 0) return 'daily';
+    return 'project';
+  };
   const parts = assigneeWorkers.map((w) => {
     const own = sessions.filter((s) => s.task_id === task.id && s.worker_id === w.id);
     const hours = own.reduce((sum, s) => sum + sessionHours(s, now), 0);
-    const days = new Set(own.map((s) => s.started_at.slice(0, 10))).size;
-    const basis = w.default_pay_basis ?? 'hourly';
+    // megkezdett órák naponként és építkezésenként (a szerver így kerekít)
+    const byDay = new Map<string, number>();
+    for (const s of own) {
+      const k = `${localDateISO(s.started_at)}|${s.site_id ?? ''}`;
+      byDay.set(k, (byDay.get(k) ?? 0) + sessionHours(s, now));
+    }
+    const wholeHours = [...byDay.values()].reduce((sum, h) => sum + Math.ceil(Math.round(h * 1e4) / 1e4), 0);
+    const days = new Set(own.map((s) => localDateISO(s.started_at))).size;
+    const basis = basisOf(w);
     let amount = 0;
-    // minden megkezdett óra teljes óra (a szerver is így számol)
-    if (basis === 'hourly') amount = Math.ceil(Math.round(hours * 1e4) / 1e4) * Number(w.hourly_rate ?? 0);
-    else if (basis === 'daily') amount = days * Number(w.daily_rate ?? 0);
-    else amount = own.length > 0 ? Number(w.project_rate ?? 0) : 0;
+    if (basis === 'hourly') amount = wholeHours * rateOf(w, 'hourly');
+    else if (basis === 'daily') amount = days * rateOf(w, 'daily');
+    else amount = own.length > 0 ? rateOf(w, 'project') : 0;
     return { worker: w, basis, amount: Math.round(amount), hours };
   });
   return { total: parts.reduce((s, p) => s + p.amount, 0), parts };

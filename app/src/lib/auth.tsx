@@ -5,12 +5,13 @@ import { Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { store } from './store';
-import { startSyncLoop, stopSyncLoop, syncNow } from './sync';
+import { startSyncLoop, stopSyncLoop, syncNow, waitIdle } from './sync';
 import { startRealtime, stopRealtime } from './realtime';
-import { setCurrentUserId } from './repo';
+import { setCurrentUserId, getCurrentUserId } from './repo';
 import { AppState } from 'react-native';
 
-const LAST_USER_KEY = 'ktg:lastUserId';
+const LAST_USER_KEY = 'auth:lastUserId'; // NEM a ktg: prefixen: clearAll ne törölje
+const LEGACY_LAST_USER_KEY = 'ktg:lastUserId';
 
 /** Jelszó-visszaállító linkről érkeztünk: a Supabase a levél linkjét a
  *  Site URL-re is dobhatja (ha a /jelszo nincs az engedélyezett címek
@@ -38,8 +39,9 @@ function goToPasswordPage() {
  *  műveleteket az RLS úgyis elutasítaná. */
 async function guardUserSwitch(uid: string) {
   try {
-    const last = await AsyncStorage.getItem(LAST_USER_KEY);
-    if (last && last !== uid) await store.clearAll();
+    const last = (await AsyncStorage.getItem(LAST_USER_KEY)) ?? (await AsyncStorage.getItem(LEGACY_LAST_USER_KEY));
+    // ismeretlen előző fiók + nem üres tár: biztonságból törlünk (ne lásson más adatot)
+    if ((last && last !== uid) || (!last && store.hasAnyRows())) await store.clearAll();
     await AsyncStorage.setItem(LAST_USER_KEY, uid);
   } catch {
     // tárolóhiba esetén nem blokkoljuk a belépést
@@ -127,11 +129,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     // amíg él a token: az el nem küldött rögzítések még felmennek,
     // hogy fiókváltásnál se vesszen el semmi
-    try { await syncNow(); } catch { /* offline kijelentkezés is mehet */ }
-    await supabase.auth.signOut();
+    try { await syncNow(); await waitIdle(); } catch { /* offline kijelentkezés is mehet */ }
     stopSyncLoop();
     stopRealtime();
+    // push-csatornák leválasztása: közös eszközön a következő fiók ne kapja
+    // az előző értesítéseit (natív token a profilról, webes feliratkozás le)
+    try {
+      const me = getCurrentUserId();
+      if (me) await supabase.from('profiles').update({ push_token: null }).eq('id', me);
+      await import('./webpush').then((m) => m.unsubscribeWebPush());
+    } catch { /* offline: a szerver-oldali kizárólagosság (register_push_token) úgyis rendezi */ }
+    await supabase.auth.signOut();
     await store.clearAll();
+    try { await import('./draft').then((m) => m.clearAllDrafts()); } catch { /* nincs tároló */ }
   };
 
   return <Ctx.Provider value={{ session, loading, signIn, signUp, signOut }}>{children}</Ctx.Provider>;
@@ -146,5 +156,6 @@ function hunAuthError(msg: string): string {
   if (/already registered/i.test(msg)) return 'Ezzel az email-címmel már regisztráltak.';
   if (/password should be at least/i.test(msg)) return 'A jelszó legalább 6 karakter legyen.';
   if (/valid email/i.test(msg)) return 'Érvénytelen email-cím.';
+  if (/database error saving new user/i.test(msg)) return 'A regisztráció nem sikerült: a meghívó érvénytelen, lejárt vagy már felhasználták. Kérj új meghívót!';
   return msg;
 }

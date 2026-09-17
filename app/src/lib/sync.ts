@@ -161,6 +161,7 @@ async function reconcileAll(): Promise<void> {
 }
 
 async function pullTable(table: SyncTable): Promise<void> {
+  const gen = store.generation; // kijelentkezés/fiókváltás közben megszakad
   const cursor = store.getCursor(table);
   const page = 1000;
   let from = 0;
@@ -177,22 +178,35 @@ async function pullTable(table: SyncTable): Promise<void> {
       .order('id', { ascending: true })
       .range(from, from + page - 1);
     if (error) throw error;
+    if (store.generation !== gen) return; // közben törölték a tárat: nem írunk vissza
     if (!data || data.length === 0) break;
     store.putManyLocal(table, data as any[], true);
     maxTs = (data[data.length - 1] as any).updated_at;
     if (data.length < page) break;
     from += page;
   }
-  if (maxTs !== cursor) store.setCursor(table, maxTs);
+  if (maxTs !== cursor && store.generation === gen) store.setCursor(table, maxTs);
 }
 
-export async function syncNow(): Promise<void> {
-  if (syncing) { runAgain = true; return; }
+let current: Promise<void> | null = null;
+
+/** A folyamatban lévő szinkron vége (kijelentkezésnél megvárjuk). */
+export function waitIdle(): Promise<void> { return current ?? Promise.resolve(); }
+
+export function syncNow(): Promise<void> {
+  if (current) { runAgain = true; return current; }
+  current = runSync().finally(() => { current = null; });
+  return current;
+}
+
+async function runSync(): Promise<void> {
+  // a zárat azonnal (szinkron módon) fogjuk: két egyidejű hívás ne futtassa kétszer az outboxot
+  syncing = true;
   await store.whenLoaded(); // a diszk-állapot betöltése előtt nem szinkronizálunk
   const { data: sess } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
-  if (!sess?.session) return;
+  if (!sess?.session) { syncing = false; return; }
+  const gen = store.generation;
 
-  syncing = true;
   status.syncing = true;
   notifyStatus();
   try {
@@ -202,6 +216,7 @@ export async function syncNow(): Promise<void> {
         await pullTable(table);
         if (table === 'profiles') await reconcileProfiles();
       }
+      if (store.generation !== gen) return;
       await reconcileAll();
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Input, Picker, Body } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { useTable } from '../lib/hooks';
+import { useTable, useIsWorker } from '../lib/hooks';
 import { insertRow, getCurrentUserId, softDeleteRow } from '../lib/repo';
 import { ft, hd, todayISO, parseAmount } from '../lib/format';
 import { Settlement, Profile, Expense, Attendance, Site, Invoice, ProfitShareHistory } from '../lib/types';
@@ -40,7 +40,7 @@ function periodRange(p: Period): [string, string] {
   return ['0000-01-01', '9999-12-31'];
 }
 
-export default function SettlementScreen() {
+function SettlementScreenInner() {
   const settlements = useTable<Settlement>('settlements');
   const profiles = useTable<Profile>('profiles');
   const expenses = useTable<Expense>('expenses');
@@ -337,4 +337,11 @@ export default function SettlementScreen() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function SettlementScreen() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <SettlementScreenInner />;
 }

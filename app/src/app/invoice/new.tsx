@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
-import { Screen, Card, Input, Btn, Picker, Sub, Body } from '../../ui/kit';
-import { useTable } from '../../lib/hooks';
+import { Screen, Card, Input, Btn, Picker, Sub, Body, Empty } from '../../ui/kit';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { insertRow } from '../../lib/repo';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
 import { todayISO, addDaysISO } from '../../lib/format';
@@ -11,7 +11,7 @@ import { Site, AppSettings } from '../../lib/types';
 import { notify } from '../../lib/dialogs';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export default function NewInvoice() {
+function NewInvoiceInner() {
   const { siteId } = useLocalSearchParams<{ siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active');
   const settings = useTable<AppSettings>('app_settings')[0];
@@ -80,4 +80,11 @@ export default function NewInvoice() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function NewInvoice() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <NewInvoiceInner />;
 }

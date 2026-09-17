@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { store } from './store';
+import { getCurrentUserId } from './repo';
 import { SyncTable } from './types';
 import { fetchViewCached } from './repo';
 import { subscribeSyncStatus, SyncStatus } from './sync';
@@ -22,10 +23,17 @@ export function useTable<T = any>(table: SyncTable, includeDeleted = false): T[]
   return cacheRef.current.rows;
 }
 
-export function useRow<T = any>(table: SyncTable, id: string | undefined): T | undefined {
+export function useRow<T = any>(table: SyncTable, id: string | undefined, includeDeleted = false): T | undefined {
   const subscribe = useCallback((cb: () => void) => store.subscribe(cb), []);
   useSyncExternalStore(subscribe, () => store.version, () => store.version);
-  return id ? (store.get(table, id) as T | undefined) : undefined;
+  const r = id ? (store.get(table, id) as any) : undefined;
+  return r && (includeDeleted || !r.deleted_at) ? (r as T) : undefined;
+}
+
+/** A bejelentkezett fiók munkavállalói-e (partner-oldalak őrzéséhez). */
+export function useIsWorker(): boolean {
+  const me = getCurrentUserId();
+  return !!useTable<any>('profiles').find((p) => p.id === me)?.worker_id;
 }
 
 export function useSyncStatus(): SyncStatus {

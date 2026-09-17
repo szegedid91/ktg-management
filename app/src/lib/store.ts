@@ -41,7 +41,9 @@ class Store {
   private listeners = new Set<() => void>();
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
-  private persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private persistTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; resolve: (ok: boolean) => void }>();
+  /** clearAll-kor nő: a folyamatban lévő szinkron ezután nem írhat a tárba */
+  generation = 0;
   /** az utolsó tábla-mentés eredménye (a kurzor csak sikeres mentés után rögzül) */
   private tableWrites = new Map<string, Promise<boolean>>();
   version = 0;
@@ -111,12 +113,13 @@ class Store {
 
   private schedulePersist(key: string, get: () => any): Promise<boolean> {
     const existing = this.persistTimers.get(key);
-    if (existing) clearTimeout(existing);
+    if (existing) { clearTimeout(existing.timer); existing.resolve(true); } // a későbbi írás tartalmazza
     return new Promise<boolean>((resolve) => {
-      this.persistTimers.set(key, setTimeout(() => {
+      const timer = setTimeout(() => {
         this.persistTimers.delete(key);
         AsyncStorage.setItem(key, JSON.stringify(get())).then(() => resolve(true)).catch(() => resolve(false));
-      }, 150));
+      }, 150);
+      this.persistTimers.set(key, { timer, resolve });
     });
   }
 
@@ -264,7 +267,17 @@ class Store {
     });
   }
 
+  /** van-e bármi a helyi tükörben (fiókváltás-őrhöz) */
+  hasAnyRows(): boolean {
+    for (const m of this.tables.values()) if (m.size > 0) return true;
+    return this.outbox.length > 0;
+  }
+
   async clearAll() {
+    this.generation++;
+    for (const t of this.persistTimers.values()) { clearTimeout(t.timer); t.resolve(false); }
+    this.persistTimers.clear();
+    this.tableWrites.clear();
     this.tables.clear();
     this.outbox = [];
     this.failed = [];

@@ -22,11 +22,6 @@ Deno.serve(async (req) => {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const caller = await identifyCaller(req, admin);
     if (!caller) return json({ error: 'Bejelentkezés szükséges.' }, 401);
-    // partner: 60 / nap; munkavállaló (anyagköltség blokkja): 20 / nap
-    const limit = caller.isPartner ? 60 : 20;
-    if (!await checkQuota(admin, caller.id, 'receipt-ocr', limit)) {
-      return json({ error: `Elérted a napi felismerési keretet (${limit}). Holnap újra próbálhatod.` }, 429);
-    }
     const { image_base64, media_type } = await req.json();
     if (!image_base64 || typeof image_base64 !== 'string') {
       return new Response(JSON.stringify({ error: 'image_base64 hiányzik' }), {
@@ -38,6 +33,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'A kép túl nagy (max ~6 MB). Készíts kisebb felbontású fotót.' }), {
         status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+    // partner: 60 / nap; munkavállaló (anyagköltség blokkja): 20 / nap — csak érvényes kérésnél számít
+    const limit = caller.isPartner ? 60 : 20;
+    if (!await checkQuota(admin, caller.id, 'receipt-ocr', limit)) {
+      return json({ error: `Elérted a napi felismerési keretet (${limit}). Holnap újra próbálhatod.` }, 429);
     }
     const ALLOWED_MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic']);
     const mt = ALLOWED_MEDIA.has(media_type) ? media_type : 'image/jpeg';

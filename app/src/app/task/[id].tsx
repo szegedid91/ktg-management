@@ -23,7 +23,7 @@ import {
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote } from '../../lib/types';
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings } from '../../lib/types';
 import { isOverdue } from '../../lib/tasks';
 import { todayISO } from '../../lib/format';
 
@@ -74,6 +74,7 @@ export default function TaskDetail() {
   const [assignOpen, setAssignOpen] = useState(false);
   // utólagos rögzítés (a munka már megtörtént): munkaidő felvitele, készre állítás
   const noteCount = useTable<TaskNote>('task_notes').filter((n) => n.task_id === id).length;
+  const appSettings = useTable<AppSettings>('app_settings')[0] ?? null;
   const [retroOpen, setRetroOpen] = useState(false);
   const [retroWorker, setRetroWorker] = useState<string | null>(null);
   const [retroDate, setRetroDate] = useState(todayISO());
@@ -122,7 +123,7 @@ Biztosan leveszed?`, 'Levétel', true);
   // ajánlatból, a szerver számolja) + a még futó munkamenetek előnézete
   const wageRows = useTable<Attendance>('attendance').filter((a) => a.task_id === id);
   const wageBooked = useMemo(() => wageRows.reduce((s, a) => s + Number(a.amount), 0), [wageRows]);
-  const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions.filter((s) => !s.ended_at), now) : null), [task, assigneeWorkers, sessions, now]);
+  const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions.filter((s) => !s.ended_at), appSettings, now) : null), [task, assigneeWorkers, sessions, appSettings, now]);
   const wageTotal = task?.quote_accepted_at && task.quote_amount != null ? Number(task.quote_amount) : wageBooked + (wage?.total ?? 0);
   const mat = useMemo(() => materialTotals(materials, pricing), [materials, pricing]);
   const profit = task && wage ? taskProfit(finance?.invoice_net, wageTotal, materials, pricing) : null;
@@ -265,10 +266,14 @@ Biztosan leveszed?`, 'Levétel', true);
     const m = hm.trim().match(/^(\d{1,2}):(\d{2})$/);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !m) return null;
     const d = new Date(`${date}T${String(m[1]).padStart(2, '0')}:${m[2]}:00`);
-    return isNaN(d.getTime()) ? null : d.toISOString();
+    if (isNaN(d.getTime())) return null;
+    // ne „guruljon át” a hibás dátum (pl. 02-31 → 03-03)
+    if (d.getFullYear() !== Number(date.slice(0, 4)) || d.getMonth() + 1 !== Number(date.slice(5, 7)) || d.getDate() !== Number(date.slice(8, 10))) return null;
+    if (Number(m[1]) > 23) return null;
+    return d.toISOString();
   };
   const addRetroSession = () => {
-    const wid = retroWorker ?? (assignees.length === 1 ? assignees[0].worker_id : null);
+    const wid = retroWorker ?? assignees[0]?.worker_id ?? null;
     if (!wid) { notify('Kinek?', 'Válaszd ki, ki dolgozott — előbb oszd ki a feladatot (Kiosztva · Módosít).'); return; }
     if (!task.site_id) { notify('Helyszín kell', 'Állíts be helyszínt a feladathoz (✏️ Szerkesztés).'); return; }
     const s0 = retroLocal(retroDate, retroStart); const e0 = retroLocal(retroDate, retroEnd);

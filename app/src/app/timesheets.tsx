@@ -10,7 +10,7 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { callRpc, getCurrentUserId } from '../lib/repo';
 import { syncNow } from '../lib/sync';
-import { ft, hd, todayISO } from '../lib/format';
+import { ft, hd, todayISO, localDateISO, addDaysISO } from '../lib/format';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { weekStartISO, wname } from '../lib/tasks';
 import { Timesheet, Worker, Attendance, WorkSession, Profile } from '../lib/types';
@@ -41,7 +41,9 @@ export default function Timesheets() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const rows = useMemo<Row[]>(() => {
-    const hasAccount = new Set(profiles.filter((p) => p.worker_id).map((p) => p.worker_id as string));
+    const accountIds = new Set(profiles.filter((p) => p.worker_id).map((p) => p.worker_id as string));
+    // fiókos munkavállaló, vagy fiókos vállalkozó embere (az ő óralapja alá esik)
+    const hasAccount = new Set(workers.filter((w) => accountIds.has(w.id) || (w.contractor_id && accountIds.has(w.contractor_id))).map((w) => w.id));
     const map = new Map<string, Row>();
     const ensure = (w: Worker, week: string) => {
       const key = `${w.id}|${week}`;
@@ -64,16 +66,25 @@ export default function Timesheets() {
       if (!(a.source === 'session' || a.source === 'task') || !hasAccount.has(a.worker_id)) continue;
       const w = workers.find((x) => x.id === a.worker_id);
       if (!w) continue;
-      const r = ensure(w, weekStartISO(a.work_date));
-      if (!r.sheet) {
-        r.amount += Number(a.amount) - Number(a.commission_amount);
-      }
+      ensure(w, weekStartISO(a.work_date));
+    }
+    // lap nélküli hét összege: a hét minden nem-jelenléti bér-sora (mint fn_timesheet_totals)
+    for (const r of map.values()) {
+      if (r.sheet) continue;
+      r.amount = attendance.filter((a) => a.worker_id === r.worker.id && a.pay_basis !== 'presence' && weekStartISO(a.work_date) === r.week)
+        .reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
     }
     // órák a munkamenetekből (lap nélküli heteknél)
     for (const r of map.values()) {
       if (r.sheet) continue;
-      const own = sessions.filter((s) => s.worker_id === r.worker.id && s.ended_at && weekStartISO(s.started_at.slice(0, 10)) === r.week);
-      r.hours = Math.round(own.reduce((sum, s) => sum + (new Date(s.ended_at!).getTime() - new Date(s.started_at).getTime()) / 3.6e6, 0) * 100) / 100;
+      const own = sessions.filter((s) => s.worker_id === r.worker.id && s.ended_at && weekStartISO(localDateISO(s.started_at)) === r.week);
+      // megkezdett órák naponként és építkezésenként (mint a szerveren)
+      const byDay = new Map<string, number>();
+      for (const s of own) {
+        const k = `${localDateISO(s.started_at)}|${s.site_id ?? ''}`;
+        byDay.set(k, (byDay.get(k) ?? 0) + (new Date(s.ended_at!).getTime() - new Date(s.started_at).getTime()) / 3.6e6);
+      }
+      r.hours = [...byDay.values()].reduce((sum, h) => sum + Math.ceil(Math.round(h * 1e4) / 1e4), 0);
       r.days = new Set(attendance.filter((a) => a.worker_id === r.worker.id && weekStartISO(a.work_date) === r.week).map((a) => a.work_date)).size;
     }
     return [...map.values()].sort((a, b) => b.week.localeCompare(a.week) || wname(a.worker).localeCompare(wname(b.worker), 'hu'));
@@ -112,7 +123,7 @@ export default function Timesheets() {
             <Badge text={STATUS_LABEL[r.status]} color={STATUS_COLOR[r.status]} />
             {r.week === thisWeek ? <Badge text="folyó hét" color={C.sub} /> : null}
           </View>
-          <Body style={{ fontWeight: '700' }}>{hd(r.week)} – {hd(new Date(new Date(`${r.week}T12:00:00`).getTime() + 6 * 864e5).toISOString().slice(0, 10))}</Body>
+          <Body style={{ fontWeight: '700' }}>{hd(r.week)} – {hd(addDaysISO(r.week, 6))}</Body>
           <Sub>{r.hours.toFixed(1)} óra · {r.days} nap · <Text style={{ fontWeight: '700', color: C.text }}>{ft(r.amount)}</Text></Sub>
           {r.sheet?.submitted_note ? <Sub>„{r.sheet.submitted_note}”</Sub> : null}
           {r.sheet?.decided_at ? <Sub style={{ fontSize: 11 }}>{r.status === 'approved' ? '✅' : '✖'} {hd(r.sheet.decided_at.slice(0, 10))} · {profiles.find((p) => p.id === r.sheet!.decided_by)?.display_name ?? ''}{r.sheet.decision_note ? ` — ${r.sheet.decision_note}` : ''}</Sub> : null}

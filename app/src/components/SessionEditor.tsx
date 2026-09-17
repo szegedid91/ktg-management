@@ -41,6 +41,8 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
     if (!s) { notify('Hiba', 'A kezdést ÉÉÉÉ-HH-NN ÓÓ:PP formában add meg.'); return; }
     if (end.trim() && !e) { notify('Hiba', 'A befejezést ÉÉÉÉ-HH-NN ÓÓ:PP formában add meg (vagy hagyd üresen, ha még fut).'); return; }
     if (e && e <= s) { notify('Hiba', 'A befejezés a kezdés után kell legyen.'); return; }
+    const nowIso = new Date().toISOString();
+    if (s > nowIso || (e && e > nowIso)) { notify('Hiba', 'Jövőbeli időpont nem adható meg.'); return; }
     if (e && (new Date(e).getTime() - new Date(s).getTime()) > 16 * 3.6e6) { notify('Hiba', 'Egy munkamenet legfeljebb 16 óra lehet — bontsd kettőbe.'); return; }
     updateRow('work_sessions', session.id, { started_at: s, ended_at: e });
     setOpen(false);

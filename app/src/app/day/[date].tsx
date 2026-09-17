@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Segmented, Check, Row } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { insertRow, softDeleteRow, getCurrentUserId } from '../../lib/repo';
 import { store } from '../../lib/store';
 import { ft, hd, todayISO, parseAmount } from '../../lib/format';
@@ -11,7 +11,7 @@ import { attendanceAmount, commissionAmount } from '../../lib/calc';
 import { Attendance, Worker, Site, AppSettings, AttendanceBasis } from '../../lib/types';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
-export default function DayView() {
+function DayViewInner() {
   const { date, siteId } = useLocalSearchParams<{ date: string; siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
   const allSites = useTable<Site>('sites');
@@ -100,7 +100,8 @@ export default function DayView() {
    *  díj nélküli jelenlétként másolódik, hogy ne terhelődjön kétszer. */
   const copyYesterday = () => {
     if (!site) return;
-    const prevDates = [...new Set(attendance.filter((a) => a.site_id === site && a.work_date < date).map((a) => a.work_date))].sort();
+    // csak a kézzel rögzített sorokat másoljuk: a munkaidőből/ajánlatból képzett bér magától jön
+    const prevDates = [...new Set(attendance.filter((a) => a.site_id === site && a.work_date < date && (a.source ?? 'manual') === 'manual').map((a) => a.work_date))].sort();
     const prev = prevDates[prevDates.length - 1];
     if (!prev) {
       notify('Nincs mit másolni', 'Ezen az építkezésen nincs korábbi jelenléti bejegyzés.');
@@ -313,4 +314,11 @@ export default function DayView() {
       ) : null}
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function DayView() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <DayViewInner />;
 }

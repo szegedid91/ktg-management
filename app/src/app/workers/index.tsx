@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { Screen, Input, Row, Body, Sub, Btn, Empty, Badge } from '../../ui/kit';
 import { InviteCard } from '../../components/InviteCard';
 import { C } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { Worker, Profile, TaskAssignee, WorkerTask } from '../../lib/types';
 import { isActiveTask } from '../../lib/tasks';
 import { copyText } from '../../lib/clipboard';
@@ -55,7 +55,7 @@ export function CopyButton({ text, small }: { text: string; small?: boolean; lab
   );
 }
 
-export default function Workers() {
+function WorkersInner() {
   const workers = useTable<Worker>('workers');
   // kinek van saját (összekapcsolt) fiókja — a többinél jelezzük, hogy még nincs
   const withAccount = new Set(useTable<Profile>('profiles').map((p) => p.worker_id).filter(Boolean) as string[]);
@@ -127,4 +127,11 @@ export default function Workers() {
       <Btn title="+ Új munkavállaló" kind="secondary" onPress={() => router.push('/worker/new')} />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Workers() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <WorkersInner />;
 }

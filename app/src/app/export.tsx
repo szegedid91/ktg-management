@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { Platform, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
+import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented, Empty } from '../ui/kit';
 import { S } from '../ui/theme';
-import { useTable } from '../lib/hooks';
+import { useTable, useIsWorker } from '../lib/hooks';
 import { supabase } from '../lib/supabase';
 import { todayISO } from '../lib/format';
 import { Site } from '../lib/types';
 import { notify, confirmDialog } from '../lib/dialogs';
 
-export default function ExportScreen() {
+function ExportScreenInner() {
   const sites = useTable<Site>('sites');
   const [from, setFrom] = useState(todayISO().slice(0, 7) + '-01');
   const [to, setTo] = useState(todayISO());
@@ -76,4 +76,11 @@ export default function ExportScreen() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function ExportScreen() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <ExportScreenInner />;
 }

@@ -7,7 +7,8 @@ import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge, Input } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
+import { notify } from '../../lib/dialogs';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { markAttendancePaid, markCommissionPaid } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { Attendance, Worker, Site, ExternalPerson , Timesheet, Profile} from '../../lib/types';
@@ -33,6 +34,8 @@ interface Item {
   date: string;
   amount: number;
   detail: string;
+  /** óralap-jóváhagyás nélkül nem fizethető (a szerver elutasítaná a csomagot) */
+  blocked?: boolean;
 }
 
 // a kijelölés 5 percig megmarad akkor is, ha a felhasználó elnavigál,
@@ -58,7 +61,7 @@ interface SiteGroup {
   total: number;
 }
 
-export default function PendingScreen() {
+function PendingScreenInner() {
   const { kind } = useLocalSearchParams<{ kind: string }>();
   const isWages = kind !== 'commissions';
   const attendance = useTable<Attendance>('attendance');
@@ -73,6 +76,7 @@ export default function PendingScreen() {
     const bySite = new Map<string, Map<string, PersonGroup>>();
 
     for (const a of attendance) {
+      let blocked = false;
       let personKey: string; let personName: string;
       let amount: number; let detail: string;
 
@@ -90,9 +94,10 @@ export default function PendingScreen() {
           : 'projektdíj');
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
-        if ((a.source === 'session' || a.source === 'task') && hasAccount(a.worker_id)
+        if ((a.source === 'session' || a.source === 'task') && (hasAccount(a.worker_id) || (w?.contractor_id && hasAccount(w.contractor_id)))
             && !timesheets.some((t) => t.worker_id === a.worker_id && t.week_start === weekStartISO(a.work_date) && t.status === 'approved')) {
           detail += ' · 🗓️ óralap jóváhagyásra vár';
+          blocked = true;
         }
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
@@ -108,7 +113,7 @@ export default function PendingScreen() {
       if (!persons) { persons = new Map(); bySite.set(a.site_id, persons); }
       let pg = persons.get(personKey);
       if (!pg) { pg = { key: personKey, name: personName, items: [], total: 0 }; persons.set(personKey, pg); }
-      pg.items.push({ id: a.id, date: a.work_date, amount, detail });
+      pg.items.push({ id: a.id, date: a.work_date, amount, detail, blocked });
       pg.total += amount;
     }
 
@@ -125,7 +130,7 @@ export default function PendingScreen() {
         };
       })
       .sort((a, b) => b.total - a.total);
-  }, [attendance, workers, sites, externals, isWages]);
+  }, [attendance, workers, sites, externals, isWages, timesheets, profiles]);
 
   // terület-szűrő: üres kiválasztás = minden építkezés látszik
   const [siteFilter, setSiteFilter] = useState<Set<string>>(new Set());
@@ -319,8 +324,8 @@ export default function PendingScreen() {
                         <View style={{ flex: 1 }}>
                           <Check
                             checked={selected.has(it.id)}
-                            onToggle={() => toggleIn(selected, setSelected, it.id)}
-                            label={`${hd(it.date)} — ${ft(it.amount)}`}
+                            onToggle={() => { if (it.blocked) { notify('Óralap kell', 'Előbb hagyd jóvá a hetet az Óralapok oldalon, utána fizethető ki.'); return; } toggleIn(selected, setSelected, it.id); }}
+                            label={`${it.blocked ? '🔒 ' : ''}${hd(it.date)} — ${ft(it.amount)}`}
                             sub={it.detail}
                           />
                         </View>
@@ -328,15 +333,16 @@ export default function PendingScreen() {
                     ))}
                     <View style={{ paddingLeft: S.lg }}>
                       <Btn
-                        title={p.items.every((i) => selected.has(i.id))
+                        title={p.items.filter((i) => !i.blocked).length > 0 && p.items.filter((i) => !i.blocked).every((i) => selected.has(i.id))
                           ? `${p.name}: kijelölés törlése`
                           : `${p.name}: mind kijelölése (${ft(p.total)})`}
                         kind="secondary"
                         small
                         onPress={() => {
                           const next = new Set(selected);
-                          const all = p.items.every((i) => next.has(i.id));
-                          p.items.forEach((i) => { if (all) next.delete(i.id); else next.add(i.id); });
+                          const payable = p.items.filter((i) => !i.blocked);
+                          const all = payable.length > 0 && payable.every((i) => next.has(i.id));
+                          payable.forEach((i) => { if (all) next.delete(i.id); else next.add(i.id); });
                           setSelected(next);
                         }}
                       />
@@ -350,4 +356,11 @@ export default function PendingScreen() {
       ))}
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function PendingScreen() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <PendingScreenInner />;
 }

@@ -7,13 +7,14 @@ import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker, Input, Check } from '
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
-import { ft, hd, hdt } from '../lib/format';
+import { ft, hd, hdt, todayISO, localDateISO } from '../lib/format';
 import { isActiveTask, fmtHours, sessionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
 import { callRpc } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { TaskRow } from './TaskRow';
 import { InviteCard } from './InviteCard';
+import { SyncBanner } from './SyncBanner';
 import { router } from 'expo-router';
 import {
   Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, Timesheet,
@@ -118,20 +119,20 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   };
 
   const todayHours = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return sessions.filter((s) => s.started_at.slice(0, 10) === today).reduce((sum, s) => sum + sessionHours(s), 0);
+    const today = todayISO();
+    return sessions.filter((s) => localDateISO(s.started_at) === today).reduce((sum, s) => sum + sessionHours(s), 0);
   }, [sessions]);
 
   const days = [...attendance].sort((a, b) => b.work_date.localeCompare(a.work_date));
   // heti óralap: az elmúlt 4 hét, amelyiken volt munkaidő
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayISO();
   const thisWeek = weekStartISO(todayIso);
   const people = [{ id: wid, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))];
   const weeks = Array.from({ length: 4 }, (_, i) => {
     const d = new Date(`${thisWeek}T12:00:00`); d.setDate(d.getDate() - 7 * i);
-    const week = d.toISOString().slice(0, 10);
+    const week = localDateISO(d);
     return people.map((p) => {
-      const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && weekStartISO(s.started_at.slice(0, 10)) === week);
+      const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && weekStartISO(localDateISO(s.started_at)) === week);
       const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
       const amount = allAttendance.filter((a) => a.worker_id === p.id && a.pay_basis !== 'presence' && weekStartISO(a.work_date) === week)
         .reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
@@ -156,6 +157,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
 
   return (
     <Screen>
+      <SyncBanner />
       {boss ? (
         <Card style={{ paddingVertical: S.sm, borderColor: C.primary }}>
           <Text style={{ fontWeight: '800', color: C.text }}>👥 {wname(boss)} csapatában dolgozol</Text>
@@ -174,9 +176,10 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 ma {fmtHours(todayHours)}
               </Sub>
             </View>
+            {!openSession && (isContractor && crew.length ? crewRunning.length < crew.length + 1 : !crewRunning.length)
+              ? <Btn title="▶ Kezdés" kind="secondary" small onPress={onStart} /> : null}
             {openSession || crewRunning.length
-              ? <Btn title={crewRunning.length ? `⏹ Befejezés (${crewRunning.length + (openSession ? 1 : 0)} fő)` : '⏹ Befejezés'} kind="danger" small onPress={stopAll} />
-              : <Btn title="▶ Kezdés" kind="secondary" small onPress={onStart} />}
+              ? <Btn title={crewRunning.length ? `⏹ Befejezés (${crewRunning.length + (openSession ? 1 : 0)} fő)` : '⏹ Befejezés'} kind="danger" small onPress={stopAll} /> : null}
           </View>
           {crewRunning.length ? <Sub>👥 Dolgoznak: {crewRunning.map((s) => workers.find((w) => w.id === s.worker_id)?.name ?? '?').join(', ')}</Sub> : null}
           {startOpen && !openSession ? (
@@ -213,8 +216,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
           {crewOpen ? (
             <View style={{ gap: 6, paddingTop: 4 }}>
               {crew.map((c) => {
-                const today = new Date().toISOString().slice(0, 10);
-                const h = allSessions.filter((s) => s.worker_id === c.id && s.started_at.slice(0, 10) === today).reduce((sum, s) => sum + sessionHours(s), 0);
+                const today = todayISO();
+                const h = allSessions.filter((s) => s.worker_id === c.id && localDateISO(s.started_at) === today).reduce((sum, s) => sum + sessionHours(s), 0);
                 return (
                   <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 3 }}>
                     <View style={{ flex: 1 }}>

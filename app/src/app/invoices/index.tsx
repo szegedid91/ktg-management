@@ -3,11 +3,11 @@ import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Card, Sub, Body, Btn, Row, Badge, Empty, Segmented, KV } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { useTable } from '../../lib/hooks';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { ft, hd, todayISO } from '../../lib/format';
 import { Invoice, Site } from '../../lib/types';
 
-export default function Invoices() {
+function InvoicesInner() {
   const invoices = useTable<Invoice>('invoices');
   const sites = useTable<Site>('sites');
   const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid'>('all');
@@ -113,4 +113,11 @@ export default function Invoices() {
       <Btn title="+ Új kimenő számla" kind="secondary" onPress={() => router.push('/invoice/new')} />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Invoices() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <InvoicesInner />;
 }

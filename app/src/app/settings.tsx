@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
-import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented } from '../ui/kit';
+import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented, Empty } from '../ui/kit';
 import { S, C, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
-import { useTable, useOnlineView } from '../lib/hooks';
+import { useTable, useOnlineView, useIsWorker } from '../lib/hooks';
 import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow, fetchView } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { supabase } from '../lib/supabase';
@@ -17,7 +17,7 @@ function RateInput({ label, value, onChange }: { label: string; value: string; o
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
 }
 
-export default function Settings() {
+function SettingsInner() {
   const settings = useTable<AppSettings>('app_settings')[0];
   const profiles = useTable<Profile>('profiles');
   const categories = useTable<ExpenseCategory>('expense_categories');
@@ -309,4 +309,11 @@ export default function Settings() {
       </Card>
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Settings() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <SettingsInner />;
 }

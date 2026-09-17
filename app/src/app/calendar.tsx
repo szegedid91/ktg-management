@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Card, H2, Sub, Btn } from '../ui/kit';
+import { Screen, Card, H2, Sub, Btn, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { useTable } from '../lib/hooks';
+import { useTable, useIsWorker } from '../lib/hooks';
 import { ft, monthName, todayISO } from '../lib/format';
 import { Attendance, Expense, Invoice } from '../lib/types';
 
-export default function Calendar() {
+function CalendarInner() {
   const today = todayISO();
   const [year, setYear] = useState(Number(today.slice(0, 4)));
   const [month, setMonth] = useState(Number(today.slice(5, 7)) - 1); // 0-index
@@ -104,4 +104,11 @@ export default function Calendar() {
       <Btn title="Mai jelenlét rögzítése" onPress={() => router.push(`/day/${today}`)} />
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function Calendar() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <CalendarInner />;
 }

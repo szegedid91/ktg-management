@@ -31,7 +31,8 @@ export async function registerPushToken(): Promise<void> {
     if (token && me) {
       // közvetlen szerver-írás: bejelentkezéskor a lokális profiles-tükör
       // még üres lehet, az updateRow ilyenkor némán kilépne
-      const { error } = await supabase.from('profiles').update({ push_token: token }).eq('id', me);
+      // kizárólagos regisztráció: ugyanaz az eszköz-token más profilról lekerül (közös telefon)
+      const { error } = await supabase.rpc('register_push_token', { p_token: token });
       if (error) updateRow('profiles', me, { push_token: token }); // offline: tükrön át, sync majd feltolja
     }
   } catch {

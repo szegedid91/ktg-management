@@ -5,11 +5,11 @@ import React from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Row, Body, Sub, Money, Empty, Card } from '../../ui/kit';
-import { useTable } from '../../lib/hooks';
+import { useTable, useIsWorker } from '../../lib/hooks';
 import { ft, hd } from '../../lib/format';
 import { Expense, ExpenseCategory, Profile } from '../../lib/types';
 
-export default function CommonExpenses() {
+function CommonExpensesInner() {
   const expenses = useTable<Expense>('expenses').filter((e) => !e.site_id);
   // törölt kategória neve is kelljen a régi tételekhez
   const categories = useTable<ExpenseCategory>('expense_categories', true);
@@ -40,4 +40,11 @@ export default function CommonExpenses() {
       ))}
     </Screen>
   );
+}
+
+/** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
+ *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
+export default function CommonExpenses() {
+  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  return <CommonExpensesInner />;
 }
