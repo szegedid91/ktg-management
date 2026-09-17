@@ -6,8 +6,8 @@
 //  - {job: "digest"}  → heti összefoglaló (pl. péntek délutáni cron)
 //  - {job: "overdue"} → N napnál régebbi kifizetetlen bér / be nem folyt számla
 //
-// Web Push: a VAPID kulcspár az app_secrets táblában ('vapid_public',
-// 'vapid_private'), csak a service role olvassa. A címzett minden élő
+// Web Push: a VAPID kulcspár a Vaultban ('vapid_public', 'vapid_private'),
+// csak a service role olvassa (fn_vapid_keys RPC). A címzett minden élő
 // push_subscriptions sorára küldünk; 404/410 → a feliratkozás lejárt,
 // deleted_at-tal jelöljük.
 
@@ -147,10 +147,10 @@ Deno.serve(async (req) => {
     let webSubs: WebSub[] = [];
     let vapidReady = false;
     if (recipients.length) {
-      const { data: secrets } = await supabase.from('app_secrets').select('name, value')
-        .in('name', ['vapid_public', 'vapid_private']);
-      const pub = secrets?.find((s) => s.name === 'vapid_public')?.value;
-      const priv = secrets?.find((s) => s.name === 'vapid_private')?.value;
+      // a kulcspár a Vaultban él, csak service-kulccsal olvasható (fn_vapid_keys)
+      const { data: keys } = await supabase.rpc('fn_vapid_keys').maybeSingle();
+      const pub = (keys as any)?.public_key as string | undefined;
+      const priv = (keys as any)?.private_key as string | undefined;
       if (pub && priv) {
         webpush.setVapidDetails(VAPID_SUBJECT, pub, priv);
         vapidReady = true;

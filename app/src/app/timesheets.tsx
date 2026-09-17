@@ -90,7 +90,7 @@ export default function Timesheets() {
     return [...map.values()].sort((a, b) => b.week.localeCompare(a.week) || wname(a.worker).localeCompare(wname(b.worker), 'hu'));
   }, [sheets, attendance, sessions, workers, profiles]);
 
-  if (isWorker) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól — az óralapodat a kezdőlapon küldheted be." /></Screen>;
+  if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
 
   const shown = rows.filter((r) => filter === 'all' || r.status === 'submitted' || r.status === 'open');
   const thisWeek = weekStartISO(todayISO());

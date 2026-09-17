@@ -135,6 +135,6 @@ function ExpenseDetailInner() {
 /** Fő felhasználói oldal: munkavállalói fiók nem nyithatja meg (a hookok
  *  sorrendje miatt külön burkolóban, nem a komponensen belüli korai visszatéréssel). */
 export default function ExpenseDetail() {
-  if (useIsWorker()) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  if (useIsWorker()) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
   return <ExpenseDetailInner />;
 }

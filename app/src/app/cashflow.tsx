@@ -159,7 +159,7 @@ export default function Cashflow() {
     return { rows, noDue, noDueCount, later, laterCount, overdueSum, overdueCount, weeklyRecurring, projectedTasks, final: cum };
   }, [today, invoices, attendance, expenses, tasks, assignees, sessions, workers, settings]);
 
-  if (isWorker) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól." /></Screen>;
+  if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
 
   const { rows } = model;
   const totalIn = rows.reduce((s, r) => s + r.inflow, 0);

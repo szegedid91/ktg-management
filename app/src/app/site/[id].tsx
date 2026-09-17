@@ -43,7 +43,7 @@ export default function SiteDetail() {
   }, [expenses, attendance, invoices]);
 
   if (!site) return <Screen><Empty text="Építkezés nem található (szinkronizálás folyamatban?)" /></Screen>;
-  if (isWorker) return <Screen><Empty text="Ez az oldal a fő felhasználóknak szól — a feladataidat a Feladatok fülön találod." /></Screen>;
+  if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
   const closed = site.status === 'closed';
 
   const doClose = async () => {

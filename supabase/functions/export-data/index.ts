@@ -5,7 +5,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as XLSX from 'npm:xlsx@0.18.5';
-import { PDFDocument, rgb } from 'npm:pdf-lib@1.17.1';
+import { PDFDocument, rgb, StandardFonts } from 'npm:pdf-lib@1.17.1';
 import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
 import { identifyCaller } from './caller.ts';
 
@@ -13,6 +13,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const FONT_URL = 'https://cdn.jsdelivr.net/gh/googlefonts/roboto@main/src/hinted/Roboto-Regular.ttf';
+const FONT_SHA256 = '56a45233d29f11b4dfb86d248e921939d115778f87325e7ae8cc108383d6664d';
 
 const ft = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' Ft';
 const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : '');
@@ -135,9 +138,21 @@ Deno.serve(async (req) => {
     // ---------- PDF ----------
     const pdf = await PDFDocument.create();
     pdf.registerFontkit(fontkit);
-    // magyar ékezetekhez (ő, ű) beágyazott font kell
-    const fontBytes = await (await fetch('https://cdn.jsdelivr.net/gh/googlefonts/roboto@main/src/hinted/Roboto-Regular.ttf')).arrayBuffer();
-    const font = await pdf.embedFont(fontBytes, { subset: true });
+    // magyar ékezetekhez (ő, ű) beágyazott font kell. A letöltött fájl SHA-256-át
+    // rögzített értékhez hasonlítjuk (integritás); hiba esetén beépített
+    // betűtípussal készül a PDF (ékezet nélkül), nem 500-as hibával.
+    let font;
+    try {
+      const res = await fetch(FONT_URL);
+      if (!res.ok) throw new Error('font http ' + res.status);
+      const bytes = await res.arrayBuffer();
+      const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((x) => x.toString(16).padStart(2, '0')).join('');
+      if (digest !== FONT_SHA256) throw new Error('font integrity mismatch');
+      font = await pdf.embedFont(bytes, { subset: true });
+    } catch (e) {
+      console.warn('export-data font', e);
+      font = await pdf.embedFont(StandardFonts.Helvetica);
+    }
 
     let page = pdf.addPage([595, 842]); // A4
     let y = 800;

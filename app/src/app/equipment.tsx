@@ -136,7 +136,7 @@ export default function EquipmentScreen() {
       <Screen>
         <Card>
           <H2>Eszközök</H2>
-          <Sub>Ez a rész a fő felhasználóknak szól.</Sub>
+          <Sub>Nincs jogosultságod ehhez a részhez.</Sub>
         </Card>
       </Screen>
     );

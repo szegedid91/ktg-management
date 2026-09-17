@@ -120,7 +120,7 @@ export default function NewTask() {
     smartBack();
   };
 
-  if (isWorker) return <Screen><Empty text="Feladatot csak a fő felhasználók adhatnak ki." /></Screen>;
+  if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
 
   return (
     <Screen>
