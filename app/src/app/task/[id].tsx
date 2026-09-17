@@ -29,10 +29,19 @@ import { isOverdue } from '../../lib/tasks';
 import { todayISO } from '../../lib/format';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
-function Section({ title, summary, defaultOpen = false, accent, children }: {
-  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; children: React.ReactNode;
+/** plain: mindig nyitva, összecsukó nyíl és összegzés nélkül (munkavállalói, egyszerű nézet) */
+function Section({ title, summary, defaultOpen = false, accent, plain, children }: {
+  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; plain?: boolean; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  if (plain) {
+    return (
+      <Card style={accent ? { borderColor: C.primary } : undefined}>
+        <Text style={{ fontWeight: '800', fontSize: 16, color: C.text }}>{title}</Text>
+        {children}
+      </Card>
+    );
+  }
   return (
     <Card style={accent ? { borderColor: C.primary } : undefined}>
       <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
@@ -489,12 +498,11 @@ Biztosan leveszed?`, 'Levétel', true);
           <>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
               <Sub style={{ flex: 1 }}>📍 {site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : 'nincs helyszín'}</Sub>
-              {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+              {site?.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
             </View>
-            <Sub>
-              Kiadta: {creator} · {hdt(task.created_at)}
-              {assignees.length > 1 ? ` · veled: ${assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}` : ''}
-            </Sub>
+            {assignees.length > 1 ? (
+              <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
+            ) : null}
           </>
         ) : (
           <>
@@ -609,8 +617,8 @@ Biztosan leveszed?`, 'Levétel', true);
         </Card>
       ) : null}
 
-      {isWorker && !acked ? null : (
-      <Section title="⏱ Munkaidő" defaultOpen={false}
+      {isWorker && (!acked || !timing?.startedAt) ? null : (
+      <Section title="⏱ Munkaidő" defaultOpen={isWorker} plain={isWorker}
         summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
         {timing?.startedAt ? (
           <>
@@ -756,7 +764,7 @@ Biztosan leveszed?`, 'Levétel', true);
         </Section>
       ) : null}
 
-      <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={noteCount > 0}>
+      <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={isWorker || noteCount > 0} plain={isWorker}>
         <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && active : true} />
       </Section>
 
@@ -792,9 +800,9 @@ Biztosan leveszed?`, 'Levétel', true);
 
       {/* ---------- anyagköltségek ---------- */}
       {isWorker && !acked ? null : (
-      <Section title="📦 Anyagköltség" defaultOpen={!isWorker && mat.unpriced.length > 0}
+      <Section title="📦 Anyagköltség" defaultOpen={isWorker || mat.unpriced.length > 0} plain={isWorker}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
-        {materials.length === 0 ? <Sub>Nincs rögzített anyagköltség.</Sub> : null}
+        {materials.length === 0 && !isWorker ? <Sub>Nincs rögzített anyagköltség.</Sub> : null}
         {materials.map((m) => (
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -825,7 +833,7 @@ Biztosan leveszed?`, 'Levétel', true);
         ) : null}
         {(isWorker ? !!myAssignment : true) && active ? (
           !matOpen ? (
-            <Btn title={isWorker ? '+ Anyagköltség hozzáadása (fotóval)' : '+ Anyagköltség hozzáadása'} kind="secondary" onPress={() => setMatOpen(true)} />
+            <Btn title={isWorker ? '📷 Anyagot vettem — rögzítés (blokk fotóval)' : '+ Anyagköltség hozzáadása'} kind="secondary" onPress={() => setMatOpen(true)} />
           ) : (
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />

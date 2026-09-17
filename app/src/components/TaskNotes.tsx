@@ -49,7 +49,7 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
 
   return (
     <View style={{ gap: S.sm }}>
-      {notes.length === 0 ? <Sub>Még nincs megjegyzés.</Sub> : null}
+      {notes.length === 0 && !isWorker ? <Sub>Még nincs megjegyzés.</Sub> : null}
       {notes.map((n) => (
         <View key={n.id} style={{ gap: 4, borderLeftWidth: 3, borderLeftColor: n.visible_to_workers ? C.primary : C.border, paddingLeft: S.sm, paddingVertical: 2 }}>
           {editId === n.id ? (
