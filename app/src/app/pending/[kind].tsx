@@ -1,7 +1,7 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
-import { unpaidWorkerPart, weekStartISO } from '../../lib/tasks';
+import { unpaidWorkerPart } from '../../lib/tasks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -10,7 +10,7 @@ import { C, S } from '../../ui/theme';
 import { useTable, useIsWorker } from '../../lib/hooks';
 import { markAttendancePaid, markCommissionPaid } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
-import { Attendance, Worker, Site, ExternalPerson , Timesheet, Profile} from '../../lib/types';
+import { Attendance, Worker, Site, ExternalPerson } from '../../lib/types';
 
 function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
@@ -33,8 +33,6 @@ interface Item {
   date: string;
   amount: number;
   detail: string;
-  /** a heti óralap még nincs jóváhagyva — csak tájékoztatás, kifizethető */
-  noSheet?: boolean;
 }
 
 // a kijelölés 5 percig megmarad akkor is, ha a felhasználó elnavigál,
@@ -67,15 +65,11 @@ function PendingScreenInner() {
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
   const externals = useTable<ExternalPerson>('external_people');
-  const timesheets = useTable<Timesheet>('timesheets');
-  const profiles = useTable<Profile>('profiles');
-  const hasAccount = (wid: string) => profiles.some((p) => p.worker_id === wid);
 
   const groups = useMemo<SiteGroup[]>(() => {
     const bySite = new Map<string, Map<string, PersonGroup>>();
 
     for (const a of attendance) {
-      let noSheet = false;
       let personKey: string; let personName: string;
       let amount: number; let detail: string;
 
@@ -93,11 +87,6 @@ function PendingScreenInner() {
           : 'projektdíj');
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
-        if ((a.source === 'session' || a.source === 'task') && (hasAccount(a.worker_id) || (w?.contractor_id && hasAccount(w.contractor_id)))
-            && !timesheets.some((t) => t.worker_id === a.worker_id && t.week_start === weekStartISO(a.work_date) && t.status === 'approved')) {
-          detail += ' · 🗓️ óralap nincs jóváhagyva';
-          noSheet = true;
-        }
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
         const ep = externals.find((x) => x.id === a.referrer_external_id);
@@ -112,7 +101,7 @@ function PendingScreenInner() {
       if (!persons) { persons = new Map(); bySite.set(a.site_id, persons); }
       let pg = persons.get(personKey);
       if (!pg) { pg = { key: personKey, name: personName, items: [], total: 0 }; persons.set(personKey, pg); }
-      pg.items.push({ id: a.id, date: a.work_date, amount, detail, noSheet });
+      pg.items.push({ id: a.id, date: a.work_date, amount, detail });
       pg.total += amount;
     }
 
@@ -129,7 +118,7 @@ function PendingScreenInner() {
         };
       })
       .sort((a, b) => b.total - a.total);
-  }, [attendance, workers, sites, externals, isWages, timesheets, profiles]);
+  }, [attendance, workers, sites, externals, isWages]);
 
   // terület-szűrő: üres kiválasztás = minden építkezés látszik
   const [siteFilter, setSiteFilter] = useState<Set<string>>(new Set());
