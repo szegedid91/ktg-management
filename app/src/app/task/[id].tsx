@@ -703,7 +703,7 @@ Biztosan leveszed?`, 'Levétel', true);
       ) : null}
 
       <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={noteCount > 0}>
-        <TaskNotes taskId={task.id} isWorker={isWorker} />
+        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && active : true} />
       </Section>
 
       {/* ---------- utólagos rögzítés (fő felhasználó) ---------- */}
