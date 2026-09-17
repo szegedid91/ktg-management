@@ -3,7 +3,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker, Input, Check } from '../ui/kit';
+import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker, Input, Check, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
@@ -18,7 +18,7 @@ import { SyncBanner } from './SyncBanner';
 import { openDirections } from '../lib/maps';
 import { router } from 'expo-router';
 import {
-  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, Timesheet, ScheduleEntry,
+  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, ScheduleEntry,
 } from '../lib/types';
 
 export function WorkerHome({ profile }: { profile: Profile }) {
@@ -50,9 +50,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const schedule = useTable<ScheduleEntry>('schedule_entries')
     .filter((e) => myIds.has(e.worker_id) && e.work_date >= todayISO() && e.work_date <= addDaysISO(todayISO(), 7))
     .sort((a, b) => a.work_date.localeCompare(b.work_date));
-  const allSheets = useTable<Timesheet>('timesheets');
-  const sheets = allSheets.filter((t) => t.worker_id === wid);
-  const [sheetBusy, setSheetBusy] = useState(false);
+  const [periodMode, setPeriodMode] = useState<'week' | 'month'>('week');
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
   const [closedOpen, setClosedOpen] = useState(false);
@@ -129,34 +127,32 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   }, [sessions]);
 
   const days = [...attendance].sort((a, b) => b.work_date.localeCompare(a.work_date));
-  // heti óralap: az elmúlt 4 hét, amelyiken volt munkaidő
+  // munkaidő-áttekintés hetekre / hónapokra bontva. Nincs beküldés: a bér a
+  // munkaidőből automatikusan képződik, ez csak az áttekintést szolgálja.
   const todayIso = todayISO();
   const thisWeek = weekStartISO(todayIso);
   const people = [{ id: wid, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))];
-  const weeks = Array.from({ length: 4 }, (_, i) => {
-    const d = new Date(`${thisWeek}T12:00:00`); d.setDate(d.getDate() - 7 * i);
-    const week = localDateISO(d);
-    return people.map((p) => {
-      const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && weekStartISO(localDateISO(s.started_at)) === week);
-      const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
-      const amount = allAttendance.filter((a) => a.worker_id === p.id && a.pay_basis !== 'presence' && weekStartISO(a.work_date) === week)
-        .reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
-      return { week, person: p, hours, amount, sheet: allSheets.find((t) => t.worker_id === p.id && t.week_start === week) ?? null };
-    });
-  }).flat().filter((w) => w.hours > 0 || w.amount > 0 || w.sheet);
-  const submitSheet = async (week: string, workerId?: string) => {
-    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a vezetők értesítést kapnak róla. Beküldöd?`, 'Beküldés')) return;
-    setSheetBusy(true);
-    try {
-      await callRpc('submit_timesheet', { p_week_start: week, p_worker: workerId ?? null });
-      void syncNow();
-      notify('Óralap beküldve 🗓️', 'A vezetők értesítést kaptak.');
-    } catch (e: any) {
-      notify('Hiba', String(e?.message ?? e));
-    } finally {
-      setSheetBusy(false);
+  const periodKeys: { key: string; label: string; match: (d: string) => boolean }[] = [];
+  if (periodMode === 'week') {
+    for (let i = 0; i < 8; i++) {
+      const d = new Date(`${thisWeek}T12:00:00`); d.setDate(d.getDate() - 7 * i);
+      const week = localDateISO(d);
+      periodKeys.push({ key: week, label: `${hd(week)} hete${week === thisWeek ? ' (folyó)' : ''}`, match: (x) => weekStartISO(x) === week });
     }
-  };
+  } else {
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(`${todayIso.slice(0, 7)}-15T12:00:00`); d.setMonth(d.getMonth() - i);
+      const ym = localDateISO(d).slice(0, 7);
+      periodKeys.push({ key: ym, label: `${ym.replace('-', '. ')}.${ym === todayIso.slice(0, 7) ? ' (folyó)' : ''}`, match: (x) => x.slice(0, 7) === ym });
+    }
+  }
+  const periods = periodKeys.map((k) => people.map((p) => {
+    const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && k.match(localDateISO(s.started_at)));
+    const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
+    const rows = allAttendance.filter((a) => a.worker_id === p.id && k.match(a.work_date));
+    const amount = rows.filter((a) => a.pay_basis !== 'presence').reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
+    return { key: k.key, label: k.label, person: p, hours, amount, days: new Set(rows.map((a) => a.work_date)).size };
+  })).flat().filter((w) => w.hours > 0 || w.amount > 0);
   const unpaid = days.filter((a) => a.pay_basis !== 'presence' && !a.paid_at)
     .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
 
@@ -308,22 +304,19 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         </Card>
       ) : null}
 
-      {weeks.length > 0 ? (
+      {periods.length > 0 ? (
         <Card style={{ paddingVertical: S.sm, gap: 6 }}>
-          <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>🗓️ Heti óralap</Text>
-          {weeks.map((w) => (
-            <View key={`${w.week}-${w.person.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+          <Text style={{ fontWeight: '800', fontSize: 16, color: C.text }}>🗓️ Munkaidőm</Text>
+          <Segmented options={[{ value: 'week', label: 'Hetek' }, { value: 'month', label: 'Hónapok' }]} value={periodMode} onChange={setPeriodMode} />
+          {periods.map((w) => (
+            <View key={`${w.key}-${w.person.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontWeight: '600' }}>{hd(w.week)} hete{w.week === thisWeek ? ' (folyó)' : ''}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
-                <Sub>{fmtHours(w.hours)} · {ft(w.amount)}</Sub>
+                <Text style={{ color: C.text, fontWeight: '600' }}>{w.label}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
+                <Sub>{fmtHours(w.hours)} · {w.days} nap</Sub>
               </View>
-              {w.sheet?.status === 'approved' ? <Badge text="jóváhagyva ✓" color={C.success} />
-                : w.sheet?.status === 'submitted' ? <Badge text="beküldve ✓" color={C.success} />
-                : boss ? <Badge text="a vállalkozód küldi be" color={C.sub} />
-                : <Btn title={w.sheet?.status === 'rejected' ? 'Újra beküld' : 'Beküldés'} kind="secondary" small disabled={sheetBusy} onPress={() => void submitSheet(w.week, w.person.id === wid ? undefined : w.person.id)} />}
+              <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{ft(w.amount)}</Text>
             </View>
           ))}
-          {weeks.some((w) => w.sheet?.status === 'rejected') ? <Sub style={{ color: C.danger }}>Visszaküldött óralap: {weeks.find((w) => w.sheet?.status === 'rejected')?.sheet?.decision_note ?? 'nézd át, és küldd be újra.'}</Sub> : null}
           {boss ? <Sub>A béred a vállalkozódnak kerül kifizetésre.</Sub> : null}
         </Card>
       ) : null}

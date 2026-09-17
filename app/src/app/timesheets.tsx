@@ -1,11 +1,10 @@
 // Óralapok (vezetőknek): a munkavállalók heti óráinak és bérének
-// áttekintése. Jóváhagyás nincs — a kifizetés a Kifizetetlen bérek oldalon
-// történik. A beküldött lapokon kívül a bért tartalmazó, lap nélküli heteket
-// is listázzuk.
+// áttekintése. Nincs beküldés és jóváhagyás — a bér a munkaidőből
+// automatikusan képződik, a kifizetés a Kifizetetlen bérek oldalon történik.
 
 import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
-import { Screen, Card, H2, Sub, Body, Badge, Empty, Segmented } from '../ui/kit';
+import { Screen, Card, H2, Sub, Body, Badge, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { getCurrentUserId } from '../lib/repo';
@@ -33,7 +32,6 @@ export default function Timesheets() {
   const sheets = useTable<Timesheet>('timesheets');
   const attendance = useTable<Attendance>('attendance');
   const sessions = useTable<WorkSession>('work_sessions');
-  const [filter, setFilter] = useState<'submitted' | 'all'>('submitted');
 
   const rows = useMemo<Row[]>(() => {
     const accountIds = new Set(profiles.filter((p) => p.worker_id).map((p) => p.worker_id as string));
@@ -87,19 +85,18 @@ export default function Timesheets() {
 
   if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
 
-  const shown = rows.filter((r) => filter === 'all' || !!r.sheet);
+  const shown = rows;
   const thisWeek = weekStartISO(todayISO());
 
   return (
     <Screen>
-      <Sub>A munkavállalók heti órái és bére. A munkavállaló a hét végén beküldheti az óralapját; a kifizetés a Kifizetetlen bérek oldalon történik, jóváhagyás nélkül.</Sub>
-      <Segmented options={[{ value: 'submitted', label: 'Beküldött' }, { value: 'all', label: 'Mind' }]} value={filter} onChange={setFilter} />
-      {shown.length === 0 ? <Empty text={filter === 'submitted' ? 'Még nincs beküldött óralap.' : 'Még nincs óralap.'} /> : null}
+      <Sub>A munkavállalók heti órái és bére a rögzített munkaidőből. A kifizetés a Kifizetetlen bérek oldalon történik.</Sub>
+      {shown.length === 0 ? <Empty text="Még nincs rögzített munkaidő." /> : null}
       {shown.map((r) => (
         <Card key={r.key} style={{ borderColor: r.status === 'submitted' ? '#2B6CB0' : C.border }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
             <H2>{wname(r.worker)}</H2>
-            <Badge text={STATUS_LABEL[r.status]} color={STATUS_COLOR[r.status]} />
+            {r.status !== 'open' ? <Badge text={STATUS_LABEL[r.status]} color={STATUS_COLOR[r.status]} /> : null}
             {r.week === thisWeek ? <Badge text="folyó hét" color={C.sub} /> : null}
           </View>
           <Body style={{ fontWeight: '700' }}>{hd(r.week)} – {hd(addDaysISO(r.week, 6))}</Body>
