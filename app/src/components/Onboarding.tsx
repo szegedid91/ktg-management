@@ -1,9 +1,7 @@
-// Bevezető: első belépéskor 3 lépés szerepenként; elvethető, a Súgó
-// oldalról bármikor újra megnyitható. Eszközönként/fiókonként tároljuk.
+// Bevezető: első belépéskor 3 lépés szerepenként; elvethető. Fiókonként tároljuk.
 
 import React, { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
-import { router } from 'expo-router';
 import { Card, Sub, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { getCurrentUserId } from '../lib/repo';
@@ -38,7 +36,6 @@ export function Onboarding({ worker }: { worker: boolean }) {
       <Sub>{s.b}</Sub>
       <View style={{ flexDirection: 'row', gap: S.sm }}>
         <View style={{ flex: 1 }}><Btn title="Ne mutasd többet" kind="ghost" small onPress={done} /></View>
-        <View style={{ flex: 1 }}><Btn title="Súgó" kind="secondary" small onPress={() => router.push('/help')} /></View>
         <View style={{ flex: 1 }}><Btn title={step < steps.length - 1 ? 'Tovább ›' : 'Kész ✓'} small onPress={() => step < steps.length - 1 ? setStep(step + 1) : done()} /></View>
       </View>
     </Card>

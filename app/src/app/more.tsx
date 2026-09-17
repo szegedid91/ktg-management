@@ -32,7 +32,7 @@ export default function More() {
   return (
     <Screen>
       {isWorker ? <WorkerAccountCard /> : null}
-      {(isWorker ? [{ label: 'Súgó', icon: '❓', href: '/help' }] : [...ITEMS, { label: 'Súgó', icon: '❓', href: '/help' }]).map((i) => (
+      {(isWorker ? [] : ITEMS).map((i) => (
         <Row key={i.href} onPress={() => router.push(i.href as any)}>
           <Text style={{ fontSize: 20 }}>{i.icon}</Text>
           <Body style={{ fontWeight: '600', flex: 1 }}>{i.label}</Body>

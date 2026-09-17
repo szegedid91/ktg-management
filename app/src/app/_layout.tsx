@@ -62,7 +62,6 @@ export default function RootLayout() {
         <Stack.Screen name="megerosites" options={{ title: 'E-mail megerősítés' }} />
         <Stack.Screen name="jelszo" options={{ title: 'Új jelszó' }} />
         <Stack.Screen name="more" options={{ title: 'Több' }} />
-        <Stack.Screen name="help" options={{ title: 'Súgó' }} />
         <Stack.Screen name="pending/index" options={{ title: 'Függőben' }} />
         <Stack.Screen name="sites" options={{ title: 'Építkezések' }} />
         <Stack.Screen name="calendar" options={{ title: 'Naptár' }} />
