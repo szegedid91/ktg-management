@@ -145,12 +145,12 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     });
   }).flat().filter((w) => w.hours > 0 || w.amount > 0 || w.sheet);
   const submitSheet = async (week: string, workerId?: string) => {
-    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a fő felhasználók jóváhagyják, utána fizethető ki a bér. Beküldöd?`, 'Beküldés')) return;
+    if (!await confirmDialog('Óralap beküldése', `${hd(week)} hete — a fő felhasználók értesítést kapnak róla. Beküldöd?`, 'Beküldés')) return;
     setSheetBusy(true);
     try {
       await callRpc('submit_timesheet', { p_week_start: week, p_worker: workerId ?? null });
       void syncNow();
-      notify('Óralap beküldve 🗓️', 'Értesítést kapsz, amint jóváhagyják.');
+      notify('Óralap beküldve 🗓️', 'A fő felhasználók értesítést kaptak.');
     } catch (e: any) {
       notify('Hiba', String(e?.message ?? e));
     } finally {
@@ -318,13 +318,13 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 <Sub>{fmtHours(w.hours)} · {ft(w.amount)}</Sub>
               </View>
               {w.sheet?.status === 'approved' ? <Badge text="jóváhagyva ✓" color={C.success} />
-                : w.sheet?.status === 'submitted' ? <Badge text="jóváhagyásra vár" color={C.warning} />
+                : w.sheet?.status === 'submitted' ? <Badge text="beküldve ✓" color={C.success} />
                 : boss ? <Badge text="a vállalkozód küldi be" color={C.sub} />
                 : <Btn title={w.sheet?.status === 'rejected' ? 'Újra beküld' : 'Beküldés'} kind="secondary" small disabled={sheetBusy} onPress={() => void submitSheet(w.week, w.person.id === wid ? undefined : w.person.id)} />}
             </View>
           ))}
           {weeks.some((w) => w.sheet?.status === 'rejected') ? <Sub style={{ color: C.danger }}>Visszaküldött óralap: {weeks.find((w) => w.sheet?.status === 'rejected')?.sheet?.decision_note ?? 'nézd át, és küldd be újra.'}</Sub> : null}
-          <Sub>{boss ? 'A jóváhagyott hetek bére a vállalkozódnak fizethető ki.' : 'A béred a jóváhagyott heteid után fizethető ki.'}</Sub>
+          {boss ? <Sub>A béred a vállalkozódnak kerül kifizetésre.</Sub> : null}
         </Card>
       ) : null}
 

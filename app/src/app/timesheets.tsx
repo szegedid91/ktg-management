@@ -1,17 +1,15 @@
-// Óralapok (fő felhasználóknak): a munkavállalók heti óráinak jóváhagyása.
-// A munkaidőből automatikusan képződött bér csak jóváhagyott hét után
-// fizethető ki. A beküldött heteken kívül a még nem jóváhagyott, de bért
-// tartalmazó heteket is listázzuk, hogy beküldés nélkül is jóvá lehessen hagyni.
+// Óralapok (fő felhasználóknak): a munkavállalók heti óráinak és bérének
+// áttekintése. Jóváhagyás nincs — a kifizetés a Kifizetetlen bérek oldalon
+// történik. A beküldött lapokon kívül a bért tartalmazó, lap nélküli heteket
+// is listázzuk.
 
 import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
-import { Screen, Card, H2, Sub, Body, Btn, Badge, Input, Empty, Segmented } from '../ui/kit';
+import { Screen, Card, H2, Sub, Body, Badge, Empty, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { callRpc, getCurrentUserId } from '../lib/repo';
-import { syncNow } from '../lib/sync';
+import { getCurrentUserId } from '../lib/repo';
 import { ft, hd, todayISO, localDateISO, addDaysISO } from '../lib/format';
-import { notify, confirmDialog } from '../lib/dialogs';
 import { weekStartISO, wname } from '../lib/tasks';
 import { Timesheet, Worker, Attendance, WorkSession, Profile } from '../lib/types';
 
@@ -21,7 +19,7 @@ type Row = {
 };
 
 const STATUS_LABEL: Record<Timesheet['status'], string> = {
-  open: 'nincs beküldve', submitted: 'jóváhagyásra vár', approved: 'jóváhagyva', rejected: 'visszaküldve',
+  open: 'nincs beküldve', submitted: 'beküldve', approved: 'jóváhagyva', rejected: 'visszaküldve',
 };
 const STATUS_COLOR: Record<Timesheet['status'], string> = {
   open: '#718096', submitted: '#B7791F', approved: '#2F855A', rejected: '#C53030',
@@ -35,10 +33,7 @@ export default function Timesheets() {
   const sheets = useTable<Timesheet>('timesheets');
   const attendance = useTable<Attendance>('attendance');
   const sessions = useTable<WorkSession>('work_sessions');
-  const [filter, setFilter] = useState<'pending' | 'all'>('pending');
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'submitted' | 'all'>('submitted');
 
   const rows = useMemo<Row[]>(() => {
     const accountIds = new Set(profiles.filter((p) => p.worker_id).map((p) => p.worker_id as string));
@@ -92,32 +87,16 @@ export default function Timesheets() {
 
   if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
 
-  const shown = rows.filter((r) => filter === 'all' || r.status === 'submitted' || r.status === 'open');
+  const shown = rows.filter((r) => filter === 'all' || !!r.sheet);
   const thisWeek = weekStartISO(todayISO());
-
-  const decide = async (r: Row, approve: boolean) => {
-    if (approve && !await confirmDialog('Óralap jóváhagyása',
-      `${wname(r.worker)} · ${hd(r.week)} hete · ${r.hours.toFixed(1)} óra · ${ft(r.amount)}\n\nJóváhagyod a hetet? (A bér ettől függetlenül is kifizethető.)`, 'Jóváhagyom')) return;
-    setBusy(r.key);
-    try {
-      await callRpc('decide_timesheet', { p_worker: r.worker.id, p_week_start: r.week, p_approve: approve, p_note: note.trim() || null });
-      void syncNow();
-      setNoteFor(null); setNote('');
-      notify(approve ? 'Jóváhagyva ✅' : 'Visszaküldve', approve ? 'A munkavállaló értesítést kapott.' : 'A munkavállaló értesítést kapott az indokkal.');
-    } catch (e: any) {
-      notify('Hiba', String(e?.message ?? e));
-    } finally {
-      setBusy(null);
-    }
-  };
 
   return (
     <Screen>
-      <Sub>A munkaidőből képződött bér csak jóváhagyott hét után fizethető ki. A munkavállaló a hét végén beküldi az óralapját; ha nem küldi be, itt akkor is jóváhagyhatod.</Sub>
-      <Segmented options={[{ value: 'pending', label: 'Teendő' }, { value: 'all', label: 'Mind' }]} value={filter} onChange={setFilter} />
-      {shown.length === 0 ? <Empty text={filter === 'pending' ? 'Nincs jóváhagyásra váró óralap.' : 'Még nincs óralap.'} /> : null}
+      <Sub>A munkavállalók heti órái és bére. A munkavállaló a hét végén beküldheti az óralapját; a kifizetés a Kifizetetlen bérek oldalon történik, jóváhagyás nélkül.</Sub>
+      <Segmented options={[{ value: 'submitted', label: 'Beküldött' }, { value: 'all', label: 'Mind' }]} value={filter} onChange={setFilter} />
+      {shown.length === 0 ? <Empty text={filter === 'submitted' ? 'Még nincs beküldött óralap.' : 'Még nincs óralap.'} /> : null}
       {shown.map((r) => (
-        <Card key={r.key} style={{ borderColor: r.status === 'submitted' ? '#B7791F' : C.border }}>
+        <Card key={r.key} style={{ borderColor: r.status === 'submitted' ? '#2B6CB0' : C.border }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
             <H2>{wname(r.worker)}</H2>
             <Badge text={STATUS_LABEL[r.status]} color={STATUS_COLOR[r.status]} />
@@ -127,23 +106,6 @@ export default function Timesheets() {
           <Sub>{r.hours.toFixed(1)} óra · {r.days} nap · <Text style={{ fontWeight: '700', color: C.text }}>{ft(r.amount)}</Text></Sub>
           {r.sheet?.submitted_note ? <Sub>„{r.sheet.submitted_note}”</Sub> : null}
           {r.sheet?.decided_at ? <Sub style={{ fontSize: 11 }}>{r.status === 'approved' ? '✅' : '✖'} {hd(r.sheet.decided_at.slice(0, 10))} · {profiles.find((p) => p.id === r.sheet!.decided_by)?.display_name ?? ''}{r.sheet.decision_note ? ` — ${r.sheet.decision_note}` : ''}</Sub> : null}
-          {r.status !== 'approved' ? (
-            noteFor === r.key ? (
-              <View style={{ gap: S.sm }}>
-                <Input label="Indok (a munkavállaló látja)" value={note} onChangeText={setNote} placeholder="pl. kedden nem voltál a helyszínen" />
-                <View style={{ flexDirection: 'row', gap: S.sm }}>
-                  <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setNoteFor(null)} /></View>
-                  <View style={{ flex: 1 }}><Btn title="Visszaküldés" kind="danger" small disabled={busy === r.key} onPress={() => void decide(r, false)} /></View>
-                </View>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', gap: S.sm }}>
-                <View style={{ flex: 1 }}><Btn title="Visszaküldés" kind="ghost" small onPress={() => { setNoteFor(r.key); setNote(''); }} /></View>
-                <View style={{ flex: 2 }}><Btn title={busy === r.key ? '…' : '✅ Jóváhagyás'} small disabled={busy === r.key || r.week === thisWeek && r.status === 'open'} onPress={() => void decide(r, true)} /></View>
-              </View>
-            )
-          ) : null}
-          {r.week === thisWeek && r.status === 'open' ? <Sub style={{ fontSize: 11 }}>A folyó hét a hét végén, beküldés után hagyható jóvá.</Sub> : null}
         </Card>
       ))}
     </Screen>

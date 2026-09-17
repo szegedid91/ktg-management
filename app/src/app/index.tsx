@@ -10,7 +10,7 @@ import { syncNow } from '../lib/sync';
 import { confirmDialog } from '../lib/dialogs';
 import {
   Site, Expense, Attendance, Invoice, Profile, ShareChangeRequest, Settlement, ProfitShareHistory,
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, TaskQuote, Timesheet,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, WorkSession, Worker, TaskQuote,
 } from '../lib/types';
 import { computeBalances } from '../lib/balances';
 import { unpaidWorkerPart, isActiveTask, wname } from '../lib/tasks';
@@ -85,7 +85,6 @@ function DashboardInner() {
   const sessions = useTable<WorkSession>('work_sessions');
   const workers = useTable<Worker>('workers');
   const quotes = useTable<TaskQuote>('task_quotes');
-  const timesheets = useTable<Timesheet>('timesheets');
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
   const awaitingMyApproval = shareRequests.find((r) =>
@@ -142,7 +141,6 @@ function DashboardInner() {
   const unpaidWageCount = attendance.filter((a) => unpaidWorkerPart(a) > 0).length;
   const pendingWorkers = workers.filter((w) => !w.approved_at);
   const overdueTasks = activeTasks.filter((t) => t.due_date && t.due_date < today);
-  const pendingTimesheets = timesheets.filter((t) => t.status === 'submitted');
   // ki hol dolgozik most: futó munkamenetek építkezésenként
   const runningNow = sessions.filter((s) => !s.ended_at).map((s) => ({
     s, worker: workers.find((w) => w.id === s.worker_id), site: sites.find((x) => x.id === s.site_id),
@@ -157,8 +155,6 @@ function DashboardInner() {
       href: pendingWorkers.length === 1 ? `/worker/${pendingWorkers[0].id}` : '/workers' } : null,
     overdueTasks.length ? { key: 'overdue', icon: '⏰', title: 'Lejárt határidejű feladat', count: overdueTasks.length,
       detail: overdueTasks.slice(0, 3).map((t) => t.code || t.title).join(', '), color: C.danger, href: '/tasks?filter=overdue' } : null,
-    pendingTimesheets.length ? { key: 'timesheets', icon: '🗓️', title: 'Jóváhagyásra váró óralap', count: pendingTimesheets.length,
-      detail: `összesen ${ft(pendingTimesheets.reduce((s, t) => s + Number(t.amount), 0))} · ${pendingTimesheets.reduce((s, t) => s + Number(t.hours), 0).toFixed(1)} óra`, color: '#B7791F', href: '/timesheets' } : null,
     unassignedTasks.length ? { key: 'unassigned', icon: '📋', title: 'Kiosztatlan feladat', count: unassignedTasks.length,
       detail: unassignedTasks.slice(0, 3).map((t) => t.code || t.title).join(', '), color: '#6B46C1', href: '/tasks?filter=unassigned' } : null,
     pendingTasks.length ? { key: 'assigned', icon: '⏳', title: 'Elfogadásra váró feladat', count: pendingTasks.length,
