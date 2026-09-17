@@ -13,6 +13,7 @@ import { syncNow } from '../../lib/sync';
 import { smartBack } from '../../lib/nav';
 import { SessionEditor } from '../../components/SessionEditor';
 import { TaskNotes } from '../../components/TaskNotes';
+import { openDirections } from '../../lib/maps';
 import { ft, hd, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
@@ -484,7 +485,10 @@ Biztosan leveszed?`, 'Levétel', true);
           </>
         )}
         <Divider />
-        <KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+          <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
+          {site?.address ? <Btn title="🧭" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+        </View>
         <KV k="Kiadta" v={creator} />
         <KV k="Rögzítve" v={hdt(task.created_at)} />
         {!isWorker && active ? (

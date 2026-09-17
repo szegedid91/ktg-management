@@ -10,6 +10,7 @@ import { syncNow } from '../../lib/sync';
 import { ft, hd, todayISO } from '../../lib/format';
 import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals, WorkerTask , Profile} from '../../lib/types';
 import { TaskGroups } from '../../components/TaskGroups';
+import { openDirections } from '../../lib/maps';
 import { isActiveTask } from '../../lib/tasks';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
@@ -86,7 +87,8 @@ export default function SiteDetail() {
       <Stack.Screen options={{ title: site.name }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
         <Badge text={closed ? 'lezárt' : 'aktív'} color={closed ? C.sub : C.success} />
-        {site.address ? <Sub>{site.address}</Sub> : null}
+        {site.address ? <Sub style={{ flex: 1 }}>{site.address}</Sub> : null}
+        {site.address ? <Btn title="🧭 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
       </View>
       {closed ? <Sub style={{ color: C.warning }}>Ez az építkezés lezárt, csak olvasható.</Sub> : null}
 

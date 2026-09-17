@@ -1,9 +1,9 @@
 // Új feladat kiadása egy vagy több munkavállalónak (+ ajánlatkérés)
 
-import React, { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, Pressable  } from 'react-native';
 import { C, S } from '../../ui/theme';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Input, Btn, Picker, Check, Empty } from '../../ui/kit';
 import { useTable } from '../../lib/hooks';
@@ -12,9 +12,9 @@ import { getCurrentUserId } from '../../lib/repo';
 import { notify } from '../../lib/dialogs';
 import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
-import { Site, Worker, TaskTemplate, Profile } from '../../lib/types';
-import { addDaysISO, todayISO } from '../../lib/format';
-import { wname } from '../../lib/tasks';
+import { Site, Worker, TaskTemplate, Profile, WorkSession, Attendance, TaskMaterial, TaskAssignee, WorkerTask } from '../../lib/types';
+import { addDaysISO, todayISO, hd, ft } from '../../lib/format';
+import { wname, sessionHours, fmtHours } from '../../lib/tasks';
 
 export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
@@ -30,6 +30,34 @@ export default function NewTask() {
   const isWorker = !!useTable<Profile>('profiles').find((p) => p.id === currentUser())?.worker_id;
 
   const [title, setTitle] = useState('');
+  // hasonló korábbi (kész) feladatok: mennyibe került legutóbb
+  const doneTasks = useTable<WorkerTask>('worker_tasks').filter((t) => t.status === 'done');
+  const allSessions = useTable<WorkSession>('work_sessions');
+  const allAttendance = useTable<Attendance>('attendance');
+  const allMaterials = useTable<TaskMaterial>('task_materials');
+  const allAssignees = useTable<TaskAssignee>('task_assignees');
+  const allWorkers = useTable<Worker>('workers');
+  const similar = useMemo(() => {
+    const words = title.toLowerCase().split(/[^a-záéíóöőúüű0-9]+/i).filter((w) => w.length >= 4);
+    if (!words.length) return [];
+    return doneTasks
+      .map((t) => {
+        const hay = `${t.title} ${t.details ?? ''}`.toLowerCase();
+        const score = words.filter((w) => hay.includes(w)).length;
+        return { t, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || (b.t.done_at ?? '').localeCompare(a.t.done_at ?? ''))
+      .slice(0, 3)
+      .map(({ t }) => {
+        const hours = allSessions.filter((s) => s.task_id === t.id && s.ended_at).reduce((sum, s) => sum + sessionHours(s), 0);
+        const wageRows = allAttendance.filter((a) => a.task_id === t.id).reduce((sum, a) => sum + Number(a.amount), 0);
+        const wage = t.quote_accepted_at && t.quote_amount != null ? Number(t.quote_amount) : wageRows;
+        const mats = allMaterials.filter((m) => m.task_id === t.id).reduce((sum, m) => sum + Number(m.amount), 0);
+        const names = allAssignees.filter((a) => a.task_id === t.id).map((a) => wname(allWorkers.find((w) => w.id === a.worker_id))).join(', ');
+        return { t, hours, wage, mats, names };
+      });
+  }, [title, doneTasks, allSessions, allAttendance, allMaterials, allAssignees, allWorkers]);
   const [code, setCode] = useState('');
   const [details, setDetails] = useState('');
   const [site, setSite] = useState<string | null>(siteId ?? null);
@@ -134,6 +162,17 @@ export default function NewTask() {
       <Card>
         <H2>Feladat</H2>
         <Input label="Feladat címe *" value={title} onChangeText={setTitle} placeholder="pl. Csempézés a fürdőben" />
+        {similar.length ? (
+          <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
+            <Sub style={{ fontWeight: '700' }}>📚 Hasonló korábbi feladatok</Sub>
+            {similar.map(({ t, hours, wage, mats, names }) => (
+              <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)} style={{ paddingVertical: 2 }}>
+                <Text style={{ color: C.text, fontWeight: '600' }} numberOfLines={1}>{t.code ? `${t.code} · ` : ''}{t.title}</Text>
+                <Sub>{t.done_at ? hd(t.done_at) : ''} · {fmtHours(hours)} · bér {ft(wage)} · anyag {ft(mats)}{names ? ` · 👷 ${names}` : ''}</Sub>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
         <Input label="Részletek" value={details} onChangeText={setDetails} placeholder="Mit, hol, mivel…" multiline />
         <Check checked={priority} onToggle={() => setPriority(!priority)} label="🆘 SOS feladat" sub="Sürgős: a listák elején, kiemelve jelenik meg." />

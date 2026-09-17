@@ -14,6 +14,8 @@ function targetOf(n: AppNotification): string | null {
   const p = n.payload ?? {};
   if (n.kind === 'worker_approved' || n.kind === 'worker_rejected') return '/';
   if (n.kind === 'timesheet') return p.timesheet_id ? '/timesheets' : '/';
+  if (n.kind === 'schedule') return '/';
+  if (n.kind === 'reminder' && !p.task_id) return '/';
   if (p.task_id) return `/task/${p.task_id}`;
   if (p.site_id) return `/site/${p.site_id}`;
   if (p.worker_id) return `/worker/${p.worker_id}`;

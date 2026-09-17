@@ -465,6 +465,14 @@ export interface TaskNote extends BaseRow {
   visible_to_workers: boolean;
 }
 
+/** Beosztás: ki melyik napon melyik építkezésen lesz (partner írja) */
+export interface ScheduleEntry extends BaseRow {
+  worker_id: UUID;
+  site_id: UUID;
+  work_date: string;
+  note: string | null;
+}
+
 export const SYNC_TABLES = [
   'profiles', 'app_settings', 'expense_categories', 'sites', 'external_people',
   'workers', 'expenses', 'expense_photos', 'attendance', 'comments',
@@ -472,7 +480,7 @@ export const SYNC_TABLES = [
   'profit_share_history', 'share_change_requests',
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
-  'task_subtasks', 'task_templates', 'timesheets', 'task_notes',
+  'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

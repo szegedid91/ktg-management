@@ -17,6 +17,7 @@ import { unpaidWorkerPart, isActiveTask, wname } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
 import { SyncBanner } from '../components/SyncBanner';
+import { Onboarding } from '../components/Onboarding';
 import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
@@ -210,6 +211,7 @@ function DashboardInner() {
       ) : null}
 
       <SyncBanner />
+      <Onboarding worker={false} />
 
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>

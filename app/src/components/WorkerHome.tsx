@@ -7,7 +7,7 @@ import { Screen, Card, H2, Sub, Btn, Badge, Empty, Picker, Input, Check } from '
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
-import { ft, hd, hdt, todayISO, localDateISO } from '../lib/format';
+import { ft, hd, hdt, todayISO, localDateISO, addDaysISO } from '../lib/format';
 import { isActiveTask, fmtHours, sessionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
 import { callRpc } from '../lib/repo';
 import { syncNow } from '../lib/sync';
@@ -15,9 +15,11 @@ import { notify, confirmDialog } from '../lib/dialogs';
 import { TaskRow } from './TaskRow';
 import { InviteCard } from './InviteCard';
 import { SyncBanner } from './SyncBanner';
+import { Onboarding } from './Onboarding';
+import { openDirections } from '../lib/maps';
 import { router } from 'expo-router';
 import {
-  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, Timesheet,
+  Profile, Worker, WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Site, Attendance, Timesheet, ScheduleEntry,
 } from '../lib/types';
 
 export function WorkerHome({ profile }: { profile: Profile }) {
@@ -45,6 +47,10 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const [crewBusy, setCrewBusy] = useState(false);
   const [who, setWho] = useState<Set<string>>(new Set([wid]));
   const quotes = useTable<TaskQuote>('task_quotes');
+  // beosztás: a következő 7 nap (saját + embereim)
+  const schedule = useTable<ScheduleEntry>('schedule_entries')
+    .filter((e) => myIds.has(e.worker_id) && e.work_date >= todayISO() && e.work_date <= addDaysISO(todayISO(), 7))
+    .sort((a, b) => a.work_date.localeCompare(b.work_date));
   const allSheets = useTable<Timesheet>('timesheets');
   const sheets = allSheets.filter((t) => t.worker_id === wid);
   const [sheetBusy, setSheetBusy] = useState(false);
@@ -158,6 +164,24 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   return (
     <Screen>
       <SyncBanner />
+      <Onboarding worker />
+      {schedule.length ? (
+        <Card style={{ paddingVertical: S.sm, gap: 4 }}>
+          <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>📆 Beosztásom</Text>
+          {schedule.map((e) => {
+            const site = sites.find((x) => x.id === e.site_id);
+            return (
+              <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.text, fontWeight: e.work_date === todayISO() ? '800' : '600' }}>{e.work_date === todayISO() ? 'Ma' : hd(e.work_date)} · {site?.name ?? '?'}{isContractor && crew.length && e.worker_id !== wid ? ` · ${workers.find((w) => w.id === e.worker_id)?.name ?? ''}` : ''}</Text>
+                  <Sub>{site?.address ?? ''}{e.note ? ` · ${e.note}` : ''}</Sub>
+                </View>
+                {site?.address ? <Btn title="🧭" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+              </View>
+            );
+          })}
+        </Card>
+      ) : null}
       {boss ? (
         <Card style={{ paddingVertical: S.sm, borderColor: C.primary }}>
           <Text style={{ fontWeight: '800', color: C.text }}>👥 {wname(boss)} csapatában dolgozol</Text>
