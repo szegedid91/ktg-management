@@ -11,6 +11,7 @@ import { useTable, useRow } from '../../lib/hooks';
 import { getCurrentUserId, insertRow, updateRow, queueRpc, softDeleteRow, callRpc } from '../../lib/repo';
 import { syncNow } from '../../lib/sync';
 import { smartBack } from '../../lib/nav';
+import { SessionEditor } from '../../components/SessionEditor';
 import { ft, hd, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
@@ -520,10 +521,7 @@ Biztosan leveszed?`, 'Levétel', true);
         {sessions.length > 0 ? (
           <View style={{ gap: 2 }}>
             {[...sessions].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 10).map((s) => (
-              <Sub key={s.id}>
-                {workerName(s.worker_id)}: {hdt(s.started_at)} → {s.ended_at ? hdt(s.ended_at) : 'folyamatban'}
-                {' '}({fmtHours(Math.max(0, (new Date(s.ended_at ?? now).getTime() - new Date(s.started_at).getTime()) / 3.6e6))})
-              </Sub>
+              <SessionEditor key={s.id} session={s} label={workerName(s.worker_id)} editable={!isWorker} />
             ))}
           </View>
         ) : null}

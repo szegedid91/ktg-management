@@ -143,7 +143,8 @@ export function taskWageCost(
     const days = new Set(own.map((s) => s.started_at.slice(0, 10))).size;
     const basis = w.default_pay_basis ?? 'hourly';
     let amount = 0;
-    if (basis === 'hourly') amount = hours * Number(w.hourly_rate ?? 0);
+    // minden megkezdett óra teljes óra (a szerver is így számol)
+    if (basis === 'hourly') amount = Math.ceil(Math.round(hours * 1e4) / 1e4) * Number(w.hourly_rate ?? 0);
     else if (basis === 'daily') amount = days * Number(w.daily_rate ?? 0);
     else amount = own.length > 0 ? Number(w.project_rate ?? 0) : 0;
     return { worker: w, basis, amount: Math.round(amount), hours };

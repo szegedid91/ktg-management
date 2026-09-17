@@ -14,6 +14,7 @@ import { Comments } from '../../components/Comments';
 import { CallButton, CopyButton } from '../workers/index';
 import { WorkerForm, workerToForm, formToRow, validateWorkerForm, WorkerFormValues } from '../../components/WorkerForm';
 import { InviteCard } from '../../components/InviteCard';
+import { SessionEditor } from '../../components/SessionEditor';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { syncNow } from '../../lib/sync';
 
@@ -351,11 +352,8 @@ export default function WorkerDetail() {
       <Card>
         <H2>⏱ Munkaidő (saját rögzítés)</H2>
         {sessions.length === 0 ? <Sub>A munkavállaló még nem rögzített munkaidőt az appban.</Sub> : null}
-        {sessions.slice(0, 10).map((s) => (
-          <Sub key={s.id}>
-            {hdt(s.started_at)} → {s.ended_at ? hdt(s.ended_at) : 'folyamatban'} · {fmtHours(sessionHours(s))}
-          </Sub>
-        ))}
+        {sessions.slice(0, 20).map((s) => <SessionEditor key={s.id} session={s} editable={isPartner} />)}
+        {sessions.length ? <Sub style={{ fontSize: 11 }}>Ha a munkavállaló elfelejtette leállítani, itt lezárhatod vagy javíthatod az időket (✏️).</Sub> : null}
       </Card>
     </Screen>
   );
