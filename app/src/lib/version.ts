@@ -1,2 +1,2 @@
 // Generálva a scripts/genversion.mjs által — kézzel ne szerkeszd.
-export const APP_VERSION = '2026.09.17-2043 (2258386)';
+export const APP_VERSION = '2026.09.17-2048 (1bd0c9d)';
