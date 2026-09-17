@@ -50,7 +50,7 @@ function isRejection(err: any): boolean {
 
 /** Néhány táblát maszkoló nézeten át olvasunk (a profilok érzékeny
  *  oszlopai csak a sajátnál / partnernek látszanak). */
-const READ_SOURCE: Partial<Record<SyncTable, string>> = { profiles: 'profiles_v' };
+const READ_SOURCE: Partial<Record<SyncTable, string>> = { profiles: 'profiles_v', workers: 'workers_v' };
 const sourceOf = (table: SyncTable) => READ_SOURCE[table] ?? table;
 
 /** Elutasított művelet visszagörgetése: az érintett sorok szerver-állapotának
