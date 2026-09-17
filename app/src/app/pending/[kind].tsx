@@ -7,7 +7,6 @@ import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge, Input } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
-import { notify } from '../../lib/dialogs';
 import { useTable, useIsWorker } from '../../lib/hooks';
 import { markAttendancePaid, markCommissionPaid } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
@@ -34,8 +33,8 @@ interface Item {
   date: string;
   amount: number;
   detail: string;
-  /** óralap-jóváhagyás nélkül nem fizethető (a szerver elutasítaná a csomagot) */
-  blocked?: boolean;
+  /** a heti óralap még nincs jóváhagyva — csak tájékoztatás, kifizethető */
+  noSheet?: boolean;
 }
 
 // a kijelölés 5 percig megmarad akkor is, ha a felhasználó elnavigál,
@@ -76,7 +75,7 @@ function PendingScreenInner() {
     const bySite = new Map<string, Map<string, PersonGroup>>();
 
     for (const a of attendance) {
-      let blocked = false;
+      let noSheet = false;
       let personKey: string; let personName: string;
       let amount: number; let detail: string;
 
@@ -96,8 +95,8 @@ function PendingScreenInner() {
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
         if ((a.source === 'session' || a.source === 'task') && (hasAccount(a.worker_id) || (w?.contractor_id && hasAccount(w.contractor_id)))
             && !timesheets.some((t) => t.worker_id === a.worker_id && t.week_start === weekStartISO(a.work_date) && t.status === 'approved')) {
-          detail += ' · 🗓️ óralap jóváhagyásra vár';
-          blocked = true;
+          detail += ' · 🗓️ óralap nincs jóváhagyva';
+          noSheet = true;
         }
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
@@ -113,7 +112,7 @@ function PendingScreenInner() {
       if (!persons) { persons = new Map(); bySite.set(a.site_id, persons); }
       let pg = persons.get(personKey);
       if (!pg) { pg = { key: personKey, name: personName, items: [], total: 0 }; persons.set(personKey, pg); }
-      pg.items.push({ id: a.id, date: a.work_date, amount, detail, blocked });
+      pg.items.push({ id: a.id, date: a.work_date, amount, detail, noSheet });
       pg.total += amount;
     }
 
@@ -153,7 +152,26 @@ function PendingScreenInner() {
     setter(next);
   };
 
-  const siteFiltered = siteFilter.size === 0 ? groups : groups.filter((g) => siteFilter.has(g.siteId));
+  // kereső: név (vállalkozó embere is), tétel-részlet vagy építkezés neve
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
+  const searched = useMemo(() => {
+    if (!q) return groups;
+    return groups
+      .map((g) => {
+        if (g.siteName.toLowerCase().includes(q)) return g;
+        const persons = g.persons
+          .map((p) => p.name.toLowerCase().includes(q)
+            ? p
+            : { ...p, items: p.items.filter((it) => it.detail.toLowerCase().includes(q)) })
+          .filter((p) => p.items.length > 0)
+          .map((p) => ({ ...p, total: p.items.reduce((s, it) => s + it.amount, 0) }));
+        return { ...g, persons, total: persons.reduce((s, p) => s + p.total, 0) };
+      })
+      .filter((g) => g.persons.length > 0);
+  }, [groups, q]);
+
+  const siteFiltered = siteFilter.size === 0 ? searched : searched.filter((g) => siteFilter.has(g.siteId));
 
   // a szűrhető emberek listája (a terület-szűrés után)
   const personList = useMemo(() => {
@@ -177,7 +195,7 @@ function PendingScreenInner() {
   }, [siteFiltered, personFilter, personList]);
 
   const grandTotal = visibleGroups.reduce((s, g) => s + g.total, 0);
-  const isFiltered = siteFilter.size > 0 || personFilter.size > 0;
+  const isFiltered = siteFilter.size > 0 || personFilter.size > 0 || q.length > 0;
 
   // a lenti sáv csak az éppen nyitva lévő ember kijelölt tételeit mutatja
   // és fizeti ki — a többi ember kijelölése megmarad későbbre
@@ -244,6 +262,7 @@ function PendingScreenInner() {
 
       {groups.length > 0 ? (
         <Card>
+          <Input value={search} onChangeText={setSearch} placeholder="🔍 Keresés: név, építkezés…" />
           {groups.length > 1 ? (
             <>
               <Sub>Terület:</Sub>
@@ -324,8 +343,8 @@ function PendingScreenInner() {
                         <View style={{ flex: 1 }}>
                           <Check
                             checked={selected.has(it.id)}
-                            onToggle={() => { if (it.blocked) { notify('Óralap kell', 'Előbb hagyd jóvá a hetet az Óralapok oldalon, utána fizethető ki.'); return; } toggleIn(selected, setSelected, it.id); }}
-                            label={`${it.blocked ? '🔒 ' : ''}${hd(it.date)} — ${ft(it.amount)}`}
+                            onToggle={() => toggleIn(selected, setSelected, it.id)}
+                            label={`${hd(it.date)} — ${ft(it.amount)}`}
                             sub={it.detail}
                           />
                         </View>
@@ -333,16 +352,15 @@ function PendingScreenInner() {
                     ))}
                     <View style={{ paddingLeft: S.lg }}>
                       <Btn
-                        title={p.items.filter((i) => !i.blocked).length > 0 && p.items.filter((i) => !i.blocked).every((i) => selected.has(i.id))
+                        title={p.items.length > 0 && p.items.every((i) => selected.has(i.id))
                           ? `${p.name}: kijelölés törlése`
                           : `${p.name}: mind kijelölése (${ft(p.total)})`}
                         kind="secondary"
                         small
                         onPress={() => {
                           const next = new Set(selected);
-                          const payable = p.items.filter((i) => !i.blocked);
-                          const all = payable.length > 0 && payable.every((i) => next.has(i.id));
-                          payable.forEach((i) => { if (all) next.delete(i.id); else next.add(i.id); });
+                          const all = p.items.length > 0 && p.items.every((i) => next.has(i.id));
+                          p.items.forEach((i) => { if (all) next.delete(i.id); else next.add(i.id); });
                           setSelected(next);
                         }}
                       />

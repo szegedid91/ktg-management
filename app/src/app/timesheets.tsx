@@ -97,13 +97,13 @@ export default function Timesheets() {
 
   const decide = async (r: Row, approve: boolean) => {
     if (approve && !await confirmDialog('Óralap jóváhagyása',
-      `${wname(r.worker)} · ${hd(r.week)} hete · ${r.hours.toFixed(1)} óra · ${ft(r.amount)}\n\nJóváhagyás után a bér kifizethető. Rendben?`, 'Jóváhagyom')) return;
+      `${wname(r.worker)} · ${hd(r.week)} hete · ${r.hours.toFixed(1)} óra · ${ft(r.amount)}\n\nJóváhagyod a hetet? (A bér ettől függetlenül is kifizethető.)`, 'Jóváhagyom')) return;
     setBusy(r.key);
     try {
       await callRpc('decide_timesheet', { p_worker: r.worker.id, p_week_start: r.week, p_approve: approve, p_note: note.trim() || null });
       void syncNow();
       setNoteFor(null); setNote('');
-      notify(approve ? 'Jóváhagyva ✅' : 'Visszaküldve', approve ? 'A munkavállaló értesítést kapott, a bér kifizethető.' : 'A munkavállaló értesítést kapott az indokkal.');
+      notify(approve ? 'Jóváhagyva ✅' : 'Visszaküldve', approve ? 'A munkavállaló értesítést kapott.' : 'A munkavállaló értesítést kapott az indokkal.');
     } catch (e: any) {
       notify('Hiba', String(e?.message ?? e));
     } finally {
