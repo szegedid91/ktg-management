@@ -3,8 +3,8 @@
 // (‹ › gombok, számláló), opcionális ✕ törlés a bélyegképen és 🗑️ a nézőben.
 // Nem nyit új böngészőlapot (főképernyős appban az üres lapot hagyna maga után).
 
-import React, { useEffect, useState } from 'react';
-import { View, Image, Pressable, Text, Modal, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Image, Pressable, Text, Modal, useWindowDimensions, PanResponder } from 'react-native';
 import { C } from '../ui/theme';
 import { taskPhotoUrl, PickedPhoto } from '../lib/photo';
 
@@ -42,11 +42,22 @@ function Viewer({ items, index, onIndex, onClose }: {
   items: { uri: string | null; onRemove?: () => void }[]; index: number; onIndex: (i: number) => void; onClose: () => void;
 }) {
   const { width, height } = useWindowDimensions();
+  // lapozás húzással (ujjal vagy egérrel): vízszintes elhúzás 50 px felett lapoz
+  const state = useRef({ index, count: items.length, onIndex });
+  state.current = { index, count: items.length, onIndex };
+  const pan = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+    onPanResponderRelease: (_, g) => {
+      const { index: i, count, onIndex: go } = state.current;
+      if (g.dx < -50 && i < count - 1) go(i + 1);
+      else if (g.dx > 50 && i > 0) go(i - 1);
+    },
+  }), []);
   const cur = items[index];
   if (!cur) return null;
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#0b0b0b', justifyContent: 'center', alignItems: 'center' }}>
+      <View {...pan.panHandlers} style={{ flex: 1, backgroundColor: '#0b0b0b', justifyContent: 'center', alignItems: 'center' }}>
         <View style={{ position: 'absolute', top: 14, left: 14, right: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>{index + 1} / {items.length}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -71,6 +82,7 @@ function Viewer({ items, index, onIndex, onClose }: {
             <NavBtn label="›" accessibilityLabel="Következő fotó" disabled={index >= items.length - 1} onPress={() => onIndex(index + 1)} />
           </View>
         ) : null}
+        {items.length > 1 ? <Text style={{ position: 'absolute', bottom: 6, color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>húzd oldalra a lapozáshoz</Text> : null}
       </View>
     </Modal>
   );

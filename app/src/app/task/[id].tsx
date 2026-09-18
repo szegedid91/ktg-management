@@ -772,9 +772,12 @@ Biztosan leveszed?`, 'Levétel', true);
         </Section>
       ) : null}
 
+      {/* munkavállaló: megjegyzést csak a feladat elfogadása után lát és ír */}
+      {isWorker && !acked ? null : (
       <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={isWorker || noteCount > 0} plain={isWorker}>
-        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && active : true} />
+        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : true} />
       </Section>
+      )}
 
       {/* ---------- utólagos rögzítés (vezető) ---------- */}
       {!isWorker && active ? (
