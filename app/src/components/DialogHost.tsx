@@ -32,7 +32,7 @@ export function DialogHost() {
                 onPress={() => close(false)}
                 style={({ pressed }) => ({ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 8, opacity: pressed ? 0.6 : 1 })}
               >
-                <Text style={{ fontWeight: '700', color: C.sub, fontSize: 15 }}>Mégse</Text>
+                <Text style={{ fontWeight: '700', color: C.sub, fontSize: 15 }}>{current.cancelLabel ?? 'Mégse'}</Text>
               </Pressable>
             ) : null}
             <Pressable

@@ -24,7 +24,8 @@ import {
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings } from '../../lib/types';
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings, TaskPhoto,
+} from '../../lib/types';
 import { isOverdue } from '../../lib/tasks';
 import { todayISO } from '../../lib/format';
 
@@ -57,6 +58,9 @@ function Section({ title, summary, defaultOpen = false, accent, plain, children 
 // részfeladatok: egyelőre kikapcsolva a felületen (az adatmodell megmarad)
 const SUBTASKS_ENABLED = false;
 
+/** e fölött a munkavállalónak kötelező a számla fotója az anyagköltséghez */
+const INVOICE_PHOTO_LIMIT = 100000;
+
 const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
 };
@@ -67,6 +71,7 @@ export default function TaskDetail() {
   const assigneesAll = useTable<TaskAssignee>('task_assignees', true).filter((a) => a.task_id === id);
   const assignees = assigneesAll.filter((a) => !a.deleted_at);
   const workers = useTable<Worker>('workers');
+  const workPhotos = useTable<TaskPhoto>('task_photos').filter((p) => p.task_id === id);
   const sites = useTable<Site>('sites');
   const profiles = useTable<Profile>('profiles');
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.task_id === id);
@@ -258,7 +263,7 @@ Biztosan leveszed?`, 'Levétel', true);
   const submitMaterial = async () => {
     const amount = parseAmount(matAmount);
     if (amount <= 0) { notify('Hiba', 'Adj meg összeget.'); return; }
-    if (isWorker && matPhotos.length === 0) { notify('Fotó kötelező', 'Anyagköltséghez a számla/blokk fotója kötelező.'); return; }
+    if (isWorker && amount > INVOICE_PHOTO_LIMIT && matPhotos.length === 0) { notify('Számla fotó kell', '100 000 Ft feletti anyagköltséghez kötelező a számla fotója.'); return; }
     setBusy(true);
     try {
       const paths: string[] = [];
@@ -423,6 +428,7 @@ Biztosan leveszed?`, 'Levétel', true);
       ...(task.photo_paths ?? []),
       ...(task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []),
       ...materials.flatMap(materialPhotos),
+      ...workPhotos.map((p) => p.path),
     ];
     void removeStoragePaths('tasks', paths);
     materials.forEach((m) => softDeleteRow('task_materials', m.id));
@@ -430,10 +436,36 @@ Biztosan leveszed?`, 'Levétel', true);
     smartBack();
   };
 
+  // ---------- munkafotók (előtte / utána) ----------
+  const [photoBusy, setPhotoBusy] = useState<'before' | 'after' | null>(null);
+  const addWorkPhotos = async (kind: 'before' | 'after') => {
+    const fromCamera = await confirmDialog(kind === 'before' ? 'Előtte fotó' : 'Utána fotó', 'Honnan töltöd fel?', '📷 Kamera', false, '🖼 Galéria');
+    const list = await pickPhotos(fromCamera);
+    if (list.length === 0) return;
+    setPhotoBusy(kind);
+    try {
+      for (const ph of list) {
+        const path = await uploadTaskPhoto(ph.base64, `${task.id}/${kind}`);
+        insertRow('task_photos', { task_id: task.id, worker_id: isWorker ? myWorkerId : null, kind, path });
+      }
+    } catch {
+      notify('Hiba', 'A fotó feltöltéséhez internet kell — próbáld újra kapcsolattal.');
+    } finally {
+      setPhotoBusy(null);
+    }
+  };
+  const removeWorkPhoto = async (path: string) => {
+    const row = workPhotos.find((p) => p.path === path);
+    if (!row) return;
+    if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót?', 'Törlés', true)) return;
+    softDeleteRow('task_photos', row.id);
+    void removeStoragePaths('tasks', [path]);
+  };
+
   // anyagköltség egy fotójának törlése (vezető): a tétel megmarad, csak a kép kerül ki
   const removeMaterialPhoto = async (m: TaskMaterial, path: string) => {
     const rest = materialPhotos(m).filter((p) => p !== path);
-    if (isWorker && rest.length === 0) { notify('Fotó kell', 'Legalább egy fotó (számla / blokk) kell maradjon a tételen. Előbb tölts fel másikat.'); return; }
+    if (isWorker && rest.length === 0 && Number(m.amount) > INVOICE_PHOTO_LIMIT) { notify('Számla fotó kell', '100 000 Ft feletti tételen legalább egy számlafotónak maradnia kell.'); return; }
     if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót az anyagköltségről? A tétel megmarad.', 'Törlés', true)) return;
     updateRow('task_materials', m.id, { photo_paths: rest, photo_path: rest[0] ?? null });
     void removeStoragePaths('tasks', [path]);
@@ -817,8 +849,25 @@ Biztosan leveszed?`, 'Levétel', true);
 
       {/* ---------- anyagköltségek ---------- */}
       {isWorker && !acked ? null : (
-      <Section title="📦 Anyagköltség" defaultOpen={isWorker || mat.unpriced.length > 0} plain={isWorker}
+      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker || mat.unpriced.length > 0} plain={isWorker}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
+        {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
+        {(['before', 'after'] as const).map((kind) => {
+          const list = workPhotos.filter((p) => p.kind === kind);
+          const canAdd = active && (isWorker ? !!myAssignment : true);
+          if (!canAdd && list.length === 0) return null;
+          return (
+            <View key={kind} style={{ gap: 4 }}>
+              <Text style={{ fontWeight: '700', color: C.text }}>{kind === 'before' ? '📷 Előtte' : '📷 Utána'}{list.length ? ` (${list.length})` : ''}</Text>
+              <PhotoThumbs paths={list.map((p) => p.path)}
+                onRemoveRemote={active && (!isWorker || list.every((p) => p.worker_id === myWorkerId)) ? (ph) => void removeWorkPhoto(ph) : undefined} />
+              {canAdd ? <Btn title={photoBusy === kind ? 'Feltöltés…' : kind === 'before' ? '📷 Előtte fotó feltöltése' : '📷 Utána fotó feltöltése'}
+                kind="secondary" small={!isWorker} disabled={photoBusy !== null} onPress={() => void addWorkPhotos(kind)} /> : null}
+            </View>
+          );
+        })}
+        <Divider />
+        <Text style={{ fontWeight: '700', color: C.text }}>📦 Anyagköltség</Text>
         {materials.length === 0 && !isWorker ? <Sub>Nincs rögzített anyagköltség.</Sub> : null}
         {materials.map((m) => (
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
@@ -836,6 +885,7 @@ Biztosan leveszed?`, 'Levétel', true);
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setMatEdit(null)} /></View>
                     <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={parseAmount(matEdit.amount) <= 0} onPress={() => {
+                      if (parseAmount(matEdit.amount) > INVOICE_PHOTO_LIMIT && materialPhotos(m).length === 0) { notify('Számla fotó kell', '100 000 Ft feletti anyagköltséghez kötelező a számla fotója.'); return; }
                       updateRow('task_materials', m.id, { amount: parseAmount(matEdit.amount), note: matEdit.note.trim() || null });
                       setMatEdit(null);
                     }} /></View>
@@ -867,21 +917,21 @@ Biztosan leveszed?`, 'Levétel', true);
         ) : null}
         {(isWorker ? !!myAssignment : true) && active ? (
           !matOpen ? (
-            <Btn title={isWorker ? '📷 Anyagot vettem — rögzítés (blokk fotóval)' : '+ Anyagköltség hozzáadása'} kind="secondary" onPress={() => setMatOpen(true)} />
+            <Btn title={isWorker ? '📦 Anyagot vettem — költség rögzítése' : '+ Anyagköltség hozzáadása'} kind="secondary" onPress={() => setMatOpen(true)} />
           ) : (
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />
               <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó 2 zsák" />
-              <Sub>{isWorker ? 'Számla / blokk fotója kötelező — több kép is csatolható egy tételhez (a galériában egyszerre több is kijelölhető):' : 'Számla / blokk fotója (vezetőnél nem kötelező):'}</Sub>
+              <Sub>{isWorker ? 'Számla / blokk fotója — 100 000 Ft felett kötelező; több kép is csatolható:' : 'Számla / blokk fotója (vezetőnél nem kötelező):'}</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
                 <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'mat')} /></View>
               </View>
-              {matPhotos.length ? <PhotoThumbs local={matPhotos} onRemoveLocal={(i) => setMatPhotos((ps) => ps.filter((_, j) => j !== i))} /> : isWorker ? <Sub style={{ color: C.warning }}>még nincs fotó (több is csatolható)</Sub> : null}
+              {matPhotos.length ? <PhotoThumbs local={matPhotos} onRemoveLocal={(i) => setMatPhotos((ps) => ps.filter((_, j) => j !== i))} /> : isWorker && parseAmount(matAmount) > INVOICE_PHOTO_LIMIT ? <Sub style={{ color: C.warning }}>100 000 Ft felett kötelező a számla fotója</Sub> : null}
               {matPhotos.length ? <Btn title={ocrBusy ? 'Felismerés…' : '🤖 Összeg felismerése a fotóból'} kind="ghost" small disabled={ocrBusy} onPress={() => void recognizeMaterial()} /> : null}
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setMatOpen(false)} /></View>
-                <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || (isWorker && matPhotos.length === 0)} /></View>
+                <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Rögzítés'} onPress={() => void submitMaterial()} disabled={busy || !matAmount || (isWorker && parseAmount(matAmount) > INVOICE_PHOTO_LIMIT && matPhotos.length === 0)} /></View>
               </View>
             </View>
           )

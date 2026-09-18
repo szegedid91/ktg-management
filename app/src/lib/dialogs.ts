@@ -11,6 +11,8 @@ export type DialogRequest = {
   message: string;
   okLabel: string;
   destructive: boolean;
+  /** a „Mégse” gomb felirata (pl. kétirányú választásnál: „Galéria”) */
+  cancelLabel?: string;
   alertOnly: boolean;
   resolve: (ok: boolean) => void;
 };
@@ -41,10 +43,11 @@ export function confirmDialog(
   message: string,
   okLabel = 'OK',
   destructive = false,
+  cancelLabel = 'Mégse',
 ): Promise<boolean> {
   if (host) {
     return new Promise((resolve) => {
-      host!({ title, message, okLabel, destructive, alertOnly: false, resolve });
+      host!({ title, message, okLabel, destructive, cancelLabel, alertOnly: false, resolve });
     });
   }
   if (Platform.OS === 'web') {
@@ -53,7 +56,7 @@ export function confirmDialog(
   }
   return new Promise((resolve) => {
     Alert.alert(title, message, [
-      { text: 'Mégse', style: 'cancel', onPress: () => resolve(false) },
+      { text: cancelLabel, style: 'cancel', onPress: () => resolve(false) },
       { text: okLabel, style: destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
     ]);
   });

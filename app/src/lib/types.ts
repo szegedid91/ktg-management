@@ -400,6 +400,14 @@ export interface TaskMaterial extends BaseRow {
   photo_paths: string[];
 }
 
+/** Munkafotó a feladathoz: előtte / utána (a munkavállaló a sajátját látja, a vezető mindet) */
+export interface TaskPhoto extends BaseRow {
+  task_id: string;
+  worker_id: string | null;
+  kind: 'before' | 'after';
+  path: string;
+}
+
 /** Feladat pénzügye — csak a vezetők látják (a munkavállaló nem) */
 export interface TaskFinance {
   id: UUID;
@@ -480,7 +488,7 @@ export const SYNC_TABLES = [
   'profit_share_history', 'share_change_requests',
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
-  'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries',
+  'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];
