@@ -193,6 +193,20 @@ let current: Promise<void> | null = null;
 /** A folyamatban lévő szinkron vége (kijelentkezésnél megvárjuk). */
 export function waitIdle(): Promise<void> { return current ?? Promise.resolve(); }
 
+/** Kijelentkezés előtt: csak a függő műveletek feltolása — lehúzás és
+ *  egyeztetés nélkül, legfeljebb timeoutMs-ig várva. (A teljes szinkron
+ *  minden táblát lehúzott és egyeztetett, ettől volt lassú a kilépés.) */
+export async function flushOutbox(timeoutMs = 4000): Promise<void> {
+  const work = (async () => {
+    await waitIdle();
+    if (store.outboxSize() === 0) return;
+    current = (async () => { try { await pushOutbox(); } catch { /* offline: a sor a tárban marad, de kilépéskor törlődik */ } })()
+      .finally(() => { current = null; });
+    await current;
+  })();
+  await Promise.race([work, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
+}
+
 export function syncNow(): Promise<void> {
   if (current) { runAgain = true; return current; }
   current = runSync().finally(() => { current = null; });

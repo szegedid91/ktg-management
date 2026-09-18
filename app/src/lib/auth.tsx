@@ -5,7 +5,7 @@ import { Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { store } from './store';
-import { startSyncLoop, stopSyncLoop, syncNow, waitIdle } from './sync';
+import { startSyncLoop, stopSyncLoop, flushOutbox, syncNow, waitIdle } from './sync';
 import { startRealtime, stopRealtime } from './realtime';
 import { setCurrentUserId, getCurrentUserId } from './repo';
 import { AppState } from 'react-native';
@@ -127,19 +127,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // amíg él a token: az el nem küldött rögzítések még felmennek,
-    // hogy fiókváltásnál se vesszen el semmi
-    try { await syncNow(); await waitIdle(); } catch { /* offline kijelentkezés is mehet */ }
+    const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+      Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]).catch(() => undefined);
+    // további szinkron ne induljon; a még el nem küldött rögzítések felmennek
+    // (csak feltolás, lehúzás nélkül, legfeljebb 4 mp), hogy ne vesszen el semmi
     stopSyncLoop();
     stopRealtime();
+    await flushOutbox(4000);
     // push-csatornák leválasztása: közös eszközön a következő fiók ne kapja
-    // az előző értesítéseit (natív token a profilról, webes feliratkozás le)
-    try {
-      const me = getCurrentUserId();
-      if (me) await supabase.from('profiles').update({ push_token: null }).eq('id', me);
-      await import('./webpush').then((m) => m.unsubscribeWebPush());
-    } catch { /* offline: a szerver-oldali kizárólagosság (register_push_token) úgyis rendezi */ }
-    await supabase.auth.signOut();
+    // az előző értesítéseit (natív token a profilról, webes feliratkozás le) —
+    // párhuzamosan, legfeljebb 3 mp; offline a szerver-oldali kizárólagosság rendezi
+    const me = getCurrentUserId();
+    await withTimeout(Promise.all([
+      me ? supabase.from('profiles').update({ push_token: null }).eq('id', me) : Promise.resolve(),
+      import('./webpush').then((m) => m.unsubscribeWebPush()),
+    ]), 3000);
+    // a szerver-oldali kiléptetés (token visszavonás) se tarthat sokáig;
+    // a helyi munkamenet mindenképp törlődik
+    await withTimeout(supabase.auth.signOut(), 3000);
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     await store.clearAll();
     try { await import('./draft').then((m) => m.clearAllDrafts()); } catch { /* nincs tároló */ }
   };

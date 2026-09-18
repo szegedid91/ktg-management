@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Screen, Row, Body, Btn, Sub, Card } from '../ui/kit';
@@ -23,6 +23,7 @@ const ITEMS: { label: string; icon: string; href: string }[] = [
 ];
 
 export default function More() {
+  const [leaving, setLeaving] = useState(false);
   const { session, signOut } = useAuth();
   const sync = useSyncStatus();
   // munkavállalói fiók: nincs Beállítások/menü — csak a saját alapadatok
@@ -46,18 +47,20 @@ export default function More() {
         {lastCrash() ? <Sub style={{ fontSize: 11, color: '#C53030' }}>Utolsó hiba: {lastCrash()}</Sub> : null}
         <Btn title="Szinkronizálás most" kind="ghost" small onPress={() => void syncNow()} />
         <Btn
-          title="Kijelentkezés"
+          title={leaving ? 'Kijelentkezés…' : 'Kijelentkezés'}
           kind="danger"
           small
+          disabled={leaving}
           onPress={() => {
+            const doSignOut = () => { setLeaving(true); void signOut().finally(() => setLeaving(false)); };
             if (sync.pendingOps > 0) {
               void confirmDialog(
                 'Függő műveletek',
                 `${sync.pendingOps} művelet még nem szinkronizált. Kijelentkezéskor ezek elvesznek. Biztosan kilépsz?`,
                 'Kilépés', true,
-              ).then((ok) => { if (ok) void signOut(); });
+              ).then((ok) => { if (ok) doSignOut(); });
             } else {
-              void signOut();
+              doSignOut();
             }
           }}
         />
