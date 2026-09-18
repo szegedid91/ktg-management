@@ -152,6 +152,8 @@ Biztosan leveszed?`, 'Levétel', true);
   const [failReason, setFailReason] = useState('');
   const [failPhotos, setFailPhotos] = useState<PickedPhoto[]>([]);
   const [matOpen, setMatOpen] = useState(false);
+  // munkavállaló: saját tétel összegének / megjegyzésének szerkesztése
+  const [matEdit, setMatEdit] = useState<{ id: string; amount: string; note: string } | null>(null);
   const [matAmount, setMatAmount] = useState('');
   const [matNote, setMatNote] = useState('');
   const [matPhotos, setMatPhotos] = useState<PickedPhoto[]>([]);
@@ -352,6 +354,7 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   const materialPhotos = (m: TaskMaterial) => (m.photo_paths?.length ? m.photo_paths : m.photo_path ? [m.photo_path] : []);
+  const canEditMaterial = (m: TaskMaterial) => !isWorker || (active && m.worker_id === myWorkerId);
 
   // ---------- részfeladatok ----------
   const toggleSub = async (s: TaskSubtask) => {
@@ -429,8 +432,9 @@ Biztosan leveszed?`, 'Levétel', true);
 
   // anyagköltség egy fotójának törlése (vezető): a tétel megmarad, csak a kép kerül ki
   const removeMaterialPhoto = async (m: TaskMaterial, path: string) => {
-    if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót az anyagköltségről? A tétel megmarad.', 'Törlés', true)) return;
     const rest = materialPhotos(m).filter((p) => p !== path);
+    if (isWorker && rest.length === 0) { notify('Fotó kell', 'Legalább egy fotó (számla / blokk) kell maradjon a tételen. Előbb tölts fel másikat.'); return; }
+    if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót az anyagköltségről? A tétel megmarad.', 'Törlés', true)) return;
     updateRow('task_materials', m.id, { photo_paths: rest, photo_path: rest[0] ?? null });
     void removeStoragePaths('tasks', [path]);
   };
@@ -820,8 +824,25 @@ Biztosan leveszed?`, 'Levétel', true);
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
               {!isWorker ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
-            <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={!isWorker ? (ph) => void removeMaterialPhoto(m, ph) : undefined} />
+            <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={canEditMaterial(m) ? (ph) => void removeMaterialPhoto(m, ph) : undefined} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
+            {isWorker && canEditMaterial(m) ? (
+              matEdit?.id === m.id ? (
+                <View style={{ gap: S.sm }}>
+                  <Input label="Összeg (Ft)" value={matEdit.amount} onChangeText={(v) => setMatEdit({ ...matEdit, amount: v })} keyboardType="numeric" />
+                  <Input label="Mi ez?" value={matEdit.note} onChangeText={(v) => setMatEdit({ ...matEdit, note: v })} />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setMatEdit(null)} /></View>
+                    <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={parseAmount(matEdit.amount) <= 0} onPress={() => {
+                      updateRow('task_materials', m.id, { amount: parseAmount(matEdit.amount), note: matEdit.note.trim() || null });
+                      setMatEdit(null);
+                    }} /></View>
+                  </View>
+                </View>
+              ) : (
+                <Btn title="✏️ Összeg / megjegyzés módosítása" kind="ghost" small onPress={() => setMatEdit({ id: m.id, amount: String(m.amount), note: m.note ?? '' })} />
+              )
+            ) : null}
             {!isWorker ? (
               mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
