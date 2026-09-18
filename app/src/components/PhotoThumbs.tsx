@@ -46,7 +46,7 @@ function Viewer({ items, index, onIndex, onClose }: {
   if (!cur) return null;
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: '#0b0b0b', justifyContent: 'center', alignItems: 'center' }}>
         <View style={{ position: 'absolute', top: 14, left: 14, right: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 2 }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>{index + 1} / {items.length}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
