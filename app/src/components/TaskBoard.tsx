@@ -14,7 +14,7 @@ import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
-export type BoardFilter = 'active' | 'unassigned' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'material' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
+export type BoardFilter = 'active' | 'unassigned' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
 type Filter = BoardFilter;
 const PAGE = 25;
 
@@ -49,8 +49,6 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
 
   const running = useMemo(() => new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string)), [sessions]);
   const unpricedTaskIds = useMemo(() => new Set(materials.filter((m) => !pricing.some((p) => p.material_id === m.id)).map((m) => m.task_id)), [materials, pricing]);
-  // feladatok, amelyekhez anyagköltséget rögzítettek (lezártak is)
-  const materialTaskIds = useMemo(() => new Set(materials.map((m) => m.task_id)), [materials]);
   const assigneesOf = (t: WorkerTask) => assignees.filter((a) => a.task_id === t.id);
 
   const active = tasks.filter(isActiveTask);
@@ -61,7 +59,6 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     acknowledged: active.filter((t) => t.status === 'acknowledged').length,
     running: active.filter((t) => running.has(t.id)).length,
     unpriced: tasks.filter((t) => unpricedTaskIds.has(t.id)).length,
-    material: tasks.filter((t) => materialTaskIds.has(t.id)).length,
     priority: active.filter((t) => t.priority > 0).length,
     quote: active.filter(hasOpenQuote).length,
     overdue: active.filter((t) => isOverdue(t, todayISO())).length,
@@ -81,7 +78,6 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
           case 'acknowledged': return t.status === 'acknowledged';
           case 'running': return running.has(t.id);
           case 'unpriced': return unpricedTaskIds.has(t.id);
-          case 'material': return materialTaskIds.has(t.id);
           case 'priority': return isActiveTask(t) && t.priority > 0;
           case 'quote': return isActiveTask(t) && hasOpenQuote(t);
           case 'overdue': return isOverdue(t, todayISO());
@@ -101,7 +97,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
       // rögzítés dátuma szerint, a legfrissebb elöl (az SOS csak kiemelést kap, nem sorrendet)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, materialTaskIds, workers, sites, quotes]);
+  }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, workers, sites, quotes]);
 
   const row = (t: WorkerTask, showSite = true) => (
     <TaskRow key={t.id} task={t} assignees={assigneesOf(t)} materials={materials.filter((m) => m.task_id === t.id)}
@@ -128,7 +124,6 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
         {counts.quote > 0 ? <Chip label="💬 Ajánlat" count={counts.quote} color={C.primary} on={filter === 'quote'} onPress={() => { setFilter('quote'); setLimit(PAGE); }} /> : null}
         {counts.overdue > 0 ? <Chip label="⏰ Késik" count={counts.overdue} color={C.danger} on={filter === 'overdue'} onPress={() => { setFilter('overdue'); setLimit(PAGE); }} /> : null}
         {counts.unpriced > 0 ? <Chip label="📦 Beárazandó" count={counts.unpriced} color={C.warning} on={filter === 'unpriced'} onPress={() => { setFilter('unpriced'); setLimit(PAGE); }} /> : null}
-        {counts.material > 0 ? <Chip label="📦 Van anyagköltség" count={counts.material} color={C.sub} on={filter === 'material'} onPress={() => { setFilter('material'); setLimit(PAGE); }} /> : null}
         {includeClosed ? (
           <>
             <Chip label="Kész" count={counts.done} color={STATUS_COLOR.done} on={filter === 'done'} onPress={() => { setFilter('done'); setLimit(PAGE); }} />

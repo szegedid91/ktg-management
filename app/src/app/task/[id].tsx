@@ -517,6 +517,7 @@ Biztosan leveszed?`, 'Levétel', true);
             {assignees.length > 1 ? (
               <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
             ) : null}
+            {task.done_at ? <Sub>{task.status === 'failed' ? '⚠️ Lezárva' : '✔ Készre jelentve'}: {hdt(task.done_at)}</Sub> : null}
           </>
         ) : (
           <>
@@ -526,6 +527,7 @@ Biztosan leveszed?`, 'Levétel', true);
         </View>
         <KV k="Kiadta" v={creator} />
         <KV k="Rögzítve" v={hdt(task.created_at)} />
+        {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Lezárva (nem sikerült)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
         {!isWorker && active ? (
           dueEdit === null ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
