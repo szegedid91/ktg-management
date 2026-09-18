@@ -395,7 +395,7 @@ export interface TaskMaterial extends BaseRow {
   worker_id: string | null;
   amount: number;
   note: string | null;
-  photo_path: string;
+  photo_path: string | null;
   /** több fotó; az első = photo_path */
   photo_paths: string[];
 }

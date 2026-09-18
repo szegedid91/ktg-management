@@ -427,6 +427,14 @@ Biztosan leveszed?`, 'Levétel', true);
     smartBack();
   };
 
+  // anyagköltség egy fotójának törlése (vezető): a tétel megmarad, csak a kép kerül ki
+  const removeMaterialPhoto = async (m: TaskMaterial, path: string) => {
+    if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót az anyagköltségről? A tétel megmarad.', 'Törlés', true)) return;
+    const rest = materialPhotos(m).filter((p) => p !== path);
+    updateRow('task_materials', m.id, { photo_paths: rest, photo_path: rest[0] ?? null });
+    void removeStoragePaths('tasks', [path]);
+  };
+
   const removeTaskPhoto = async (path: string) => {
     if (!await confirmDialog('Fotó törlése', 'Törlöd ezt a fotót a feladatról?', 'Törlés', true)) return;
     updateRow('worker_tasks', task.id, { photo_paths: (task.photo_paths ?? []).filter((p) => p !== path) });
@@ -809,7 +817,7 @@ Biztosan leveszed?`, 'Levétel', true);
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
               {!isWorker ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
-            <PhotoThumbs paths={materialPhotos(m)} />
+            <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={!isWorker ? (ph) => void removeMaterialPhoto(m, ph) : undefined} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {!isWorker ? (
               mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
