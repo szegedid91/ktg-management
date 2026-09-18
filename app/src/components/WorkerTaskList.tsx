@@ -59,7 +59,8 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
       : filter === 'assigned' ? isActiveTask(t) && !ackedByMe(t) && !isQuoteOpen(t)
       : isActiveTask(t) && ackedByMe(t))
     .filter((t) => siteId === null || (t.site_id ?? '') === siteId)
-    .sort((a, b) => (ackedByMe(a) ? 1 : 0) - (ackedByMe(b) ? 1 : 0) || b.updated_at.localeCompare(a.updated_at));
+    // rögzítés dátuma szerint, a legfrissebb elöl
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   return (
     <View style={{ gap: S.sm }}>

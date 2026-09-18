@@ -98,7 +98,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
         const site = sites.find((s) => s.id === t.site_id)?.name ?? '';
         return `${t.code ?? ''} ${t.title} ${t.details ?? ''} ${names} ${site}`.toLowerCase().includes(needle);
       })
-      .sort((a, b) => (b.priority - a.priority) || b.updated_at.localeCompare(a.updated_at));
+      // rögzítés dátuma szerint, a legfrissebb elöl (az SOS csak kiemelést kap, nem sorrendet)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, materialTaskIds, workers, sites, quotes]);
 
