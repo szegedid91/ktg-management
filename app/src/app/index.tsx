@@ -15,6 +15,7 @@ import { isActiveTask, wname } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
 import { SyncBanner } from '../components/SyncBanner';
+import { PushPrompt } from '../components/PushPrompt';
 import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
 
 const MENU: { icon: string; label: string; href: string }[] = [
@@ -150,6 +151,7 @@ function DashboardInner() {
       ) : null}
 
       <SyncBanner />
+      <PushPrompt />
 
 
       {staleTasks.length ? (

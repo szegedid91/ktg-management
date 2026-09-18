@@ -2,7 +2,8 @@
 // + heti összefoglaló és lejárt tételek emlékeztetője.
 //
 // Hívások:
-//  - {job: "drain"}   → a notification_queue ürítése (app-sync után, ill. cron)
+//  - {job: "drain"}   → a notification_queue ürítése (DB-trigger + pg_cron a
+//                       Vault-titokkal → mindenkinek; app-sync → csak a sajátja)
 //  - {job: "digest"}  → heti összefoglaló (pl. péntek délutáni cron)
 //  - {job: "overdue"} → N napnál régebbi kifizetetlen bér / be nem folyt számla
 //
@@ -97,10 +98,19 @@ Deno.serve(async (req) => {
   const { job = 'drain' } = await req.json().catch(() => ({}));
 
   // a digest/overdue csak cronból (service kulccsal) futhat; a drain-t
-  // bejelentkezett felhasználó is kérheti, de akkor csak a SAJÁT sorai mennek ki
+  // bejelentkezett felhasználó is kérheti, de akkor csak a SAJÁT sorai mennek ki.
+  // A DB-trigger / pg_cron a Vault-titokkal (x-cron-secret fejléc) hív:
+  // ekkor a teljes sor kimegy (ettől kapnak értesítést azok is, akiknél az
+  // app épp nincs megnyitva). A funkció verify_jwt nélkül fut, a hitelesítést
+  // itt végezzük: service kulcs / cron-titok / felhasználói JWT — más 401.
   const auth = req.headers.get('Authorization') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const isService = !!serviceKey && auth === `Bearer ${serviceKey}`;
+  let isService = !!serviceKey && auth === `Bearer ${serviceKey}`;
+  const cronHeader = req.headers.get('x-cron-secret') ?? '';
+  if (!isService && cronHeader && job === 'drain') {
+    const { data: secret } = await supabase.rpc('fn_push_cron_secret');
+    if (typeof secret === 'string' && secret.length >= 32 && secret === cronHeader) isService = true;
+  }
   let onlyRecipient: string | null = null;
   if (!isService) {
     if (job !== 'drain') {
