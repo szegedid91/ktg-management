@@ -60,6 +60,10 @@ export interface Site extends BaseRow {
   address: string | null;
   note: string | null;
   status: SiteStatus;
+  /** a terület helye és a bejelentkezési sugár (m) — az „érkezés” jelzéséhez */
+  lat?: number | null;
+  lng?: number | null;
+  geofence_radius_m?: number | null;
   closed_at: string | null;
   closed_by: UUID | null;
 }

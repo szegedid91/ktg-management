@@ -16,6 +16,7 @@ import { TaskRow } from './TaskRow';
 import { InviteCard } from './InviteCard';
 import { SyncBanner } from './SyncBanner';
 import { PushPrompt } from './PushPrompt';
+import { ArrivalPrompt } from './ArrivalPrompt';
 import { openDirections } from '../lib/maps';
 import { router } from 'expo-router';
 import {
@@ -161,6 +162,11 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     <Screen>
       <SyncBanner />
       <PushPrompt />
+      <ArrivalPrompt sites={activeSites} hasOpenSession={!!openSession || crewRunning.length > 0}
+        onCheckIn={(siteId) => {
+          // vállalkozónál előbb ki kell választani, kik dolgoznak: a kezdés-panel nyílik a területtel
+          if (isContractor && crew.length) { setStartSite(siteId); setStartOpen(true); } else startAt(siteId);
+        }} />
       {schedule.length ? (
         <Card style={{ paddingVertical: S.sm, gap: 4 }}>
           <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>📆 Beosztásom</Text>

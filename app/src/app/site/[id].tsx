@@ -11,6 +11,7 @@ import { ft, hd, todayISO } from '../../lib/format';
 import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals, WorkerTask , Profile} from '../../lib/types';
 import { TaskGroups } from '../../components/TaskGroups';
 import { openDirections } from '../../lib/maps';
+import { SiteGeofenceCard } from '../../components/SiteGeofenceCard';
 import { isActiveTask } from '../../lib/tasks';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
@@ -91,6 +92,7 @@ export default function SiteDetail() {
         {site.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
       </View>
       {closed ? <Sub style={{ color: C.warning }}>Ez az építkezés lezárt, csak olvasható.</Sub> : null}
+      <SiteGeofenceCard site={site} />
 
       <View style={{ flexDirection: 'row', gap: S.sm }}>
         <View style={{ flex: 1 }}>
