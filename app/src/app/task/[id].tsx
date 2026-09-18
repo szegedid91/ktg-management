@@ -157,6 +157,8 @@ Biztosan leveszed?`, 'Levétel', true);
   const [failReason, setFailReason] = useState('');
   const [failPhotos, setFailPhotos] = useState<PickedPhoto[]>([]);
   const [matOpen, setMatOpen] = useState(false);
+  // munkafotó-feltöltés folyamatban (a hookoknak a korai visszatérések ELŐTT kell állniuk)
+  const [photoBusy, setPhotoBusy] = useState<'before' | 'after' | null>(null);
   // munkavállaló: saját tétel összegének / megjegyzésének szerkesztése
   const [matEdit, setMatEdit] = useState<{ id: string; amount: string; note: string } | null>(null);
   const [matAmount, setMatAmount] = useState('');
@@ -437,7 +439,6 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   // ---------- munkafotók (előtte / utána) ----------
-  const [photoBusy, setPhotoBusy] = useState<'before' | 'after' | null>(null);
   const addWorkPhotos = async (kind: 'before' | 'after') => {
     const fromCamera = await confirmDialog(kind === 'before' ? 'Előtte fotó' : 'Utána fotó', 'Honnan töltöd fel?', '📷 Kamera', false, '🖼 Galéria');
     const list = await pickPhotos(fromCamera);
