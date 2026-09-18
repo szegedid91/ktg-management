@@ -26,6 +26,13 @@ const head = `
          Felső padding NINCS — a fejléc (safe-area-context) maga kezeli
          az insetet, a body-padding duplázná. */
       html, body { background-color: #1F4E5F; }
+      /* iOS 26 (üveg-hatású státuszsáv): ha a fejléc bármi okból nem ér
+         fel a státuszsáv alá, ott a világos oldalháttér mosódna el.
+         Ez a rögzített sáv a kivágás magasságában mindig a fejléc színét
+         festi — ha a fejléc már lefedi, láthatatlan. */
+      body::after { content: ''; position: fixed; top: 0; left: 0; right: 0;
+        height: env(safe-area-inset-top, 0px); background: #1F4E5F;
+        z-index: 2147483000; pointer-events: none; }
       /* a böngésző saját lehúzás-frissítése és gumiszalag-effektje ne
          ütközzön az app beépített lehúzásos frissítésével */
       html, body { overscroll-behavior-y: none; }
