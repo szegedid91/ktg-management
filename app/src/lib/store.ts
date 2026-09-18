@@ -25,9 +25,15 @@ export interface OutboxOp {
 }
 
 /** Az op melyik sor(oka)t érinti — pending-védelemhez és rollbackhez */
+/** Egy függő művelet által érintett sorok egy táblában. Az RPC-k optimista
+ *  („touched”) sorai is ide tartoznak: amíg a művelet a sorban áll, a
+ *  szerverről lehúzott (még régi) sor nem írhatja felül a lokális állapotot —
+ *  különben pl. a feladat elfogadása után a gombok „visszaugranak”, amíg a
+ *  következő szinkron le nem fut. */
 export function opRowIds(op: OutboxOp, table: SyncTable): string[] {
   if (op.kind === 'upsert' && op.table === table && op.row) return [String(op.row.id)];
   if (op.kind === 'update' && op.table === table && op.id) return [String(op.id)];
+  if (op.kind === 'rpc' && op.touched?.length) return op.touched.filter((t) => t.table === table).map((t) => String(t.id));
   return [];
 }
 
