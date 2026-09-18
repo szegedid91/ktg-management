@@ -79,7 +79,7 @@ export default function TaskDetail() {
   const [newSub, setNewSub] = useState('');
   const [dueEdit, setDueEdit] = useState<string | null>(null);
   // feladat adatainak szerkesztése (vezető): cím, kód, részletek, helyszín
-  const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null } | null>(null);
+  const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null; sos: boolean } | null>(null);
   // kiosztás módosítása: hozzáadás / levétel (elfogadott munkavállalónál figyelmeztetéssel)
   const [assignOpen, setAssignOpen] = useState(false);
   // utólagos rögzítés (a munka már megtörtént): munkaidő felvitele, készre állítás
@@ -476,11 +476,13 @@ Biztosan leveszed?`, 'Levétel', true);
             <Picker label="Helyszín" items={sites.filter((x) => x.status === 'active' || x.id === edit.site_id).sort((x, y) => x.name.localeCompare(y.name, 'hu'))}
               selectedId={edit.site_id} getId={(x) => x.id} getLabel={(x) => `${x.name}${x.address ? ` · ${x.address}` : ''}`}
               onSelect={(sid) => setEdit({ ...edit, site_id: sid })} placeholder="Válassz helyszínt…" allowNull nullLabel="Nincs helyszín" />
+            <Check checked={edit.sos} onToggle={() => setEdit({ ...edit, sos: !edit.sos })} label="🆘 SOS — sürgős feladat" sub="Kiemelten jelenik meg a munkavállalónál és a listákban." />
             <View style={{ flexDirection: 'row', gap: S.sm }}>
               <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setEdit(null)} /></View>
               <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={!edit.title.trim()} onPress={() => {
                 updateRow('worker_tasks', task.id, {
                   title: edit.title.trim(), code: edit.code.trim() || null, details: edit.details.trim() || null, site_id: edit.site_id,
+                  priority: edit.sos ? 1 : 0,
                 });
                 setEdit(null);
                 notify('Mentve ✅', 'A feladat adatai frissültek — a munkavállaló is az újat látja.');
@@ -557,10 +559,8 @@ Biztosan leveszed?`, 'Levétel', true);
             {!isWorker && active ? (
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
-                <Btn title={task.priority ? '🆘 SOS levétele' : '🆘 SOS'} kind="ghost" small
-                  onPress={() => updateRow('worker_tasks', task.id, { priority: task.priority ? 0 : 1 })} />
                 {!edit ? <Btn title="✏️ Szerkesztés" kind="ghost" small
-                  onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null })} /> : null}
+                  onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null, sos: task.priority > 0 })} /> : null}
               </View>
             ) : null}
           </View>

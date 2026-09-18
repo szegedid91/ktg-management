@@ -63,6 +63,7 @@ export default function RootLayout() {
         <Stack.Screen name="jelszo" options={{ title: 'Új jelszó' }} />
         <Stack.Screen name="more" options={{ title: 'Több' }} />
         <Stack.Screen name="pending/index" options={{ title: 'Függőben' }} />
+        <Stack.Screen name="finance" options={{ title: 'Pénzügy' }} />
         <Stack.Screen name="sites" options={{ title: 'Építkezések' }} />
         <Stack.Screen name="calendar" options={{ title: 'Naptár' }} />
         <Stack.Screen name="settlement" options={{ title: 'Elszámolás' }} />

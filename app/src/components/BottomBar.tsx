@@ -13,7 +13,7 @@ import { Profile } from '../lib/types';
 const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: string }[] = [
   { icon: '🏠', label: 'Kezdőlap', action: () => router.navigate('/'), activePrefix: '/' },
   { icon: '💸', label: '+ Költség', action: () => router.push('/expense/new') },
-  { icon: '⏳', label: 'Függőben', action: () => router.navigate('/pending'), activePrefix: '/pending' },
+  { icon: '💰', label: 'Pénzügy', action: () => router.navigate('/finance'), activePrefix: '/finance' },
   { icon: '🛠️', label: 'Feladatok', action: () => router.navigate('/tasks'), activePrefix: '/tasks' },
   { icon: '☰', label: 'Több', action: () => router.navigate('/more'), activePrefix: '/more' },
 ];
