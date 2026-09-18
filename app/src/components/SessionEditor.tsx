@@ -53,11 +53,19 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
     updateRow('work_sessions', session.id, { ended_at: new Date().toISOString() });
   };
 
+  // ha a menet a szerverre jóval a (kezdés/)befejezés után érkezett meg (a
+  // telefon offline volt, később szinkronizált), ezt jelezzük: a bérhez a
+  // gombnyomás ideje számít, de látszik, mikor lett ténylegesen rögzítve
+  const eventAt = session.ended_at ?? session.started_at;
+  const syncLagMin = session.updated_at ? Math.round((new Date(session.updated_at).getTime() - new Date(eventAt).getTime()) / 60000) : 0;
+  const lateSync = syncLagMin >= 5;
+
   return (
     <View style={{ gap: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
         <Sub style={{ flex: 1 }}>
           {label ? `${label}: ` : ''}{hdt(session.started_at)} → {session.ended_at ? hdt(session.ended_at) : <Text style={{ color: C.success, fontWeight: '700' }}>folyamatban</Text>} · {fmtHours(sessionHours(session))}
+          {lateSync ? <Text style={{ color: C.warning }}>{` · ☁️ rögzítve ${hdt(session.updated_at!)} (${syncLagMin} perccel később szinkronizált)`}</Text> : null}
         </Sub>
         {editable && !open ? <Btn title={running ? 'Lezárás' : '✏️'} kind="ghost" small onPress={running ? () => void closeNow() : begin} /> : null}
         {editable && !open && running ? <Btn title="✏️" kind="ghost" small onPress={begin} /> : null}
