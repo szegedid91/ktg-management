@@ -308,6 +308,8 @@ Biztosan leveszed?`, 'Levétel', true);
     if (assignees.length === 0 && !await confirmDialog('Nincs kiosztva', 'A feladat senkihez sincs rendelve. Így is késznek jelölöd?', 'Kész')) return;
     if (assignees.length > 0 && !await confirmDialog('Készre állítás', `A feladat késznek lesz jelölve (${assignees.map((x) => workerName(x.worker_id)).join(', ')}). Rendben?`, 'Kész')) return;
     assignees.filter((x) => !x.acknowledged_at).forEach((x) => updateRow('task_assignees', x.id, { acknowledged_at: nowISO() }));
+    // ha még fut rajta munkaidő, azt is lezárjuk (különben nyitva maradna egy lezárt feladaton)
+    sessions.filter((x) => !x.ended_at).forEach((x) => updateRow('work_sessions', x.id, { ended_at: nowISO() }));
     updateRow('worker_tasks', task.id, { status: 'done', done_at: nowISO() });
     notify('Kész ✔', 'A feladat lezárva. Ha ajánlatos volt, a bér az elfogadott ajánlat; egyébként a rögzített munkaidő alapján.');
   };
@@ -620,6 +622,14 @@ Biztosan leveszed?`, 'Levétel', true);
           </View>
         ) : null}
       </Card>
+
+      {/* ---------- vezető: feladat lezárása ---------- */}
+      {!isWorker && active ? (
+        <Card style={{ borderColor: C.success, gap: S.sm }}>
+          <Btn title="✔ Feladat lezárása — kész" onPress={() => void markDoneByPartner()} />
+          <Sub>Akkor is lezárhatod, ha a munkavállaló nem jelentette készre.{sessions.some((x) => !x.ended_at) ? ' A még futó munkaidő is lezárul.' : ''}</Sub>
+        </Card>
+      ) : null}
 
       {/* ---------- munkavállalói műveletek ---------- */}
       {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
