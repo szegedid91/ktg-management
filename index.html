@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
+    <title>Építkezés Költségkövető</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  <link rel="icon" href="/favicon.ico"/>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#1F4E5F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Költségkövető" />
+    <style>
+      /* PWA: a kivágás (notch) mögötti sáv a fejléc színét kapja.
+         Felső padding NINCS — a fejléc (safe-area-context) maga kezeli
+         az insetet, a body-padding duplázná. */
+      html, body { background-color: #1F4E5F; }
+      /* iOS 26 (üveg-hatású státuszsáv): a rendszer a lap TETEJÉN lévő rögzített
+         elem (vagy a body) színéből színezi a státuszsávot. A fejlécünk nem
+         rögzített elem, ezért a mintavétel időnként a világos oldalhátteret
+         találta el (homályos, szürkés sáv). Ez a valódi, rögzített sáv a lap
+         tetején mindig a fejléc színét adja: a kivágás magassága + 6 px (a
+         fejléc felső, üres részét fedi, a tartalmat nem takarja). A színt a
+         témaváltás a --ktg-header változón át frissíti. */
+      html, body { background-color: var(--ktg-header, #1F4E5F); }
+      #ktg-topbar { position: fixed; top: 0; left: 0; right: 0;
+        height: calc(env(safe-area-inset-top, 0px) + 6px);
+        background-color: var(--ktg-header, #1F4E5F);
+        z-index: 2147483000; pointer-events: none; }
+      /* a böngésző saját lehúzás-frissítése és gumiszalag-effektje ne
+         ütközzön az app beépített lehúzásos frissítésével */
+      html, body { overscroll-behavior-y: none; }
+    </style>
+  </head>
+
+  <body><div id="ktg-topbar" aria-hidden="true"></div>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  <script src="/_expo/static/js/web/entry-a1570c1bd7e5e2cd0e924e9619fd2ea9.js" defer></script>
+</body>
+</html>
