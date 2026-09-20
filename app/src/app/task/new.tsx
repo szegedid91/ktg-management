@@ -16,6 +16,23 @@ import { Site, Worker, TaskTemplate, Profile, WorkSession, Attendance, TaskMater
 import { addDaysISO, todayISO, hd, ft } from '../../lib/format';
 import { wname, sessionHours, fmtHours } from '../../lib/tasks';
 
+/** Összecsukható szakasz ikonnal és rövid összegzéssel. */
+function Sec({ icon, title, summary, open, onToggle, children }: {
+  icon: string; title: string; summary?: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <Card style={{ paddingVertical: S.sm, gap: S.sm, borderColor: open ? C.primary : C.border }}>
+      <Pressable onPress={onToggle} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: S.sm, minHeight: 36, opacity: pressed ? 0.7 : 1 })}>
+        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{title}</Text>
+        <Text style={{ flex: 1, textAlign: 'right', color: C.sub, fontSize: 13 }} numberOfLines={1}>{open ? '' : (summary ?? '')}</Text>
+        <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
+      </Pressable>
+      {open ? children : null}
+    </Card>
+  );
+}
+
 export default function NewTask() {
   const { workerId, siteId } = useLocalSearchParams<{ workerId?: string; siteId?: string }>();
   const sites = useTable<Site>('sites').filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu', { sensitivity: 'base' }));
@@ -72,6 +89,9 @@ export default function NewTask() {
   // részfeladatok egyelőre nincsenek a felületen (a sablon mező üres marad)
   const subtasks: { title: string; photo_required: boolean }[] = [];
   const [dueOpen, setDueOpen] = useState(false);
+  // tömör nézet: egyszerre egy szakasz van nyitva; a „Kinek?” nyitva indul
+  const [open, setOpen] = useState<string | null>('who');
+  const tog = (k: string) => setOpen((cur) => (cur === k ? null : k));
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
@@ -150,17 +170,15 @@ export default function NewTask() {
 
   if (isWorker) return <Screen><Empty text="Nincs jogosultságod ehhez az oldalhoz." /></Screen>;
 
+  const chosenNames = workers.filter((w) => chosen.has(w.id)).map((w) => wname(w));
+  const chip = (on: boolean, color: string) => ({
+    flexDirection: 'row' as const, alignItems: 'center' as const, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+    borderWidth: 1, borderColor: on ? color : C.border, backgroundColor: on ? color : C.card,
+  });
+
   return (
     <Screen>
-      {templates.length > 0 ? (
-        <Card>
-          <H2>📋 Sablonból</H2>
-          <Picker label="Sablon" items={templates} selectedId={templateId} getId={(t) => t.id} getLabel={(t) => t.name}
-            onSelect={applyTemplate} placeholder="Válassz sablont (opcionális)…" allowNull nullLabel="— nincs —" />
-        </Card>
-      ) : null}
-      <Card>
-        <H2>Feladat</H2>
+      <Card style={{ gap: S.sm }}>
         <Input label="Feladat címe *" value={title} onChangeText={setTitle} placeholder="pl. Csempézés a fürdőben" />
         {similar.length ? (
           <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
@@ -173,45 +191,23 @@ export default function NewTask() {
             ))}
           </View>
         ) : null}
-        <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
-        <Input label="Részletek" value={details} onChangeText={setDetails} placeholder="Mit, hol, mivel…" multiline />
-        <Check checked={priority} onToggle={() => setPriority(!priority)} label="🆘 SOS feladat" sub="Sürgős: a listák elején, kiemelve jelenik meg." />
         <Picker label="Helyszín (építkezés) *" items={sites} selectedId={site} getId={(s) => s.id}
           getLabel={(s) => s.address ? `${s.name} — ${s.address}` : s.name} onSelect={setSite}
           />
-        <Pressable onPress={() => setDueOpen(!dueOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4 }}>
-          <Text style={{ fontWeight: '700', color: C.text, flex: 1 }}>📅 Határidő{dueDate ? `: ${dueDate}` : ''}</Text>
-          <Text style={{ color: C.sub }}>{dueOpen ? '▾' : '▸ beállítás'}</Text>
-        </Pressable>
-        {dueOpen ? (
-          <>
-            <Input label="Határidő (ÉÉÉÉ-HH-NN)" value={dueDate} onChangeText={setDueDate} placeholder={`pl. ${addDaysISO(todayISO(), 7)}`} />
-            <View style={{ flexDirection: 'row', gap: S.sm }}>
-              {[3, 7, 14].map((d) => (
-                <View key={d} style={{ flex: 1 }}><Btn title={`+${d} nap`} kind="ghost" small onPress={() => setDueDate(addDaysISO(todayISO(), d))} /></View>
-              ))}
-              <View style={{ flex: 1 }}><Btn title="Törlés" kind="ghost" small onPress={() => setDueDate('')} /></View>
-            </View>
-          </>
-        ) : null}
-        <Check checked={saveAsTemplate} onToggle={() => setSaveAsTemplate(!saveAsTemplate)} label="Mentés sablonként" sub="Legközelebb egy kattintással kitölthető." />
-        {saveAsTemplate ? <Input label="Sablon neve" value={templateName} onChangeText={setTemplateName} placeholder="pl. Fürdő burkolás" /> : null}
-      </Card>
-
-
-      <Card>
-        <H2>📷 Fotók a feladathoz</H2>
-        <Sub>Pl. a hiba, a helyszín vagy a rajz — a munkavállaló a feladat oldalán nyitja meg.</Sub>
-        <View style={{ flexDirection: 'row', gap: S.sm }}>
-          <View style={{ flex: 1 }}><Btn title="📷 Fotózás" kind="ghost" small onPress={() => void addPhoto(true)} /></View>
-          <View style={{ flex: 1 }}><Btn title="🖼 Galériából" kind="ghost" small onPress={() => void addPhoto(false)} /></View>
+        <Input label="Részletek" value={details} onChangeText={setDetails} placeholder="Mit, hol, mivel…" multiline />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+          <Pressable onPress={() => setPriority(!priority)} style={chip(priority, C.danger)}>
+            <Text style={{ fontWeight: '700', fontSize: 13, color: priority ? '#fff' : C.text }}>{priority ? '✓ ' : ''}🆘 SOS — sürgős</Text>
+          </Pressable>
+          <Pressable onPress={() => setQuote(!quote)} style={chip(quote, C.primary)}>
+            <Text style={{ fontWeight: '700', fontSize: 13, color: quote ? '#fff' : C.text }}>{quote ? '✓ ' : ''}💬 Ajánlatot kérek</Text>
+          </Pressable>
         </View>
-        <PhotoThumbs local={photos} onRemoveLocal={(i) => setPhotos((ps) => ps.filter((_, j) => j !== i))} />
+        {quote ? <Sub>A munkavállaló megadja, mennyiért vállalja; a bérköltség az elfogadott ajánlat lesz. A kiszámlázott értéket később, a feladat oldalán adod meg.</Sub> : null}
       </Card>
 
-      <Card>
-        <H2>Kinek?</H2>
-        <Sub>Több munkavállaló is kijelölhető — mindegyik külön fogadja el. Üresen is hagyhatod: a feladat „kiosztatlan” lesz, és később adod ki.</Sub>
+      <Sec icon="👷" title="Kinek?" summary={chosenNames.length ? chosenNames.join(', ') : 'kiosztatlan marad'} open={open === 'who'} onToggle={() => tog('who')}>
+        <Sub>Több is kijelölhető — mindegyik külön fogadja el. Üresen hagyva a feladat „kiosztatlan” lesz.</Sub>
         {workers.length > 6 ? <Input value={workerQ} onChangeText={setWorkerQ} placeholder="Keresés név / szakma szerint…" /> : null}
         {shownWorkers.map((w) => (
           <Check key={w.id} checked={chosen.has(w.id)} onToggle={() => toggle(w.id)}
@@ -219,15 +215,36 @@ export default function NewTask() {
         ))}
         {shownWorkers.length === 0 && workers.length > 0 ? <Sub>Nincs találat.</Sub> : null}
         {workers.length === 0 ? <Sub>Nincs munkavállaló felvéve.</Sub> : null}
-      </Card>
+      </Sec>
 
-      <Card>
-        <H2>Ajánlat</H2>
-        <Check checked={quote} onToggle={() => setQuote(!quote)}
-          label="Ajánlatot kérek a munkavállalótól"
-          sub="A munkavállaló megadja, mennyiért vállalja; a bérköltség az elfogadott ajánlat lesz." />
-        <Sub>A kiszámlázott értéket később, a feladat oldalán adhatod meg.</Sub>
-      </Card>
+      <Sec icon="📅" title="Határidő" summary={dueDate || 'nincs'} open={open === 'due'} onToggle={() => tog('due')}>
+        <Input label="Határidő (ÉÉÉÉ-HH-NN)" value={dueDate} onChangeText={setDueDate} placeholder={`pl. ${addDaysISO(todayISO(), 7)}`} />
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          {[3, 7, 14].map((d) => (
+            <View key={d} style={{ flex: 1 }}><Btn title={`+${d} nap`} kind="ghost" small onPress={() => setDueDate(addDaysISO(todayISO(), d))} /></View>
+          ))}
+          <View style={{ flex: 1 }}><Btn title="Törlés" kind="ghost" small onPress={() => setDueDate('')} /></View>
+        </View>
+      </Sec>
+
+      <Sec icon="📷" title="Fotók" summary={photos.length ? `${photos.length} fotó` : 'nincs'} open={open === 'photos'} onToggle={() => tog('photos')}>
+        <Sub>Pl. a hiba, a helyszín vagy a rajz — a munkavállaló a feladat oldalán nyitja meg.</Sub>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}><Btn title="📷 Fotózás" kind="ghost" small onPress={() => void addPhoto(true)} /></View>
+          <View style={{ flex: 1 }}><Btn title="🖼 Galériából" kind="ghost" small onPress={() => void addPhoto(false)} /></View>
+        </View>
+        <PhotoThumbs local={photos} onRemoveLocal={(i) => setPhotos((ps) => ps.filter((_, j) => j !== i))} />
+      </Sec>
+
+      <Sec icon="⚙️" title="Kód és sablon" summary={[code || null, saveAsTemplate ? 'mentés sablonként' : null].filter(Boolean).join(' · ')} open={open === 'more'} onToggle={() => tog('more')}>
+        <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
+        {templates.length > 0 ? (
+          <Picker label="Kitöltés sablonból" items={templates} selectedId={templateId} getId={(t) => t.id} getLabel={(t) => t.name}
+            onSelect={applyTemplate} placeholder="Válassz sablont (opcionális)…" allowNull nullLabel="— nincs —" />
+        ) : null}
+        <Check checked={saveAsTemplate} onToggle={() => setSaveAsTemplate(!saveAsTemplate)} label="Mentés sablonként" sub="Legközelebb egy kattintással kitölthető." />
+        {saveAsTemplate ? <Input label="Sablon neve" value={templateName} onChangeText={setTemplateName} placeholder="pl. Fürdő burkolás" /> : null}
+      </Sec>
 
       <View style={{ paddingBottom: 8 }}>
         <Btn title={saving ? '…' : chosen.size === 0 ? 'Mentés kiosztás nélkül' : quote ? 'Ajánlatkérés kiküldése' : 'Feladat kiadása'} onPress={() => void save()} disabled={saving} />
