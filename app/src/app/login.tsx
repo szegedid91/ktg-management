@@ -108,7 +108,7 @@ export default function Login() {
             <Input label="Név" value={name} onChangeText={setName} placeholder="Hogyan szólítsunk?" autoCapitalize="words" />
           ) : null}
           <Input label="Email" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
-          <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
+          <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
           {mode === 'login' ? (
             <Check checked={remember} onToggle={() => setRemember(!remember)}

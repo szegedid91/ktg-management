@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Card, Input, Btn, Segmented, Picker, Sub, H2 } from '../ui/kit';
+import { Card, Input, Btn, Segmented, Picker, Sub } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { Worker, Profile, ExternalPerson, PayBasis, AppSettings } from '../lib/types';
@@ -116,6 +116,23 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
   };
 }
 
+/** Összecsukható űrlap-szakasz ikonnal és rövid összegzéssel. */
+function FormSection({ icon, title, summary, open, onToggle, children }: {
+  icon: string; title: string; summary?: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <Card style={{ paddingVertical: S.sm, gap: S.sm, borderColor: open ? C.primary : C.border }}>
+      <Pressable onPress={onToggle} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: S.sm, minHeight: 36, opacity: pressed ? 0.7 : 1 })}>
+        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{title}</Text>
+        <Text style={{ flex: 1, textAlign: 'right', color: C.sub, fontSize: 13 }} numberOfLines={1}>{open ? '' : (summary ?? '')}</Text>
+        <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
+      </Pressable>
+      {open ? children : null}
+    </Card>
+  );
+}
+
 export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onChange: (v: WorkerFormValues) => void }) {
   // több szakma: vesszővel elválasztva tároljuk a `trade` mezőben
   const trades = value.trade.split(',').map((t) => t.trim()).filter(Boolean);
@@ -147,11 +164,27 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
   const [newExternalName, setNewExternalName] = useState('');
   const set = (patch: Partial<WorkerFormValues>) => onChange({ ...value, ...patch });
 
+  // tömör nézet: összecsukható szakaszok rövid összegzéssel; az Alapadatok nyitva indul
+  const [open, setOpen] = useState<string | null>('basic');
+  const tog = (id: string) => setOpen((cur) => (cur === id ? null : id));
+  const refName = value.referrer_kind === 'user' ? profiles.find((p) => p.id === value.referrer_user_id)?.display_name
+    : value.referrer_kind === 'external' ? externals.find((e) => e.id === value.referrer_external_id)?.name : null;
+  const rateSummary = [
+    value.hourly_rate ? `óra ${ft(parseAmount(value.hourly_rate))}` : null,
+    value.daily_rate ? `nap ${ft(parseAmount(value.daily_rate))}` : null,
+    value.callout_fee.trim() !== '' ? `kiszállás ${ft(parseAmount(value.callout_fee))}` : null,
+  ].filter(Boolean).join(' · ') || 'alapértelmezett díjak';
+
   return (
-    <View style={{ gap: S.md }}>
-      <Card>
+    <View style={{ gap: S.sm }}>
+      <FormSection icon="👤" title="Alapadatok" summary={[value.name, value.phones].filter(Boolean).join(' · ')} open={open === 'basic'} onToggle={() => tog('basic')}>
         <Input label="Név *" value={value.name} onChangeText={(t) => set({ name: t })} autoCapitalize="words" />
         <Input label="Becenév" value={value.nickname} onChangeText={(t) => set({ nickname: t })} placeholder="pl. Marci — ezt mutatjuk a listákban" autoCapitalize="words" />
+        <Input label="Telefonszám(ok, vesszővel)" value={value.phones} onChangeText={(t) => set({ phones: t })} keyboardType="phone-pad" placeholder="+36 30 123 4567" />
+        <Input label="Email" value={value.email} onChangeText={(t) => set({ email: t })} keyboardType="email-address" autoCapitalize="none" />
+      </FormSection>
+
+      <FormSection icon="🛠️" title="Munkakör" summary={value.kind === 'specialist' ? (trades.join(', ') || 'Szakember') : 'Általános'} open={open === 'work'} onToggle={() => tog('work')}>
         <Segmented
           label="Munkakör"
           options={[
@@ -186,13 +219,9 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
             {trades.length ? <Sub>Kijelölve: {trades.join(', ')}</Sub> : null}
           </>
         ) : null}
-        <Input label="Telefonszám(ok, vesszővel)" value={value.phones} onChangeText={(t) => set({ phones: t })} keyboardType="phone-pad" placeholder="+36 30 123 4567" />
-        <Input label="Email" value={value.email} onChangeText={(t) => set({ email: t })} keyboardType="email-address" autoCapitalize="none" />
-        <Input label="Bankszámlaszám" value={value.bank_account} onChangeText={(t) => set({ bank_account: t })} placeholder="titkosítva tárolódik" />
-        <Input label="Megjegyzés" value={value.note} onChangeText={(t) => set({ note: t })} multiline />
-      </Card>
+      </FormSection>
 
-      <Card>
+      <FormSection icon="🏢" title="Típus" summary={value.worker_type === 'company' ? `Céges${value.company_name ? ` · ${value.company_name}` : ''}` : 'Magánszemély'} open={open === 'type'} onToggle={() => tog('type')}>
         <Segmented
           label="Típus"
           options={[
@@ -218,11 +247,10 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
             ) : null}
           </>
         ) : null}
-      </Card>
+      </FormSection>
 
-      <Card>
-        <H2>Díjazás</H2>
-        <Sub>Üresen hagyva a Beállításokban megadott, a típus szerinti alapdíjat örökli — ezt mutatjuk a mezőben.</Sub>
+      <FormSection icon="💰" title="Díjazás" summary={rateSummary} open={open === 'pay'} onToggle={() => tog('pay')}>
+        <Sub>Üresen hagyva a Beállítások típus szerinti alapdíját örökli.</Sub>
         <Segmented
           label="Jellemző elszámolás"
           options={[
@@ -233,14 +261,17 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
           value={value.default_pay_basis}
           onChange={(v) => set({ default_pay_basis: v })}
         />
-        <Input label="Órabér (Ft)" value={value.hourly_rate} onChangeText={(t) => set({ hourly_rate: t })} keyboardType="numeric" placeholder={inherited('hourly')} />
-        <Input label="Napi díj (Ft)" value={value.daily_rate} onChangeText={(t) => set({ daily_rate: t })} keyboardType="numeric" placeholder={inherited('daily')} />
-        <Input label="Projektdíj (Ft)" value={value.project_rate} onChangeText={(t) => set({ project_rate: t })} keyboardType="numeric" placeholder={inherited('project')} />
-        <Input label="Kiszállási díj (Ft / helyszín / nap)" value={value.callout_fee} onChangeText={(t) => set({ callout_fee: t })} keyboardType="numeric" placeholder="üres = alapértelmezett · 0 = nincs" />
-      </Card>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}><Input label="Órabér (Ft)" value={value.hourly_rate} onChangeText={(t) => set({ hourly_rate: t })} keyboardType="numeric" placeholder={inherited('hourly')} /></View>
+          <View style={{ flex: 1 }}><Input label="Napi díj (Ft)" value={value.daily_rate} onChangeText={(t) => set({ daily_rate: t })} keyboardType="numeric" placeholder={inherited('daily')} /></View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}><Input label="Projektdíj (Ft)" value={value.project_rate} onChangeText={(t) => set({ project_rate: t })} keyboardType="numeric" placeholder={inherited('project')} /></View>
+          <View style={{ flex: 1 }}><Input label="Kiszállás (Ft/helyszín/nap)" value={value.callout_fee} onChangeText={(t) => set({ callout_fee: t })} keyboardType="numeric" placeholder="üres = alap · 0 = nincs" /></View>
+        </View>
+      </FormSection>
 
-      <Card>
-        <H2>Közvetítő</H2>
+      <FormSection icon="🤝" title="Közvetítő" summary={value.referrer_kind === 'none' ? 'Nincs' : (refName ?? 'nincs kiválasztva')} open={open === 'ref'} onToggle={() => tog('ref')}>
         <Sub>Ki hozta ezt az embert? A közvetítői díj a munkadíjból osztódik, nem plusz költség.</Sub>
         <Segmented
           options={[
@@ -320,7 +351,12 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
             ) : null}
           </>
         ) : null}
-      </Card>
+      </FormSection>
+
+      <FormSection icon="📝" title="Bankszámla és megjegyzés" summary={value.note ? value.note.slice(0, 30) : ''} open={open === 'other'} onToggle={() => tog('other')}>
+        <Input label="Bankszámlaszám" value={value.bank_account} onChangeText={(t) => set({ bank_account: t })} placeholder="titkosítva tárolódik" />
+        <Input label="Megjegyzés" value={value.note} onChangeText={(t) => set({ note: t })} multiline />
+      </FormSection>
     </View>
   );
 }

@@ -11,7 +11,6 @@ import { callRpc, getCurrentUserId } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
-import { EyeToggle } from './EyeToggle';
 import { Profile, Worker } from '../lib/types';
 
 export function WorkerAccountCard() {
@@ -23,7 +22,6 @@ export function WorkerAccountCard() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
-  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [theme, setThemeState] = useState<ThemeMode>(getThemeMode());
 
@@ -74,10 +72,9 @@ export function WorkerAccountCard() {
       </Card>
       <Card>
         <H2>✉️ E-mail és jelszó</H2>
-        <Input label="E-mail cím" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+        <Input label="E-mail cím" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="off" />
         <Btn title="E-mail módosítása" kind="ghost" small onPress={() => void saveEmail()} disabled={busy} />
-        <Input label="Új jelszó" value={pw} onChangeText={setPw} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
-          right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
+        <Input label="Új jelszó" value={pw} onChangeText={setPw} placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" autoComplete="new-password" />
         <Btn title="Jelszó módosítása" kind="ghost" small onPress={() => void savePassword()} disabled={busy || !pw} />
       </Card>
       <Card>

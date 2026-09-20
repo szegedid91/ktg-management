@@ -103,7 +103,7 @@ export default function Invite() {
             {!viaContractor && !personal ? <Check checked={contractor} onToggle={() => setContractor(!contractor)} label="Vállalkozóként regisztrálok — saját embereket hozok"
               sub="Az embereidet te veszed fel és jelentkezteted be; a bérük hozzád kerül, emberenként részletezve." /> : null}
             <Input label="E-mail" value={email} onChangeText={setEmail} placeholder="pl. en@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
-            <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
+            <Input label="Jelszó" value={password} onChangeText={setPassword} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none" autoComplete="new-password"
               right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
             {error ? <Text style={{ color: C.danger, fontSize: 13 }}>{error}</Text> : null}
             <Btn title={busy ? '…' : 'Regisztráció'} onPress={() => void submit()} disabled={busy || !email || !name.trim() || password.length < 6} />

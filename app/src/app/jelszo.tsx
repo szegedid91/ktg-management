@@ -68,9 +68,9 @@ export default function PasswordReset() {
             <>
               <Title>Adj meg új jelszót</Title>
               <Input label="Új jelszó" value={pw1} onChangeText={setPw1}
-                placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" />
+                placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" autoComplete="new-password" />
               <Input label="Új jelszó még egyszer" value={pw2} onChangeText={setPw2}
-                placeholder="ugyanaz még egyszer" secureTextEntry autoCapitalize="none" />
+                placeholder="ugyanaz még egyszer" secureTextEntry autoCapitalize="none" autoComplete="new-password" />
               {error ? <Text style={{ color: C.danger, fontSize: 13 }}>{error}</Text> : null}
               <Btn title={busy ? 'Mentés…' : '💾 Jelszó mentése'} onPress={() => void save()}
                 disabled={busy || !pw1 || !pw2} />

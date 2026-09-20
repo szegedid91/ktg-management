@@ -137,10 +137,12 @@ export function Btn({ title, onPress, kind = 'primary', disabled, small }: {
   );
 }
 
-export function Input({ label, value, onChangeText, placeholder, keyboardType, multiline, autoCapitalize, secureTextEntry, right }: {
+export function Input({ label, value, onChangeText, placeholder, keyboardType, multiline, autoCapitalize, secureTextEntry, right, autoComplete }: {
   label?: string; value: string; onChangeText: (t: string) => void; placeholder?: string;
   keyboardType?: 'default' | 'numeric' | 'email-address' | 'phone-pad'; multiline?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words'; secureTextEntry?: boolean; right?: ReactNode;
+  /** böngésző-kitöltés vezérlése (weben az autocomplete attribútum), pl. 'new-password', 'current-password', 'off' */
+  autoComplete?: string;
 }) {
   return (
     <View style={{ gap: 4 }}>
@@ -156,6 +158,7 @@ export function Input({ label, value, onChangeText, placeholder, keyboardType, m
           multiline={multiline}
           autoCapitalize={autoCapitalize ?? 'sentences'}
           secureTextEntry={secureTextEntry}
+          autoComplete={autoComplete as any}
         />
         {right}
       </View>

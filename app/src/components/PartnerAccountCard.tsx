@@ -8,7 +8,6 @@ import { useTable } from '../lib/hooks';
 import { getCurrentUserId, updateRow } from '../lib/repo';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
-import { EyeToggle } from './EyeToggle';
 import { Profile } from '../lib/types';
 
 export function PartnerAccountCard({ bare = false }: { bare?: boolean } = {}) {
@@ -17,7 +16,6 @@ export function PartnerAccountCard({ bare = false }: { bare?: boolean } = {}) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
-  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (profile) setName(profile.display_name); }, [profile?.id]);
@@ -54,10 +52,9 @@ export function PartnerAccountCard({ bare = false }: { bare?: boolean } = {}) {
     <>
       <Input label="Név" value={name} onChangeText={setName} autoCapitalize="words" />
       <Btn title="Név mentése" kind="ghost" small onPress={saveName} disabled={!name.trim() || name.trim() === profile?.display_name} />
-      <Input label="E-mail cím" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+      <Input label="E-mail cím" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="off" />
       <Btn title="E-mail módosítása" kind="ghost" small onPress={() => void saveEmail()} disabled={busy} />
-      <Input label="Új jelszó" value={pw} onChangeText={setPw} placeholder="legalább 6 karakter" secureTextEntry={!showPw} autoCapitalize="none"
-        right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
+      <Input label="Új jelszó" value={pw} onChangeText={setPw} placeholder="legalább 6 karakter" secureTextEntry autoCapitalize="none" autoComplete="new-password" />
       <Btn title="Jelszó módosítása" kind="ghost" small onPress={() => void savePassword()} disabled={busy || !pw} />
       <Sub>Az e-mail csere megerősítő levéllel lép életbe; a régi és az új címre is érkezhet üzenet.</Sub>
     </>
