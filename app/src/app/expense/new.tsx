@@ -7,6 +7,7 @@ import { View, Text, Image, ActivityIndicator, Pressable } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import * as ImagePicker from 'expo-image-picker';
+import { compressPhoto } from '../../lib/photo';
 import { Screen, Card, Input, Btn, Sub, H2, Body, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useIsWorker } from '../../lib/hooks';
@@ -102,7 +103,9 @@ function NewExpenseInner() {
       ? await ImagePicker.launchCameraAsync(opts)
       : await ImagePicker.launchImageLibraryAsync(opts);
     if (res.canceled || !res.assets?.[0]) return;
-    const asset = res.assets[0];
+    const raw = res.assets[0];
+    // weben a picker nem tömörít: feltöltés (és AI-kiolvasás) előtt kicsinyítjük
+    const asset = raw.base64 ? await compressPhoto({ uri: raw.uri, base64: raw.base64 }) : { uri: raw.uri, base64: undefined as string | undefined };
     setPhotos((p) => [...p, { uri: asset.uri, base64: asset.base64 ?? undefined }]);
     if (asset.base64 && await confirmDialog('AI kiolvasás', 'Kiolvassam a blokk adatait a fotóról?', 'Igen')) {
       void runAi(asset.base64);
