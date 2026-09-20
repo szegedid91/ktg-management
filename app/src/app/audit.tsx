@@ -42,6 +42,7 @@ const FIELD_LABELS: Record<string, string> = {
   from_user: 'Küldő', to_user: 'Fogadó', profit_share_percent: 'Profitrészesedés (%)',
   big_expense_threshold: 'Riasztási küszöb', overdue_days: 'Lejárat (nap)',
   company_hourly_rate: 'Céges órabér', company_daily_rate: 'Céges napi díj', company_project_rate: 'Céges projektdíj',
+  company_callout_fee: 'Céges kiszállási díj', individual_callout_fee: 'Magánszemély kiszállási díj', callout_fee: 'Kiszállási díj',
   individual_hourly_rate: 'Magánszemély órabér', individual_daily_rate: 'Magánszemély napi díj',
   individual_project_rate: 'Magánszemély projektdíj',
   out_hourly_rate: 'Kimenő órabér', out_daily_rate: 'Kimenő napi díj', out_project_rate: 'Kimenő projektdíj',

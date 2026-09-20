@@ -86,6 +86,7 @@ function PendingScreenInner() {
           : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
           : 'projektdíj');
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
+        if (Number(a.callout_fee ?? 0) > 0) detail += ` · 🚗 kiszállás ${ft(Number(a.callout_fee))}`;
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;

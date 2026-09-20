@@ -72,6 +72,8 @@ function SettingsInner() {
         individual_hourly_rate: String(Number(settings.individual_hourly_rate) || ''),
         individual_daily_rate: String(Number(settings.individual_daily_rate) || ''),
         individual_project_rate: String(Number(settings.individual_project_rate) || ''),
+        company_callout_fee: settings.company_callout_fee != null ? String(Number(settings.company_callout_fee)) : '',
+        individual_callout_fee: settings.individual_callout_fee != null ? String(Number(settings.individual_callout_fee)) : '',
         out_hourly_rate: String(Number(settings.out_hourly_rate) || ''),
         out_daily_rate: String(Number(settings.out_daily_rate) || ''),
         out_project_rate: String(Number(settings.out_project_rate) || ''),
@@ -102,7 +104,8 @@ function SettingsInner() {
   const saveRates = () => {
     if (!settings) return;
     updateRow('app_settings', '1' as any, Object.fromEntries(
-      Object.entries(rates).map(([k, v]) => [k, parseAmount(v)]),
+      // kiszállási díj: üres = nincs megadva (1 óra bére), 0 = nincs díj
+      Object.entries(rates).map(([k, v]) => [k, k.endsWith('_callout_fee') ? (String(v ?? '').trim() === '' ? null : parseAmount(v)) : parseAmount(v)]),
     ));
     notify('Mentve', 'Alapértelmezett díjak frissítve.');
   };
@@ -184,11 +187,13 @@ function SettingsInner() {
         <RateInput label="Órabér (Ft)" value={rates.individual_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_hourly_rate: v })} />
         <RateInput label="Napi díj (Ft)" value={rates.individual_daily_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_daily_rate: v })} />
         <RateInput label="Projektdíj (Ft)" value={rates.individual_project_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_project_rate: v })} />
+        <RateInput label="Kiszállási díj (Ft / helyszín / nap · üres = 1 óra bére)" value={rates.individual_callout_fee ?? ''} onChange={(v) => setRates({ ...rates, individual_callout_fee: v })} />
         <Divider />
         <H2>Alapértelmezett díjak — céges</H2>
         <RateInput label="Órabér (Ft)" value={rates.company_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, company_hourly_rate: v })} />
         <RateInput label="Napi díj (Ft)" value={rates.company_daily_rate ?? ''} onChange={(v) => setRates({ ...rates, company_daily_rate: v })} />
         <RateInput label="Projektdíj (Ft)" value={rates.company_project_rate ?? ''} onChange={(v) => setRates({ ...rates, company_project_rate: v })} />
+        <RateInput label="Kiszállási díj (Ft / helyszín / nap · üres = 1 óra bére)" value={rates.company_callout_fee ?? ''} onChange={(v) => setRates({ ...rates, company_callout_fee: v })} />
         <Divider />
         <H2>Kimenő (kiszámlázott) díjak</H2>
         <RateInput label="Órabér (Ft)" value={rates.out_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, out_hourly_rate: v })} />

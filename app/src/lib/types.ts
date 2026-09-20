@@ -36,6 +36,9 @@ export interface AppSettings {
   company_daily_rate: number;
   company_project_rate: number;
   individual_hourly_rate: number;
+  /** kiszállási díj alapértelmezése (Ft / helyszín / nap); null = 1 óra bére */
+  company_callout_fee?: number | null;
+  individual_callout_fee?: number | null;
   individual_daily_rate: number;
   individual_project_rate: number;
   out_hourly_rate: number;
@@ -79,6 +82,8 @@ export type PayBasis = 'hourly' | 'daily' | 'project';
 export type AttendanceBasis = PayBasis | 'presence';
 
 export interface Worker extends BaseRow {
+  /** egyedi kiszállási díj (Ft / helyszín / nap); null = alapértelmezett */
+  callout_fee?: number | null;
   name: string;
   /** becenév — listákban/csempéken ezt mutatjuk, ha meg van adva */
   nickname: string | null;
@@ -132,6 +137,8 @@ export interface ExpensePhoto extends BaseRow {
 }
 
 export interface Attendance extends BaseRow {
+  /** a sor összegében lévő kiszállási díj (Ft) */
+  callout_fee?: number | null;
   work_date: string;
   site_id: UUID;
   worker_id: UUID;

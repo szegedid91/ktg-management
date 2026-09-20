@@ -33,6 +33,7 @@ export interface WorkerFormValues {
   hourly_rate: string;
   daily_rate: string;
   project_rate: string;
+  callout_fee: string;
   referrer_kind: 'none' | 'user' | 'external';
   referrer_user_id: string | null;
   referrer_external_id: string | null;
@@ -46,7 +47,7 @@ export function emptyWorkerForm(): WorkerFormValues {
     name: '', nickname: '', kind: 'general', trade: '',
     phones: '', email: '', company_name: '', tax_number: '', hq_address: '',
     bank_account: '', note: '', worker_type: 'individual', is_vat_payer: false, vat_rate: '27',
-    default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '',
+    default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '', callout_fee: '',
     referrer_kind: 'none', referrer_user_id: null, referrer_external_id: null,
     commission_mode: null, commission_value: '', commission_unit: null,
   };
@@ -63,6 +64,7 @@ export function workerToForm(w: Worker): WorkerFormValues {
     hourly_rate: w.hourly_rate != null ? String(w.hourly_rate) : '',
     daily_rate: w.daily_rate != null ? String(w.daily_rate) : '',
     project_rate: w.project_rate != null ? String(w.project_rate) : '',
+    callout_fee: w.callout_fee != null ? String(w.callout_fee) : '',
     referrer_kind: w.referrer_user_id ? 'user' : w.referrer_external_id ? 'external' : 'none',
     referrer_user_id: w.referrer_user_id, referrer_external_id: w.referrer_external_id,
     commission_mode: w.commission_mode, commission_value: w.commission_value != null ? String(w.commission_value) : '',
@@ -80,7 +82,7 @@ export function validateWorkerForm(f: WorkerFormValues): string | null {
     if (f.commission_mode === 'percent' && v != null && v > 100) return 'A százalékos jutalék legfeljebb 100% lehet.';
     if (f.commission_mode === 'fixed' && !f.commission_unit) return 'Fix összegű jutaléknál add meg az egységet (óra / nap / projekt).';
   }
-  for (const [label, raw] of [['órabér', f.hourly_rate], ['napi díj', f.daily_rate], ['projektdíj', f.project_rate]] as const) {
+  for (const [label, raw] of [['órabér', f.hourly_rate], ['napi díj', f.daily_rate], ['projektdíj', f.project_rate], ['kiszállási díj', f.callout_fee]] as const) {
     if (raw && parseAmount(raw) < 0) return `A(z) ${label} nem lehet negatív.`;
   }
   return null;
@@ -104,6 +106,8 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
     hourly_rate: f.hourly_rate ? parseAmount(f.hourly_rate) : null,
     daily_rate: f.daily_rate ? parseAmount(f.daily_rate) : null,
     project_rate: f.project_rate ? parseAmount(f.project_rate) : null,
+    // üres = alapértelmezett; 0 = ennél a munkavállalónál nincs kiszállási díj
+    callout_fee: f.callout_fee.trim() !== '' ? parseAmount(f.callout_fee) : null,
     referrer_user_id: f.referrer_kind === 'user' ? f.referrer_user_id : null,
     referrer_external_id: f.referrer_kind === 'external' ? f.referrer_external_id : null,
     commission_mode: f.referrer_kind === 'none' ? null : f.commission_mode,
@@ -232,6 +236,7 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
         <Input label="Órabér (Ft)" value={value.hourly_rate} onChangeText={(t) => set({ hourly_rate: t })} keyboardType="numeric" placeholder={inherited('hourly')} />
         <Input label="Napi díj (Ft)" value={value.daily_rate} onChangeText={(t) => set({ daily_rate: t })} keyboardType="numeric" placeholder={inherited('daily')} />
         <Input label="Projektdíj (Ft)" value={value.project_rate} onChangeText={(t) => set({ project_rate: t })} keyboardType="numeric" placeholder={inherited('project')} />
+        <Input label="Kiszállási díj (Ft / helyszín / nap)" value={value.callout_fee} onChangeText={(t) => set({ callout_fee: t })} keyboardType="numeric" placeholder="üres = alapértelmezett · 0 = nincs" />
       </Card>
 
       <Card>

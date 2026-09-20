@@ -261,6 +261,12 @@ function WorkerDetailInner() {
             {rateLine('Órabér', worker.hourly_rate, Number(settings.company_hourly_rate), Number(settings.individual_hourly_rate))}
             {rateLine('Napi díj', worker.daily_rate, Number(settings.company_daily_rate), Number(settings.individual_daily_rate))}
             {rateLine('Projektdíj', worker.project_rate, Number(settings.company_project_rate), Number(settings.individual_project_rate))}
+            {(() => {
+              const def = worker.worker_type === 'company' ? settings.company_callout_fee : settings.individual_callout_fee;
+              const text = worker.callout_fee != null ? (Number(worker.callout_fee) === 0 ? 'nincs' : ft(Number(worker.callout_fee)))
+                : def != null ? `${ft(Number(def))} (alapértelmezett)` : '1 óra bére (alapértelmezett)';
+              return <KV k="Kiszállási díj (helyszín / nap)" v={text} />;
+            })()}
           </>
         ) : null}
         {referrerName ? (
