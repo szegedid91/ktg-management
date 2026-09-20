@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, View, Text, Pressable, TextInput } from 'react-native';
 import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented, Empty } from '../ui/kit';
 import { S, C, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
 import { useTable, useOnlineView, useIsWorker } from '../lib/hooks';
@@ -15,6 +15,32 @@ import { WebPushRow } from '../components/WebPushRow';
 
 function RateInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return <Input label={label} value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" />;
+}
+
+/** Összecsukható szakasz: fejléc ikonnal, címmel és rövid összegzéssel; egyszerre egy van nyitva. */
+function Section({ icon, title, summary, open, onToggle, children }: {
+  icon: string; title: string; summary?: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <Card style={{ paddingVertical: S.sm, gap: S.sm, borderColor: open ? C.primary : C.border }}>
+      <Pressable onPress={onToggle} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: S.sm, minHeight: 36, opacity: pressed ? 0.7 : 1 })}>
+        <Text style={{ fontSize: 20 }}>{icon}</Text>
+        <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{title}</Text>
+        <Text style={{ flex: 1, textAlign: 'right', color: C.sub, fontSize: 13 }} numberOfLines={1}>{open ? '' : (summary ?? '')}</Text>
+        <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
+      </Pressable>
+      {open ? children : null}
+    </Card>
+  );
+}
+
+/** Kis, jobbra igazított szám-mező a díjtáblázat celláihoz. */
+function Cell({ value, onChange, placeholder = '0' }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <TextInput value={value} onChangeText={onChange} keyboardType="numeric" placeholder={placeholder} placeholderTextColor={C.sub}
+      style={{ flex: 1, minWidth: 0, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 8,
+        fontSize: 14, color: C.text, backgroundColor: C.bg, textAlign: 'right' }} />
+  );
 }
 
 function SettingsInner() {
@@ -38,6 +64,9 @@ function SettingsInner() {
   const [newCat, setNewCat] = useState('');
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [theme, setThemeState] = useState<ThemeMode>(getThemeMode());
+  // egyszerre egy szakasz van nyitva; ha az én jóváhagyásomra vár részesedés-javaslat, az nyílik ki
+  const [open, setOpen] = useState<string | null>(() => (pendingReq && pendingReq.proposed_by !== me ? 'shares' : null));
+  const tog = (id: string) => setOpen((cur) => (cur === id ? null : id));
 
   // zárt regisztráció: csak az itt engedélyezett e-mailek regisztrálhatnak
   const allowed = useOnlineView<{ email: string; is_admin?: boolean }[]>(
@@ -167,11 +196,23 @@ function SettingsInner() {
 
   if (!settings) return <Screen><Sub>Beállítások betöltése (első szinkron)…</Sub></Screen>;
 
+  const RATE_ROWS: { label: string; ind: string; comp: string; out?: string; ph?: string }[] = [
+    { label: 'Órabér', ind: 'individual_hourly_rate', comp: 'company_hourly_rate', out: 'out_hourly_rate' },
+    { label: 'Napi díj', ind: 'individual_daily_rate', comp: 'company_daily_rate', out: 'out_daily_rate' },
+    { label: 'Projektdíj', ind: 'individual_project_rate', comp: 'company_project_rate', out: 'out_project_rate' },
+    { label: 'Kiszállás', ind: 'individual_callout_fee', comp: 'company_callout_fee', ph: '1 óra' },
+  ];
+  const setRate = (k: string, v: string) => setRates({ ...rates, [k]: v });
+  const notifOn = myProfile ? [myProfile.notify_comments, myProfile.notify_big_expense, myProfile.notify_weekly, myProfile.notify_overdue].filter(Boolean).length : 0;
+  const allowedList = (allowed.data ?? []).filter((x) => !x.is_admin);
+
   return (
     <Screen>
-      <PartnerAccountCard />
-      <Card>
-        <H2>🌗 Megjelenés</H2>
+      <Section icon="👤" title="Fiókom" summary={myProfile?.display_name ?? ''} open={open === 'account'} onToggle={() => tog('account')}>
+        <PartnerAccountCard bare />
+      </Section>
+
+      <Section icon="🌗" title="Megjelenés" summary={theme === 'dark' ? 'Esti (sötét)' : 'Világos'} open={open === 'theme'} onToggle={() => tog('theme')}>
         <Segmented
           options={[
             { value: 'light', label: '☀️ Világos' },
@@ -180,33 +221,39 @@ function SettingsInner() {
           value={theme}
           onChange={(v: ThemeMode) => { setThemeMode(v); setThemeState(v); }}
         />
-      </Card>
+      </Section>
 
-      <Card>
-        <H2>Alapértelmezett díjak — magánszemély</H2>
-        <RateInput label="Órabér (Ft)" value={rates.individual_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_hourly_rate: v })} />
-        <RateInput label="Napi díj (Ft)" value={rates.individual_daily_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_daily_rate: v })} />
-        <RateInput label="Projektdíj (Ft)" value={rates.individual_project_rate ?? ''} onChange={(v) => setRates({ ...rates, individual_project_rate: v })} />
-        <RateInput label="Kiszállási díj (Ft / helyszín / nap · üres = 1 óra bére)" value={rates.individual_callout_fee ?? ''} onChange={(v) => setRates({ ...rates, individual_callout_fee: v })} />
-        <Divider />
-        <H2>Alapértelmezett díjak — céges</H2>
-        <RateInput label="Órabér (Ft)" value={rates.company_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, company_hourly_rate: v })} />
-        <RateInput label="Napi díj (Ft)" value={rates.company_daily_rate ?? ''} onChange={(v) => setRates({ ...rates, company_daily_rate: v })} />
-        <RateInput label="Projektdíj (Ft)" value={rates.company_project_rate ?? ''} onChange={(v) => setRates({ ...rates, company_project_rate: v })} />
-        <RateInput label="Kiszállási díj (Ft / helyszín / nap · üres = 1 óra bére)" value={rates.company_callout_fee ?? ''} onChange={(v) => setRates({ ...rates, company_callout_fee: v })} />
-        <Divider />
-        <H2>Kimenő (kiszámlázott) díjak</H2>
-        <RateInput label="Órabér (Ft)" value={rates.out_hourly_rate ?? ''} onChange={(v) => setRates({ ...rates, out_hourly_rate: v })} />
-        <RateInput label="Napi díj (Ft)" value={rates.out_daily_rate ?? ''} onChange={(v) => setRates({ ...rates, out_daily_rate: v })} />
-        <RateInput label="Projektdíj (Ft)" value={rates.out_project_rate ?? ''} onChange={(v) => setRates({ ...rates, out_project_rate: v })} />
-        <Divider />
-        <RateInput label="Alapértelmezett ÁFA (%)" value={rates.default_vat_rate ?? '27'} onChange={(v) => setRates({ ...rates, default_vat_rate: v })} />
-        <RateInput label="Fizetési határidő (nap a számlázástól)" value={rates.default_payment_days ?? '8'} onChange={(v) => setRates({ ...rates, default_payment_days: v })} />
+      <Section icon="💰" title="Díjak" open={open === 'rates'} onToggle={() => tog('rates')}
+        summary={`órabér ${rates.individual_hourly_rate || '—'} / ${rates.company_hourly_rate || '—'} Ft`}>
+        <Sub>Alapértelmezett díjak (Ft). A munkavállalónál megadott egyedi díj ezeket felülírja.</Sub>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ width: 78 }} />
+          {['Magánsz.', 'Céges', 'Kimenő'].map((h) => (
+            <Text key={h} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700', color: C.sub }}>{h}</Text>
+          ))}
+        </View>
+        {RATE_ROWS.map((r) => (
+          <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ width: 78, fontSize: 13, fontWeight: '600', color: C.text }}>{r.label}</Text>
+            <Cell value={rates[r.ind] ?? ''} onChange={(v) => setRate(r.ind, v)} placeholder={r.ph} />
+            <Cell value={rates[r.comp] ?? ''} onChange={(v) => setRate(r.comp, v)} placeholder={r.ph} />
+            {r.out ? <Cell value={rates[r.out] ?? ''} onChange={(v) => setRate(r.out!, v)} /> : <View style={{ flex: 1 }} />}
+          </View>
+        ))}
+        <Sub style={{ fontSize: 11 }}>Kiszállás: helyszínenként és naponként egyszer. Üres = 1 óra bére, 0 = nincs díj. „Kimenő” = amit a megrendelőnek számlázol.</Sub>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Alapértelmezett ÁFA (%)</Text>
+          <Cell value={rates.default_vat_rate ?? '27'} onChange={(v) => setRate('default_vat_rate', v)} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Fizetési határidő (nap)</Text>
+          <Cell value={rates.default_payment_days ?? '8'} onChange={(v) => setRate('default_payment_days', v)} />
+        </View>
         <Btn title="Díjak mentése" onPress={saveRates} />
-      </Card>
+      </Section>
 
-      <Card>
-        <H2>Profitrészesedés</H2>
+      <Section icon="🤝" title="Profitrészesedés" open={open === 'shares'} onToggle={() => tog('shares')}
+        summary={pendingReq ? '⏳ függő javaslat' : partners.map((p) => `${p.display_name} ${Math.round(Number(p.profit_share_percent ?? 0))}%`).join(' · ')}>
         {pendingReq ? (
           <>
             <Sub>🤝 Függőben lévő módosítási javaslat ({hd(pendingReq.created_at.slice(0, 10))}, javasolta: {profiles.find((p) => p.id === pendingReq.proposed_by)?.display_name ?? '?'}):</Sub>
@@ -232,7 +279,7 @@ function SettingsInner() {
           </>
         ) : (
           <>
-            <Sub>A módosításhoz a másik fél beleegyezése kell, és csak a jóváhagyás napjától érvényes — visszamenőleg nem változtat semmit.</Sub>
+            <Sub>A módosításhoz a másik fél beleegyezése kell, és csak a jóváhagyás napjától érvényes.</Sub>
             {partners.map((p) => (
               <View key={p.id} style={{ gap: 2 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -249,61 +296,65 @@ function SettingsInner() {
             />
           </>
         )}
-      </Card>
+      </Section>
 
-      <Card>
-        <H2>Értesítések</H2>
+      <Section icon="🔔" title="Értesítések" summary={`${notifOn} bekapcsolva`} open={open === 'notif'} onToggle={() => tog('notif')}>
         {myProfile ? (
           <>
+            {Platform.OS === 'web' ? <><WebPushRow /><Divider /></> : null}
             <Check checked={myProfile.notify_comments} onToggle={() => toggleNotif('notify_comments')} label="Komment az általam rögzített tételhez" />
             <Check checked={myProfile.notify_big_expense} onToggle={() => toggleNotif('notify_big_expense')} label="Nagy költés riasztás" />
-            <Input label="Riasztási küszöb (Ft)" value={threshold} onChangeText={setThreshold} keyboardType="numeric" />
+            {myProfile.notify_big_expense ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Riasztási küszöb (Ft)</Text>
+                <Cell value={threshold} onChange={setThreshold} />
+                <Btn title="Mentés" kind="ghost" small onPress={saveNotif} />
+              </View>
+            ) : null}
             <Check checked={myProfile.notify_weekly} onToggle={() => toggleNotif('notify_weekly')} label="Heti összefoglaló (péntek délután)" />
             <Check checked={myProfile.notify_overdue} onToggle={() => toggleNotif('notify_overdue')} label="Régi kifizetetlen bér / be nem folyt számla" />
-            <Btn title="Értesítések mentése" onPress={saveNotif} />
-            {Platform.OS === 'web' ? <><Divider /><WebPushRow /></> : null}
           </>
         ) : null}
-      </Card>
+      </Section>
 
       {canManageAccess ? (
-        <Card>
-          <H2>🔐 Hozzáférés</H2>
-          <Sub>Csak az itt engedélyezett e-mail címekkel lehet regisztrálni. A meglévő fiókokat a lista nem érinti.</Sub>
-          {(allowed.data ?? []).filter((a) => !a.is_admin).map((a) => (
+        <Section icon="🔐" title="Hozzáférés" summary={`${allowedList.length} e-mail`} open={open === 'access'} onToggle={() => tog('access')}>
+          <Sub>Csak az itt engedélyezett e-mail címekkel lehet vezetőként regisztrálni. A meglévő fiókokat nem érinti.</Sub>
+          {allowedList.map((a) => (
             <View key={a.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Body>{a.email}</Body>
+              <Body style={{ flex: 1 }}>{a.email}</Body>
               <Btn title="Visszavon" kind="ghost" small onPress={() => void removeAllowed(a.email)} />
             </View>
           ))}
           {allowed.fromCache ? <Sub style={{ color: C.warning }}>⚠️ Offline — a lista kezeléséhez internet kell.</Sub> : null}
           <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
             <View style={{ flex: 1 }}>
-              <Input label="Új engedélyezett e-mail" value={newEmail} onChangeText={setNewEmail}
-                placeholder="pl. tars@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
+              <Input value={newEmail} onChangeText={setNewEmail}
+                placeholder="új e-mail, pl. tars@pelda.hu" keyboardType="email-address" autoCapitalize="none" />
             </View>
             <Btn title="Engedélyez" small onPress={() => void addAllowed()} />
           </View>
-        </Card>
+        </Section>
       ) : null}
 
-      <Card>
-        <H2>Kategóriák</H2>
-        {categories.map((c) => (
-          <View key={c.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Body>{c.name}</Body>
-            <Btn title="Törlés" kind="ghost" small onPress={() => {
+      <Section icon="🏷️" title="Költség-kategóriák" summary={`${categories.length} db`} open={open === 'cats'} onToggle={() => tog('cats')}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {categories.map((c) => (
+            <Pressable key={c.id} onPress={() => {
               void confirmDialog(
                 'Kategória törlése',
                 `${c.name}\n\nA korábbi költségeken megmarad, csak új költséghez nem lesz választható.`,
                 'Törlés', true,
               ).then((ok) => { if (ok) softDeleteRow('expense_categories', c.id); });
-            }} />
-          </View>
-        ))}
+            }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.chipBg, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12, opacity: pressed ? 0.7 : 1 })}>
+              <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{c.name}</Text>
+              <Text style={{ color: C.sub, fontSize: 13 }}>✕</Text>
+            </Pressable>
+          ))}
+        </View>
         <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
           <View style={{ flex: 1 }}>
-            <Input label="Új kategória" value={newCat} onChangeText={setNewCat} placeholder="pl. Bérleti díj" />
+            <Input value={newCat} onChangeText={setNewCat} placeholder="új kategória, pl. Bérleti díj" />
           </View>
           <Btn title="Felvesz" small onPress={() => {
             if (!newCat.trim()) return;
@@ -311,7 +362,7 @@ function SettingsInner() {
             setNewCat('');
           }} />
         </View>
-      </Card>
+      </Section>
     </Screen>
   );
 }

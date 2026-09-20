@@ -1,5 +1,7 @@
 // Vezető profilja: név, e-mail, jelszó módosítása.
 
+import { View } from 'react-native';
+import { S } from '../ui/theme';
 import React, { useEffect, useState } from 'react';
 import { Card, H2, Sub, Input, Btn } from '../ui/kit';
 import { useTable } from '../lib/hooks';
@@ -9,7 +11,7 @@ import { notify } from '../lib/dialogs';
 import { EyeToggle } from './EyeToggle';
 import { Profile } from '../lib/types';
 
-export function PartnerAccountCard() {
+export function PartnerAccountCard({ bare = false }: { bare?: boolean } = {}) {
   const me = getCurrentUserId();
   const profile = useTable<Profile>('profiles').find((p) => p.id === me);
   const [name, setName] = useState('');
@@ -48,9 +50,8 @@ export function PartnerAccountCard() {
     else { setPw(''); notify('Mentve ✅', 'Az új jelszó él. Ha gyors belépésként mentetted, ott is frissítsd.'); }
   };
 
-  return (
-    <Card>
-      <H2>👤 Profilom</H2>
+  const content = (
+    <>
       <Input label="Név" value={name} onChangeText={setName} autoCapitalize="words" />
       <Btn title="Név mentése" kind="ghost" small onPress={saveName} disabled={!name.trim() || name.trim() === profile?.display_name} />
       <Input label="E-mail cím" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
@@ -59,6 +60,14 @@ export function PartnerAccountCard() {
         right={<EyeToggle shown={showPw} onToggle={() => setShowPw(!showPw)} />} />
       <Btn title="Jelszó módosítása" kind="ghost" small onPress={() => void savePassword()} disabled={busy || !pw} />
       <Sub>Az e-mail csere megerősítő levéllel lép életbe; a régi és az új címre is érkezhet üzenet.</Sub>
+    </>
+  );
+  // bare: keret és cím nélkül (a Beállítások összecsukható szakaszában)
+  if (bare) return <View style={{ gap: S.sm }}>{content}</View>;
+  return (
+    <Card>
+      <H2>👤 Profilom</H2>
+      {content}
     </Card>
   );
 }
