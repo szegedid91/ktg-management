@@ -61,6 +61,8 @@ export function setThemeMode(m: ThemeMode) {
   F.body.color = C.text;
   F.sub.color = C.sub;
   F.money.color = C.text;
+  // weben a státuszsáv mögötti rögzített sáv és a lap háttere kövesse a fejléc színét
+  try { if (typeof document !== 'undefined') document.documentElement.style.setProperty('--ktg-header', C.primary); } catch { /* nincs DOM */ }
   AsyncStorage.setItem('ktg:theme', m).catch(() => {});
   themeListeners.forEach((l) => l(m));
 }
