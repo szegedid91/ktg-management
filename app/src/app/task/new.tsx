@@ -179,6 +179,7 @@ export default function NewTask() {
   return (
     <Screen>
       <Card style={{ gap: S.sm }}>
+        <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
         <Input label="Feladat címe *" value={title} onChangeText={setTitle} placeholder="pl. Csempézés a fürdőben" />
         {similar.length ? (
           <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
@@ -236,8 +237,7 @@ export default function NewTask() {
         <PhotoThumbs local={photos} onRemoveLocal={(i) => setPhotos((ps) => ps.filter((_, j) => j !== i))} />
       </Sec>
 
-      <Sec icon="⚙️" title="Kód és sablon" summary={[code || null, saveAsTemplate ? 'mentés sablonként' : null].filter(Boolean).join(' · ')} open={open === 'more'} onToggle={() => tog('more')}>
-        <Input label="Kód (hibakód / feladatkód)" value={code} onChangeText={setCode} placeholder="pl. H-101" autoCapitalize="none" />
+      <Sec icon="⚙️" title="Sablon" summary={saveAsTemplate ? 'mentés sablonként' : ''} open={open === 'more'} onToggle={() => tog('more')}>
         {templates.length > 0 ? (
           <Picker label="Kitöltés sablonból" items={templates} selectedId={templateId} getId={(t) => t.id} getLabel={(t) => t.name}
             onSelect={applyTemplate} placeholder="Válassz sablont (opcionális)…" allowNull nullLabel="— nincs —" />
