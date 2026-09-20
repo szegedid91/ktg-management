@@ -53,6 +53,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     .filter((e) => myIds.has(e.worker_id) && e.work_date >= todayISO() && e.work_date <= addDaysISO(todayISO(), 7))
     .sort((a, b) => a.work_date.localeCompare(b.work_date));
   const [periodMode, setPeriodMode] = useState<'week' | 'month'>('week');
+  // melyik emberhez van nyitva a személyre szóló meghívó
+  const [inviteFor, setInviteFor] = useState<string | null>(null);
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
   const [closedOpen, setClosedOpen] = useState(false);
@@ -255,15 +257,20 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 const today = todayISO();
                 const h = allSessions.filter((s) => s.worker_id === c.id && localDateISO(s.started_at) === today).reduce((sum, s) => sum + sessionHours(s), 0);
                 return (
-                  <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 3 }}>
+                  <React.Fragment key={c.id}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 3 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: C.text, fontWeight: '600' }}>{c.name}</Text>
                       <Sub>{c.trade ? `${c.trade} · ` : ''}{c.phones[0] ? `${c.phones[0]} · ` : ''}ma {fmtHours(h)}</Sub>
                     </View>
-                    {c.email ? <Badge text="📱 saját fiók" color={C.sub} /> : null}
+                    {c.email
+                      ? <Badge text="📱 saját fiók" color={C.sub} />
+                      : <Btn title={inviteFor === c.id ? 'Bezár' : '📲 Meghívó'} kind="ghost" small onPress={() => setInviteFor(inviteFor === c.id ? null : c.id)} />}
                     {allSessions.some((s) => s.worker_id === c.id && !s.ended_at) ? <Badge text="● dolgozik" color={C.success} /> : null}
                     <Btn title="🗑️" kind="ghost" small onPress={() => void removeMember(c)} />
                   </View>
+                  {inviteFor === c.id && !c.email ? <InviteCard workerId={c.id} workerName={c.name} crewMember /> : null}
+                  </React.Fragment>
                 );
               })}
               <Input label="Új ember neve" value={newName} onChangeText={setNewName} placeholder="pl. Kiss Béla" autoCapitalize="words" />

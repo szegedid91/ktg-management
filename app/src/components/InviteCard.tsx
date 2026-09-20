@@ -12,7 +12,11 @@ import { Profile } from '../lib/types';
 
 const APP_ORIGIN = 'https://ktg.szakify.hu';
 
-export function InviteCard({ workerId, workerName, contractor, email }: { workerId?: string; workerName?: string; contractor?: boolean; email?: string | null }) {
+export function InviteCard({ workerId, workerName, contractor, email, crewMember }: {
+  workerId?: string; workerName?: string; contractor?: boolean; email?: string | null;
+  /** vállalkozó a MÁR FELVETT emberének készít személyre szóló meghívót (a profilhoz kapcsolódik) */
+  crewMember?: boolean;
+}) {
   const profiles = useTable<Profile>('profiles');
   const account = workerId ? profiles.find((p) => p.worker_id === workerId) : undefined;
   const generic = !workerId;
@@ -53,7 +57,7 @@ export function InviteCard({ workerId, workerName, contractor, email }: { worker
     if (!link) return;
     const message = contractor
       ? `Szia! Regisztrálj az Építkezés Költségkövető appba ezzel a linkkel, így az én csapatomhoz kerülsz (7 napig érvényes):\n${link}`
-      : `Szia${workerName ? ` ${workerName}` : ''}! Regisztrálj az Építkezés Költségkövető appba ezzel a linkkel (7 napig érvényes):\n${link}`;
+      : `Szia${workerName ? ` ${workerName}` : ''}! Regisztrálj az Építkezés Költségkövető appba ezzel a linkkel — az adataid már ki vannak töltve, csak jelszót kell megadnod (7 napig érvényes):\n${link}`;
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && (navigator as any).share) {
         await (navigator as any).share({ title: 'Meghívó', text: message });
@@ -70,7 +74,7 @@ export function InviteCard({ workerId, workerName, contractor, email }: { worker
 
   return (
     <Card>
-      <H2>{contractor ? '📲 Emberem meghívása' : generic ? '📲 Munkavállaló meghívása' : '📲 Meghívás az appba'}</H2>
+      <H2>{crewMember ? `📲 ${workerName ?? 'Emberem'} meghívása` : contractor ? '📲 Új ember meghívása' : generic ? '📲 Munkavállaló meghívása' : '📲 Meghívás az appba'}</H2>
       {account ? (
         <>
           <Body style={{ fontWeight: '700', color: C.success }}>✅ Regisztrált fiók: {account.email ?? account.display_name}</Body>
@@ -78,12 +82,14 @@ export function InviteCard({ workerId, workerName, contractor, email }: { worker
         </>
       ) : (
         <>
-          <Sub>{contractor
+          <Sub>{crewMember
+            ? 'A linkkel vagy a QR-kód beolvasásával regisztrál: az adatai már ki lesznek töltve, csak jelszót kell megadnia. A fiókja ehhez a meglévő emberedhez kapcsolódik, így a korábbi napjait, munkaidejét és bérét is látni fogja, és továbbra is hozzád tartozik. A meghívó 7 napig érvényes, egyszer használható.'
+            : contractor
             ? 'Az embered a linkkel vagy a QR-kód beolvasásával regisztrál, és automatikusan hozzád kerül: a bére emberenként számolódik, de a kifizetés hozzád megy. A meghívó 7 napig érvényes, több ember is használhatja.'
             : generic
             ? 'Nem kell előre felvenned: a munkavállaló a linkkel vagy a QR-kód beolvasásával regisztrál, és maga adja meg a nevét, telefonszámát, szakmáját — a munkavállalói profilja ebből jön létre (becenevet csak te adhatsz neki). A meghívó 7 napig érvényes, több munkavállaló is használhatja (pl. kivetített QR).'
             : 'Ha a munkavállaló ezzel a meghívóval regisztrál, a fiókja ehhez a profilhoz kapcsolódik: a korábban rögzített napjait, feladatait és bérét is látja. A meghívó 7 napig érvényes, egyszer használható.'}</Sub>
-          {!generic && !contractor ? (
+          {!generic && !contractor && !crewMember ? (
             email
               ? <Btn title={busy ? '…' : `📧 Meghívó küldése e-mailben (${email})`} onPress={() => void sendEmail()} disabled={busy} />
               : <Sub style={{ color: C.warning }}>Nincs e-mail címe — add meg a Szerkesztésnél, és innen egy gombbal kiküldheted a meghívót.</Sub>
