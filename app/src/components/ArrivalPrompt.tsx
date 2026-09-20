@@ -21,8 +21,13 @@ const ls = {
   set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* privát mód */ } },
 };
 
-export function ArrivalPrompt({ sites, hasOpenSession, onCheckIn }: {
-  sites: Site[]; hasOpenSession: boolean; onCheckIn: (siteId: string) => void;
+export function ArrivalPrompt({ sites, openSiteIds, onCheckIn, onSwitch }: {
+  sites: Site[];
+  /** azok a területek, ahol épp fut munkaidő (saját / emberek) — üres, ha senki sincs bejelentkezve */
+  openSiteIds: string[];
+  onCheckIn: (siteId: string) => void;
+  /** másik területre érkezett, miközben máshol fut a munkaideje: ott lezár, itt indít */
+  onSwitch: (siteId: string) => void;
 }) {
   const uid = getCurrentUserId() ?? 'anon';
   const geoSites = sites.filter((s) => s.lat != null && s.lng != null);
@@ -78,10 +83,23 @@ export function ArrivalPrompt({ sites, hasOpenSession, onCheckIn }: {
     );
   }
 
-  // 2) a területen van, és nincs futó munkaideje
-  if (perm !== 'granted' || !here || hasOpenSession) return null;
+  // 2) a területen van: ha itt már fut a munkaideje, nincs teendő; ha máshol
+  //    fut (egy nap több helyszín), átjelentkezést ajánlunk; ha sehol, bejelentkezést
+  if (perm !== 'granted' || !here) return null;
+  if (openSiteIds.includes(here.site.id)) return null;
   const dismissKey = `ktg:arrival:${uid}:${here.site.id}:${todayISO()}`;
   if (ls.get(dismissKey)) return null;
+  if (openSiteIds.length > 0) {
+    const from = sites.filter((x) => openSiteIds.includes(x.id)).map((x) => x.name).join(', ') || 'másik terület';
+    return (
+      <Card style={{ borderColor: C.warning, borderWidth: 2, gap: S.sm }}>
+        <Text style={{ fontWeight: '800', fontSize: 17, color: C.text }}>📍 Megérkeztél: {here.site.name}</Text>
+        <Sub>A munkaidőd most itt fut: {from}. Átjelentkezel ide? Ott lezárjuk, itt elindítjuk.</Sub>
+        <Btn title={`🔁 Átjelentkezés ide: ${here.site.name}`} onPress={() => { onSwitch(here.site.id); setHere(null); }} />
+        <View style={{ alignItems: 'center' }}><Btn title="Most nem" kind="ghost" small onPress={() => { ls.set(dismissKey, '1'); setHere(null); }} /></View>
+      </Card>
+    );
+  }
   return (
     <Card style={{ borderColor: C.success, borderWidth: 2, gap: S.sm }}>
       <Text style={{ fontWeight: '800', fontSize: 17, color: C.text }}>📍 Megérkeztél: {here.site.name}</Text>

@@ -106,6 +106,14 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const stopAll = () => {
     for (const s of allSessions) if (!s.ended_at) updateRow('work_sessions', s.id, { ended_at: nowISO() });
   };
+  // egy nap több helyszín: a futó menetek lezárása, és ugyanazok az emberek az új területen indulnak
+  const switchTo = (siteId: string) => {
+    const running = allSessions.filter((x) => !x.ended_at);
+    const ids = [...new Set(running.map((x) => x.worker_id))];
+    const t = nowISO();
+    running.forEach((x) => updateRow('work_sessions', x.id, { ended_at: t }));
+    ids.forEach((id) => insertRow('work_sessions', { worker_id: id, task_id: null, site_id: siteId, started_at: t, ended_at: null, note: null }));
+  };
   const crewRunning = allSessions.filter((s) => !s.ended_at && s.worker_id !== wid);
   const addMember = async () => {
     if (!newName.trim()) return;
@@ -162,7 +170,9 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     <Screen>
       <SyncBanner />
       <PushPrompt />
-      <ArrivalPrompt sites={activeSites} hasOpenSession={!!openSession || crewRunning.length > 0}
+      <ArrivalPrompt sites={activeSites}
+        openSiteIds={[...new Set(allSessions.filter((x) => !x.ended_at && x.site_id).map((x) => x.site_id as string))]}
+        onSwitch={switchTo}
         onCheckIn={(siteId) => {
           // vállalkozónál előbb ki kell választani, kik dolgoznak: a kezdés-panel nyílik a területtel
           if (isContractor && crew.length) { setStartSite(siteId); setStartOpen(true); } else startAt(siteId);
