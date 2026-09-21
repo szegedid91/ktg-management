@@ -3,6 +3,7 @@
 // layout témaváltáskor újrarendereli a teljes fát.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Appearance, Platform } from 'react-native';
 
 const LIGHT = {
   bg: '#F5F3EF',
@@ -63,7 +64,6 @@ export function setThemeMode(m: ThemeMode) {
   F.money.color = C.text;
   // weben a státuszsáv mögötti rögzített sáv és a lap háttere kövesse a fejléc színét
   try { if (typeof document !== 'undefined') document.documentElement.style.setProperty('--ktg-header', C.primary); } catch { /* nincs DOM */ }
-  AsyncStorage.setItem('ktg:theme', m).catch(() => {});
   themeListeners.forEach((l) => l(m));
 }
 
@@ -72,14 +72,58 @@ export function subscribeTheme(l: (m: ThemeMode) => void): () => void {
   return () => { themeListeners.delete(l); };
 }
 
-/** Mentett téma betöltése app-induláskor */
-export async function loadThemeMode(): Promise<void> {
+/** Megjelenés-beállítás: alapból a készülék (telefon / böngésző) világos–sötét módját követi;
+ *  kézzel felülírható, eszközönként. */
+export type ThemePref = 'auto' | 'light' | 'dark';
+const PREF_KEY = 'ktg:theme-pref';
+let themePref: ThemePref = 'auto';
+let systemWatch = false;
+
+function systemMode(): ThemeMode {
   try {
-    const v = await AsyncStorage.getItem('ktg:theme');
-    if (v === 'dark') setThemeMode('dark');
+    if (Platform.OS === 'web') {
+      return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
+  } catch { return 'light'; }
+}
+function applyPref() {
+  const m = themePref === 'auto' ? systemMode() : themePref;
+  if (m !== themeMode) setThemeMode(m);
+}
+/** a készülék módváltását (pl. esti automatikus sötét mód) menet közben is követjük */
+function watchSystem() {
+  if (systemWatch) return;
+  systemWatch = true;
+  try {
+    if (Platform.OS === 'web') {
+      const mq = typeof window !== 'undefined' ? window.matchMedia?.('(prefers-color-scheme: dark)') : null;
+      const on = () => { if (themePref === 'auto') applyPref(); };
+      if (mq?.addEventListener) mq.addEventListener('change', on); else (mq as any)?.addListener?.(on);
+    } else {
+      Appearance.addChangeListener(() => { if (themePref === 'auto') applyPref(); });
+    }
+  } catch { /* nincs rendszer-jelzés — marad a jelenlegi */ }
+}
+
+export function getThemePref(): ThemePref { return themePref; }
+export function setThemePref(p: ThemePref) {
+  themePref = p;
+  AsyncStorage.setItem(PREF_KEY, p).catch(() => {});
+  applyPref();
+}
+
+/** Mentett beállítás betöltése app-induláskor (alapértelmezés: a készüléket követi) */
+export async function loadThemeMode(): Promise<void> {
+  watchSystem();
+  applyPref(); // azonnal a készülék szerint, a mentett érték beolvasása előtt se villanjon
+  try {
+    const v = await AsyncStorage.getItem(PREF_KEY);
+    if (v === 'light' || v === 'dark' || v === 'auto') themePref = v;
   } catch {
-    // marad a világos
+    // marad az automatikus
   }
+  applyPref();
 }
 
 export const S = {

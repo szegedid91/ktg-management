@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, View, Text, Pressable, TextInput } from 'react-native';
 import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented, Empty } from '../ui/kit';
-import { S, C, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
+import { S, C, getThemePref, setThemePref, ThemePref } from '../ui/theme';
 import { useTable, useOnlineView, useIsWorker } from '../lib/hooks';
 import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow, fetchView } from '../lib/repo';
 import { syncNow } from '../lib/sync';
@@ -63,7 +63,7 @@ function SettingsInner() {
   const [threshold, setThreshold] = useState('');
   const [newCat, setNewCat] = useState('');
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  const [theme, setThemeState] = useState<ThemeMode>(getThemeMode());
+  const [theme, setThemeState] = useState<ThemePref>(getThemePref());
   // egyszerre egy szakasz van nyitva; ha az én jóváhagyásomra vár részesedés-javaslat, az nyílik ki
   const [open, setOpen] = useState<string | null>(() => (pendingReq && pendingReq.proposed_by !== me ? 'shares' : null));
   const tog = (id: string) => setOpen((cur) => (cur === id ? null : id));
@@ -212,15 +212,13 @@ function SettingsInner() {
         <PartnerAccountCard bare />
       </Section>
 
-      <Section icon="🌗" title="Megjelenés" summary={theme === 'dark' ? 'Esti (sötét)' : 'Világos'} open={open === 'theme'} onToggle={() => tog('theme')}>
+      <Section icon="🌗" title="Megjelenés" summary={theme === 'auto' ? 'Automatikus (a készülék szerint)' : theme === 'dark' ? 'Sötét' : 'Világos'} open={open === 'theme'} onToggle={() => tog('theme')}>
         <Segmented
-          options={[
-            { value: 'light', label: '☀️ Világos' },
-            { value: 'dark', label: '🌙 Esti (sötét)' },
-          ]}
+          options={[{ value: 'auto', label: '📱 Automatikus' }, { value: 'light', label: '☀️ Világos' }, { value: 'dark', label: '🌙 Sötét' }]}
           value={theme}
-          onChange={(v: ThemeMode) => { setThemeMode(v); setThemeState(v); }}
+          onChange={(v: ThemePref) => { setThemePref(v); setThemeState(v); }}
         />
+        <Sub>Automatikus: a telefon (vagy a böngésző) világos / sötét beállítását követi. Csak ezen az eszközön érvényes.</Sub>
       </Section>
 
       <Section icon="💰" title="Díjak" open={open === 'rates'} onToggle={() => tog('rates')}

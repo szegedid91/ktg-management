@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { Card, H2, Sub, Input, Btn, Segmented } from '../ui/kit';
 import { WebPushRow } from './WebPushRow';
-import { S, getThemeMode, setThemeMode, ThemeMode } from '../ui/theme';
+import { S, getThemePref, setThemePref, ThemePref } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { callRpc, getCurrentUserId } from '../lib/repo';
 import { syncNow } from '../lib/sync';
@@ -23,7 +23,7 @@ export function WorkerAccountCard() {
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
-  const [theme, setThemeState] = useState<ThemeMode>(getThemeMode());
+  const [theme, setThemeState] = useState<ThemePref>(getThemePref());
 
   useEffect(() => {
     if (worker) { setName(worker.name); setPhone(worker.phones?.[0] ?? ''); }
@@ -80,9 +80,9 @@ export function WorkerAccountCard() {
       <Card>
         <H2>🌗 Megjelenés</H2>
         <View style={{ gap: S.sm }}>
-          <Segmented options={[{ value: 'light', label: '☀️ Világos' }, { value: 'dark', label: '🌙 Esti (sötét)' }]}
-            value={theme} onChange={(v: ThemeMode) => { setThemeMode(v); setThemeState(v); }} />
-          <Sub>Csak ezen az eszközön.</Sub>
+          <Segmented options={[{ value: 'auto', label: '📱 Automatikus' }, { value: 'light', label: '☀️ Világos' }, { value: 'dark', label: '🌙 Sötét' }]}
+            value={theme} onChange={(v: ThemePref) => { setThemePref(v); setThemeState(v); }} />
+          <Sub>Automatikus: a telefonod világos / sötét beállítását követi.</Sub>
         </View>
       </Card>
       {Platform.OS === 'web' ? (
