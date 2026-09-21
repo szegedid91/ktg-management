@@ -2,6 +2,7 @@
 
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
+import { logError, errInfo } from './errlog';
 import { newId } from './repo';
 
 export interface PickedPhoto { uri: string; base64: string }
@@ -63,7 +64,12 @@ export async function uploadTaskPhoto(base64: string, folder: string): Promise<s
   const path = `${folder}/${newId()}.jpg`;
   const bin = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const { error } = await supabase.storage.from('tasks').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
-  if (error) throw error;
+  if (error) {
+    if (!/Failed to fetch|NetworkError|Load failed/i.test(String(error.message))) {
+      logError('upload', `tasks/${folder}: ${error.message}`, { ...errInfo(error), sizeKB: Math.round(bin.length / 1024) });
+    }
+    throw error;
+  }
   return path;
 }
 

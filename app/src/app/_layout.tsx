@@ -7,6 +7,7 @@ import { DialogHost } from '../components/DialogHost';
 import { HeaderBell } from '../components/HeaderBell';
 import { WorkerApprovalGate } from '../components/WorkerApprovalGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { installGlobalErrorLogging, flushErrlog } from '../lib/errlog';
 import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
@@ -30,6 +31,8 @@ export default function RootLayout() {
   // esti nézet: témaváltáskor a key csere újrarendereli a teljes fát
   const [theme, setTheme] = useState(getThemeMode());
   useEffect(() => {
+    installGlobalErrorLogging();
+    void flushErrlog();
     void loadThemeMode();
     return subscribeTheme(setTheme);
   }, []);
@@ -85,6 +88,7 @@ export default function RootLayout() {
         <Stack.Screen name="equipment" options={{ title: 'Eszközök' }} />
         <Stack.Screen name="settings" options={{ title: 'Beállítások' }} />
         <Stack.Screen name="audit" options={{ title: 'Audit napló' }} />
+        <Stack.Screen name="errors" options={{ title: 'Hibanapló' }} />
         <Stack.Screen name="export" options={{ title: 'Export könyvelőnek' }} />
       </Stack>
       </ErrorBoundary>

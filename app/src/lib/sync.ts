@@ -3,6 +3,7 @@
 
 import { supabase } from './supabase';
 import { store, OutboxOp, opRowIds } from './store';
+import { logError, errInfo, flushErrlog, setErrlogUser } from './errlog';
 import { SYNC_TABLES, SyncTable } from './types';
 
 let syncing = false;
@@ -81,6 +82,20 @@ async function rollbackOp(op: OutboxOp): Promise<void> {
   }
 }
 
+/** Az elutasított művelet naplózható kivonata (érzékeny mezők és nagy tartalom nélkül). */
+function opSummary(op: OutboxOp): Record<string, any> {
+  const clean = (o: any) => {
+    if (!o || typeof o !== 'object') return o;
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (/bank|password|token|secret/i.test(k)) continue;
+      out[k] = typeof v === 'string' && v.length > 200 ? `${v.slice(0, 200)}…` : v;
+    }
+    return out;
+  };
+  return { kind: op.kind, table: op.table, id: op.id, fn: op.fn, row: clean(op.row), patch: clean(op.patch), args: clean(op.args) };
+}
+
 async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
   try {
     if (op.kind === 'upsert') {
@@ -95,11 +110,14 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
     }
     return 'done';
   } catch (err: any) {
+    const what = op.kind === 'rpc' ? `rpc ${op.fn}` : `${op.kind} ${op.table}`;
     if (isRejection(err)) {
       store.markOpError(op.opId, String(err?.message ?? err));
+      logError('sync-rejected', `${what}: ${String(err?.message ?? err)}`, { ...errInfo(err), op: opSummary(op) });
       return 'rejected';
     }
     // hálózati vagy átmeneti szerverhiba → az op a sorban marad, retry később
+    if (!isNetworkError(err)) logError('sync-retry', `${what}: ${String(err?.message ?? err)}`, { ...errInfo(err), op: opSummary(op) });
     return 'offline';
   }
 }
@@ -234,6 +252,9 @@ async function runSync(): Promise<void> {
       await reconcileAll();
       status.lastSyncAt = new Date().toISOString();
       status.lastError = null;
+      // a naplózó a felhasználó nevével jelent; a helyben várakozó hibák is most mennek fel
+      setErrlogUser((store.getAll('profiles') as any[]).find((p) => p.id === sess.session.user.id)?.display_name ?? sess.session.user.email ?? null);
+      void flushErrlog();
       // régi, olvasott értesítések ne duzzasszák a lokális tárat
       const cutoff = new Date(Date.now() - 30 * 864e5).toISOString();
       store.prune('notification_queue', (r) => !!r.read_at && String(r.read_at) < cutoff);
@@ -242,6 +263,7 @@ async function runSync(): Promise<void> {
     }
   } catch (err: any) {
     status.lastError = isNetworkError(err) ? null : String(err?.message ?? err);
+    if (!isNetworkError(err)) logError('sync', String(err?.message ?? err), errInfo(err));
   } finally {
     syncing = false;
     status.syncing = false;

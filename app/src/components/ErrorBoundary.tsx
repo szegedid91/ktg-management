@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Text, Pressable, Platform, ScrollView } from 'react-native';
 import { APP_VERSION } from '../lib/version';
+import { logError } from '../lib/errlog';
 
 type State = { error: Error | null };
 
@@ -28,6 +29,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   state: State = { error: null };
   static getDerivedStateFromError(error: Error): State { return { error }; }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    logError('crash', String(error?.message ?? error), { componentStack: (info?.componentStack ?? '').split('\n').slice(0, 8).join('\n'), stack: error?.stack?.split('\n').slice(0, 6).join('\n') });
     rememberCrash(`${error?.message ?? error}\n${(info?.componentStack ?? '').split('\n').slice(0, 6).join('\n')}`);
   }
   reload = () => {

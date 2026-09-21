@@ -27,12 +27,15 @@ export default function More() {
   const { session, signOut } = useAuth();
   const sync = useSyncStatus();
   // munkavállalói fiók: nincs Beállítások/menü — csak a saját alapadatok
-  const isWorker = !!useTable<Profile>('profiles').find((p) => p.id === session?.user.id)?.worker_id;
+  const myProfile = useTable<Profile>('profiles').find((p) => p.id === session?.user.id);
+  const isWorker = !!myProfile?.worker_id;
+  // a hibanaplót csak az admin látja
+  const items = myProfile?.is_admin ? [...ITEMS, { label: 'Hibanapló', icon: '🐞', href: '/errors' }] : ITEMS;
 
   return (
     <Screen>
       {isWorker ? <WorkerAccountCard /> : null}
-      {(isWorker ? [] : ITEMS).map((i) => (
+      {(isWorker ? [] : items).map((i) => (
         <Row key={i.href} onPress={() => router.push(i.href as any)}>
           <Text style={{ fontSize: 20 }}>{i.icon}</Text>
           <Body style={{ fontWeight: '600', flex: 1 }}>{i.label}</Body>

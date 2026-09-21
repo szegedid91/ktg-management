@@ -12,6 +12,7 @@ import { Screen, Card, Input, Btn, Sub, H2, Body, Empty } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useIsWorker } from '../../lib/hooks';
 import { insertRow, newId, getCurrentUserId } from '../../lib/repo';
+import { logError, errInfo } from '../../lib/errlog';
 import { notify, confirmDialog } from '../../lib/dialogs';
 import { fromGross } from '../../lib/calc';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
@@ -197,7 +198,7 @@ function NewExpenseInner() {
         const bin = photo.base64 ? Uint8Array.from(atob(photo.base64), (c) => c.charCodeAt(0)) : null;
         if (!bin) continue;
         const { error } = await supabase.storage.from('receipts').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
-        if (error) photoFails++;
+        if (error) { photoFails++; logError('upload', `receipts: ${error.message}`, errInfo(error)); }
         else insertRow('expense_photos', { expense_id: expenseId, storage_path: path });
       } catch {
         photoFails++; // offline — a költség fotó nélkül mentődött
