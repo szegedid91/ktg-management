@@ -77,11 +77,7 @@ function WorkerDetailInner() {
   const isPartner = !profiles.find((p) => p.id === me)?.worker_id;
   const hasAccount = profiles.some((p) => p.worker_id === worker.id);
 
-  const referrerName = worker.referrer_user_id
-    ? profiles.find((p) => p.id === worker.referrer_user_id)?.display_name
-    : worker.referrer_external_id
-      ? externals.find((e) => e.id === worker.referrer_external_id)?.name
-      : null;
+  // a közvetítőt az adatlapon szándékosan sehol nem írjuk ki (csak a szerkesztő űrlapon állítható)
 
   // Ha van közvetítő, az embernél a NEKI járó díjat mutatjuk (pl. 8 000 Ft órabérből
   // 1 000 Ft a közvetítőé → 7 000 Ft), bontás nélkül. A kiszállás 1 órának számít.
@@ -121,7 +117,6 @@ function WorkerDetailInner() {
       s ? `Órabér: ${rateText(worker.hourly_rate, Number(s.company_hourly_rate), Number(s.individual_hourly_rate))}` : '',
       s ? `Napi díj: ${rateText(worker.daily_rate, Number(s.company_daily_rate), Number(s.individual_daily_rate))}` : '',
       s ? `Projektdíj: ${rateText(worker.project_rate, Number(s.company_project_rate), Number(s.individual_project_rate))}` : '',
-      referrerName ? `Közvetítő: ${referrerName}` : 'Közvetítő: nincs',
     ].filter(Boolean);
     const ok = await confirmDialog(
       'Jóváhagyás — ezzel a díjazással',
@@ -282,19 +277,6 @@ function WorkerDetailInner() {
                 : def != null ? `${netText(Number(def), 'hour')} (alapértelmezett)` : hourly ? `${netText(hourly, 'hour')} — 1 óra bére (alapértelmezett)` : '1 óra bére (alapértelmezett)';
               return <KV k="Kiszállási díj (helyszín / nap)" v={text} />;
             })()}
-          </>
-        ) : null}
-        {referrerName ? (
-          <>
-            <Divider />
-            <KV k="Közvetítő" v={referrerName} />
-            <KV k="Közvetítői díj" v={
-              worker.commission_mode === 'percent'
-                ? `${worker.commission_value}% a díjból`
-                : worker.commission_mode === 'fixed'
-                  ? `${ft(worker.commission_value ?? 0)} / ${worker.commission_unit === 'hour' ? 'óra' : worker.commission_unit === 'day' ? 'nap' : 'projekt'}`
-                  : '—'
-            } />
           </>
         ) : null}
       </Card>
