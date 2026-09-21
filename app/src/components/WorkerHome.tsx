@@ -17,6 +17,7 @@ import { InviteCard } from './InviteCard';
 import { SyncBanner } from './SyncBanner';
 import { PushPrompt } from './PushPrompt';
 import { ArrivalPrompt } from './ArrivalPrompt';
+import { BackgroundGeoCard } from './BackgroundGeoCard';
 import { openDirections } from '../lib/maps';
 import { router } from 'expo-router';
 import {
@@ -171,6 +172,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     <Screen>
       <SyncBanner />
       <PushPrompt />
+      <BackgroundGeoCard sites={activeSites} openSession={openSession} />
       <ArrivalPrompt sites={activeSites}
         openSiteIds={[...new Set(allSessions.filter((x) => !x.ended_at && x.site_id).map((x) => x.site_id as string))]}
         onSwitch={switchTo}

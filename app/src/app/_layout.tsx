@@ -9,6 +9,7 @@ import { WorkerApprovalGate } from '../components/WorkerApprovalGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { installGlobalErrorLogging, flushErrlog } from '../lib/errlog';
 import { installAutoUpdate } from '../lib/autoupdate';
+import '../lib/geofence'; // natívon itt regisztrálódik a háttérfeladat (a modul legfelső szintjén kell lennie)
 import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény

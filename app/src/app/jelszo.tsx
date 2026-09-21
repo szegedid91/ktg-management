@@ -10,6 +10,7 @@ import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
+import { webHash } from '../lib/weburl';
 
 export default function PasswordReset() {
   const { session } = useAuth();
@@ -20,10 +21,8 @@ export default function PasswordReset() {
   const [linkError, setLinkError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const m = window.location.hash.match(/error_description=([^&]+)/);
-      if (m) setLinkError(decodeURIComponent(m[1].replace(/\+/g, ' ')));
-    }
+    const m = webHash().match(/error_description=([^&]+)/);
+    if (m) setLinkError(decodeURIComponent(m[1].replace(/\+/g, ' ')));
   }, []);
 
   const save = async () => {

@@ -8,6 +8,7 @@ import { useAuth } from '../lib/auth';
 import { EyeToggle } from '../components/EyeToggle';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/dialogs';
+import { appOrigin } from '../lib/weburl';
 
 // szándékosan NEM 'ktg:' előtaggal: a kijelentkezés/fiókváltás takarítása ne törölje
 const QUICK_KEY = 'quick-accounts';
@@ -77,7 +78,7 @@ export default function Login() {
     setBusy(true);
     setError(null);
     const { error: err } = await supabase.auth.resetPasswordForEmail(em, {
-      ...(typeof window !== 'undefined' ? { redirectTo: `${window.location.origin}/jelszo` } : {}),
+      redirectTo: `${appOrigin()}/jelszo`,
     });
     setBusy(false);
     if (err) setError('Nem sikerült elküldeni a levelet. Ellenőrizd az e-mail címet, és próbáld újra.');

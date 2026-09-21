@@ -8,6 +8,7 @@ import { router, Stack } from 'expo-router';
 import { Screen, Card, Title, Sub, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useAuth } from '../lib/auth';
+import { webHash } from '../lib/weburl';
 
 export default function EmailConfirmed() {
   const { session } = useAuth();
@@ -15,11 +16,8 @@ export default function EmailConfirmed() {
 
   useEffect(() => {
     // lejárt/érvénytelen link esetén a Supabase hibát tesz az URL-be
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      const m = hash.match(/error_description=([^&]+)/);
-      if (m) setLinkError(decodeURIComponent(m[1].replace(/\+/g, ' ')));
-    }
+    const m = webHash().match(/error_description=([^&]+)/);
+    if (m) setLinkError(decodeURIComponent(m[1].replace(/\+/g, ' ')));
   }, []);
 
   return (

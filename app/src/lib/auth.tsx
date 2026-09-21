@@ -9,6 +9,7 @@ import { startSyncLoop, stopSyncLoop, flushOutbox, syncNow, waitIdle } from './s
 import { startRealtime, stopRealtime } from './realtime';
 import { setCurrentUserId, getCurrentUserId } from './repo';
 import { AppState } from 'react-native';
+import { appOrigin, webPathname, webSearch, webHash } from './weburl';
 
 const LAST_USER_KEY = 'auth:lastUserId'; // NEM a ktg: prefixen: clearAll ne törölje
 const LEGACY_LAST_USER_KEY = 'ktg:lastUserId';
@@ -23,8 +24,7 @@ export function consumeRecoveryRedirect(): boolean {
   return r;
 }
 function urlLooksLikeRecovery(): boolean {
-  if (typeof window === 'undefined') return false;
-  const u = `${window.location.search}${window.location.hash}`;
+  const u = `${webSearch()}${webHash()}`;
   return /type=recovery/.test(u);
 }
 function goToPasswordPage() {
@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         stopRealtime();
         // kijelentkezés után vissza a belépőre — kivéve a bejelentkezés
         // nélkül is elérhető oldalakon (meghívó, megerősítés, jelszócsere)
-        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        const path = webPathname();
         const isPublic = ['/login', '/meghivo', '/megerosites', '/jelszo'].some((p) => path.startsWith(p));
         if (!isPublic) import('expo-router').then((m) => m.router.replace('/login')).catch(() => {});
       }
@@ -118,9 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         data: { display_name: displayName, ...(inviteToken ? { invite_token: inviteToken } : {}), ...(extra ?? {}) },
         // a megerősítő link a saját "sikeres megerősítés" oldalunkra hozzon
-        ...(typeof window !== 'undefined'
-          ? { emailRedirectTo: `${window.location.origin}/megerosites` }
-          : {}),
+        emailRedirectTo: `${appOrigin()}/megerosites`,
       },
     });
     return error ? hunAuthError(error.message) : null;

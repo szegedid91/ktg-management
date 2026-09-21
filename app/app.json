@@ -6,13 +6,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "hu.ktg.management",
       "infoPlist": {
         "NSCameraUsageDescription": "Számlák és blokkok fotózásához szükséges a kamera.",
-        "NSPhotoLibraryUsageDescription": "Számlafotók kiválasztásához szükséges a fotókönyvtár."
+        "NSPhotoLibraryUsageDescription": "Számlafotók kiválasztásához szükséges a fotókönyvtár.",
+        "NSLocationWhenInUseUsageDescription": "A munkaterületre érkezés jelzéséhez és a bejelentkezéshez használjuk a helyzetedet.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Hogy a telefon akkor is jelezzen, amikor megérkezel egy munkaterületre vagy futó munkaidővel távozol, az appnak a háttérben is látnia kell a helyzetedet. Az útvonaladat nem rögzítjük."
       }
     },
     "android": {
@@ -25,7 +27,13 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -39,7 +47,21 @@
       "expo-camera",
       "expo-image-picker",
       "expo-notifications",
-      "expo-sharing"
-    ]
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Hogy a telefon akkor is jelezzen, amikor megérkezel egy munkaterületre vagy futó munkaidővel távozol, az appnak a háttérben is látnia kell a helyzetedet. Az útvonaladat nem rögzítjük.",
+          "locationWhenInUsePermission": "A munkaterületre érkezés jelzéséhez és a bejelentkezéshez használjuk a helyzetedet.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-updates"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
