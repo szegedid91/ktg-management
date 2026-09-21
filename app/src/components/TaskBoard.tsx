@@ -72,6 +72,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     const needle = q.trim().toLowerCase();
     return tasks
       .filter((t) => {
+        // kereséskor minden állapotban keresünk — a kész feladat kódjára is legyen találat
+        if (needle) return true;
         switch (filter) {
           case 'active': return isActiveTask(t);
           case 'unassigned': return isActiveTask(t) && assigneesOf(t).length === 0;
@@ -151,7 +153,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Sub>{filtered.length} feladat{filtered.length > shown.length ? ` (${shown.length} látszik)` : ''}</Sub>
+        <Sub>{filtered.length} feladat{q.trim() ? ' · keresés minden állapotban' : ''}{filtered.length > shown.length ? ` (${shown.length} látszik)` : ''}</Sub>
         <Segmented options={[{ value: 'list', label: 'Lista' }, { value: 'site', label: 'Helyszín szerint' }]} value={view} onChange={setView} />
       </View>
 
