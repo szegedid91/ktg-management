@@ -36,8 +36,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const isContractor = !!me?.is_contractor;
   // ha én valakinek az embere vagyok: a bérem a vállalkozómhoz kerül, az óralapot ő küldi be
   const boss = me?.contractor_id ? workers.find((w) => w.id === me.contractor_id) : undefined;
-  // a vállalkozó embere semmilyen díjazást nem lát (a bérét a vállalkozójával beszéli meg)
-  const hidePay = !!me?.contractor_id;
+  // a munkavállalói fiók pénzt sehol nem lát az appban — csak órákat, napokat és kiszállásokat
+  const hidePay = true;
   const myIds = new Set([wid, ...crew.map((c) => c.id)]);
   const allSessions = useTable<WorkSession>('work_sessions').filter((s) => myIds.has(s.worker_id));
   const sessions = allSessions.filter((s) => s.worker_id === wid);
@@ -123,7 +123,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       await callRpc('contractor_add_member', { p_name: newName.trim(), p_phone: newPhone.trim() || null, p_trade: newTrade.trim() || null });
       void syncNow();
       setNewName(''); setNewPhone(''); setNewTrade('');
-      notify('Felvéve 👥', 'Az embered mostantól bejelentkeztethető; a bére hozzád kerül.');
+      notify('Felvéve 👥', 'Az embered mostantól bejelentkeztethető.');
     } catch (e: any) { notify('Hiba', String(e?.message ?? e)); } finally { setCrewBusy(false); }
   };
   const removeMember = async (c: Worker) => {
@@ -162,8 +162,9 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
     const rows = allAttendance.filter((a) => a.worker_id === p.id && k.match(a.work_date));
     const amount = rows.filter((a) => a.pay_basis !== 'presence').reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
-    return { key: k.key, label: k.label, person: p, hours, amount, days: new Set(rows.map((a) => a.work_date)).size };
-  })).flat().filter((w) => w.hours > 0 || w.amount > 0);
+    const callouts = rows.filter((a) => Number(a.callout_fee ?? 0) > 0).length;
+    return { key: k.key, label: k.label, person: p, hours, amount, callouts, days: new Set(rows.map((a) => a.work_date)).size };
+  })).flat().filter((w) => w.hours > 0 || w.days > 0);
   const unpaid = days.filter((a) => a.pay_basis !== 'presence' && !a.paid_at)
     .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
 
@@ -278,7 +279,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 <View style={{ flex: 1 }}><Input label="Szakma" value={newTrade} onChangeText={setNewTrade} placeholder="pl. segédmunkás" /></View>
               </View>
               <Btn title={crewBusy ? '…' : '+ Felveszem'} kind="secondary" small disabled={crewBusy || !newName.trim()} onPress={() => void addMember()} />
-              <Sub>Az embereid bére emberenként számolódik, de a kifizetés hozzád kerül. A vezetők látják, ki mennyit dolgozott.</Sub>
+              <Sub>Az embereid munkaideje emberenként látszik. A vezetők látják, ki mennyit dolgozott.</Sub>
               <InviteCard contractor />
             </View>
           ) : null}
@@ -322,7 +323,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
             <View key={`${w.key}-${w.person.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: C.text, fontWeight: '600' }}>{w.label}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
-                <Sub>{fmtHours(w.hours)} · {w.days} nap</Sub>
+                <Sub>{fmtHours(w.hours)} · {w.days} nap{w.callouts > 0 ? ` · 🚗 ${w.callouts} kiszállás` : ''}</Sub>
               </View>
               {hidePay ? null : <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{ft(w.amount)}</Text>}
             </View>
@@ -347,6 +348,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                   {hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '—'}
                 </Text>
                 {a.source === 'session' || a.source === 'task' ? <Text style={{ fontSize: 11, color: C.sub }}>{a.source === 'task' ? '💬' : '⏱'}</Text> : null}
+                {a.pay_basis === 'hourly' && Number(a.hours ?? 0) > 0 ? <Text style={{ color: C.text, fontWeight: '700' }}>{String(Number(a.hours)).replace('.', ',')} ó</Text> : null}
+                {Number(a.callout_fee ?? 0) > 0 ? <Text style={{ fontSize: 12, color: C.sub }}>🚗 kiszállás</Text> : null}
                 {hidePay ? null : a.pay_basis !== 'presence' ? (
                   <>
                     <Text style={{ color: C.text, fontWeight: '700' }}>{ft(Number(a.amount) - Number(a.commission_amount))}</Text>
