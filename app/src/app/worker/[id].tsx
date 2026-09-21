@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { smartBack } from '../../lib/nav';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Empty, Badge, Divider, Segmented } from '../../ui/kit';
@@ -50,6 +50,8 @@ function WorkerDetailInner() {
   const [form, setForm] = useState<WorkerFormValues | null>(null);
   const [bank, setBank] = useState<string | null>(null);
   const [payFilter, setPayFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  // a közvetítő alapból rejtve van — lenyitható sor
+  const [refOpen, setRefOpen] = useState(false);
   const [showCount, setShowCount] = useState(30);
 
   const history = useMemo(
@@ -290,13 +292,21 @@ function WorkerDetailInner() {
         {hasReferrer && referrerName ? (
           <>
             <Divider />
-            <KV k={`Közvetítő${refSrc.id !== worker.id ? ' (a vállalkozójáé)' : ''}`} v={referrerName} />
-            <KV k="Közvetítői díj" v={
-              refSrc.commission_mode === 'percent'
-                ? `${refSrc.commission_value}% a díjból`
-                : `${ft(Number(refSrc.commission_value ?? 0))} / ${refSrc.commission_unit === 'hour' ? 'óra (a kiszállás 1 órának számít)' : refSrc.commission_unit === 'day' ? 'nap' : 'projekt'}`
-            } />
-            <Sub>A fenti díjak a munkavállalónak járó összegek — a teljes bérköltség ezek és a közvetítői díj együtt.</Sub>
+            <Pressable onPress={() => setRefOpen(!refOpen)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
+              <Text style={{ flex: 1, color: C.sub, fontWeight: '600' }}>Közvetítő</Text>
+              <Text style={{ color: C.sub, fontSize: 16 }}>{refOpen ? '▾' : '▸'}</Text>
+            </Pressable>
+            {refOpen ? (
+              <>
+                <KV k={`Közvetítő${refSrc.id !== worker.id ? ' (a vállalkozójáé)' : ''}`} v={referrerName} />
+                <KV k="Közvetítői díj" v={
+                  refSrc.commission_mode === 'percent'
+                    ? `${refSrc.commission_value}% a díjból`
+                    : `${ft(Number(refSrc.commission_value ?? 0))} / ${refSrc.commission_unit === 'hour' ? 'óra (a kiszállás 1 órának számít)' : refSrc.commission_unit === 'day' ? 'nap' : 'projekt'}`
+                } />
+                <Sub>A fenti díjak a munkavállalónak járó összegek — a teljes bérköltség ezek és a közvetítői díj együtt.</Sub>
+              </>
+            ) : null}
           </>
         ) : null}
       </Card>
