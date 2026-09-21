@@ -83,11 +83,24 @@ function WorkerDetailInner() {
       ? externals.find((e) => e.id === worker.referrer_external_id)?.name
       : null;
 
-  const rateLine = (label: string, own: number | null, globalCompany: number, globalIndividual: number) => {
+  // Ha van közvetítő, az embernél a NEKI járó díjat mutatjuk (pl. 8 000 Ft órabérből
+  // 1 000 Ft a közvetítőé → 7 000 Ft), mellette a bontással. A kiszállás 1 órának számít.
+  const hasReferrer = !!(worker.referrer_user_id || worker.referrer_external_id) && !!worker.commission_mode;
+  const cut = (gross: number, unit: 'hour' | 'day' | 'project'): number => {
+    if (!hasReferrer) return 0;
+    const v = Number(worker.commission_value ?? 0);
+    const c = worker.commission_mode === 'percent' ? Math.round(gross * v) / 100 : worker.commission_unit === unit ? v : 0;
+    return Math.max(0, Math.min(c, gross));
+  };
+  const netText = (gross: number, unit: 'hour' | 'day' | 'project') => {
+    const c = cut(gross, unit);
+    return c > 0 ? `${ft(gross - c)} (${ft(gross)} − ${ft(c)} közvetítő)` : ft(gross);
+  };
+  const rateLine = (label: string, own: number | null, globalCompany: number, globalIndividual: number, unit: 'hour' | 'day' | 'project') => {
     const global = worker.worker_type === 'company' ? globalCompany : globalIndividual;
     const val = own ?? global;
     if (own == null && !global) return <KV k={label} v="nincs beállítva" />;
-    return <KV k={label} v={`${ft(val)}${own == null ? ' (öröklött)' : ''}`} />;
+    return <KV k={label} v={`${netText(val, unit)}${own == null ? ' (öröklött)' : ''}`} />;
   };
 
   // meghívóval regisztrált, még jóvá nem hagyott munkavállaló: a jóváhagyás
@@ -258,13 +271,15 @@ function WorkerDetailInner() {
         <H2>Díjazás</H2>
         {settings ? (
           <>
-            {rateLine('Órabér', worker.hourly_rate, Number(settings.company_hourly_rate), Number(settings.individual_hourly_rate))}
-            {rateLine('Napi díj', worker.daily_rate, Number(settings.company_daily_rate), Number(settings.individual_daily_rate))}
-            {rateLine('Projektdíj', worker.project_rate, Number(settings.company_project_rate), Number(settings.individual_project_rate))}
+            {rateLine('Órabér', worker.hourly_rate, Number(settings.company_hourly_rate), Number(settings.individual_hourly_rate), 'hour')}
+            {rateLine('Napi díj', worker.daily_rate, Number(settings.company_daily_rate), Number(settings.individual_daily_rate), 'day')}
+            {rateLine('Projektdíj', worker.project_rate, Number(settings.company_project_rate), Number(settings.individual_project_rate), 'project')}
             {(() => {
               const def = worker.worker_type === 'company' ? settings.company_callout_fee : settings.individual_callout_fee;
-              const text = worker.callout_fee != null ? (Number(worker.callout_fee) === 0 ? 'nincs' : ft(Number(worker.callout_fee)))
-                : def != null ? `${ft(Number(def))} (alapértelmezett)` : '1 óra bére (alapértelmezett)';
+              // alapértelmezés nélkül a kiszállás = 1 óra bére
+              const hourly = Number(worker.hourly_rate ?? (worker.worker_type === 'company' ? settings.company_hourly_rate : settings.individual_hourly_rate) ?? 0);
+              const text = worker.callout_fee != null ? (Number(worker.callout_fee) === 0 ? 'nincs' : netText(Number(worker.callout_fee), 'hour'))
+                : def != null ? `${netText(Number(def), 'hour')} (alapértelmezett)` : hourly ? `${netText(hourly, 'hour')} — 1 óra bére (alapértelmezett)` : '1 óra bére (alapértelmezett)';
               return <KV k="Kiszállási díj (helyszín / nap)" v={text} />;
             })()}
           </>
