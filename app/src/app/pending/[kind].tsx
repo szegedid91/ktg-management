@@ -82,11 +82,17 @@ function PendingScreenInner() {
         personKey = contractor ? contractor.id : a.worker_id;
         personName = contractor ? `${contractor.name} 👥` : (w?.name ?? '?');
         amount = workerPart;
-        detail = (contractor ? `${w?.name ?? '?'} · ` : '') + (a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}`
+        // a részletezés is a munkavállalónak járó (közvetítői díjjal csökkentett) díjat mutatja:
+        // a közvetítői részt arányosan vonjuk le az alapbérből és a kiszállásból
+        const total = Number(a.amount);
+        const keep = total > 0 ? workerPart / total : 1;
+        const netRate = Math.round(Number(a.applied_rate) * keep);
+        const netCallout = Math.round(Number(a.callout_fee ?? 0) * keep);
+        detail = (contractor ? `${w?.name ?? '?'} · ` : '') + (a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(netRate)}`
           : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
           : 'projektdíj');
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
-        if (Number(a.callout_fee ?? 0) > 0) detail += ` · 🚗 kiszállás ${ft(Number(a.callout_fee))}`;
+        if (netCallout > 0) detail += ` · 🚗 kiszállás ${ft(netCallout)}`;
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';
       } else {
         if (!a.referrer_external_id || Number(a.commission_amount) <= 0 || a.commission_paid_at) continue;
