@@ -343,6 +343,13 @@ function WorkerDetailInner() {
               <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
                 {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
                 {a.source === 'session' ? ' · ⏱' : a.source === 'task' ? ' · 💬' : ''}
+                {(() => {
+                  // kiszállás: a munkavállalónak járó (közvetítővel csökkentett) rész — benne van a sor összegében
+                  const fee = Number(a.callout_fee ?? 0); const total = Number(a.amount);
+                  if (fee <= 0) return '';
+                  const keep = total > 0 ? (total - Number(a.commission_amount)) / total : 1;
+                  return ` · 🚗 kiszállás ${ft(Math.round(fee * keep))}`;
+                })()}
               </Sub>
               <Text style={{ fontSize: 13, fontWeight: '600', color: a.paid_at ? C.success : C.text }}>
                 {ft(Number(a.amount) - Number(a.commission_amount))}{a.paid_at ? ' ✓' : ''}
