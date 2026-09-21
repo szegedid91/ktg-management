@@ -117,6 +117,9 @@ Biztosan leveszed?`, 'Levétel', true);
   const [subBusy, setSubBusy] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [crewWho, setCrewWho] = useState<Set<string> | null>(null);
+  // vállalkozó: a feladat szétosztása az emberei között (null = a szerveren lévő állapot)
+  const [distWho, setDistWho] = useState<Set<string> | null>(null);
+  const [distBusy, setDistBusy] = useState(false);
   const me = getCurrentUserId();
   const myProfile = profiles.find((p) => p.id === me);
   const myWorkerId = myProfile?.worker_id ?? null;
@@ -225,6 +228,21 @@ Biztosan leveszed?`, 'Levétel', true);
   // vállalkozó: az embereit is elindíthatja / leállíthatja ezen a feladaton
   const crew = workers.filter((w) => w.contractor_id === myWorkerId);
   const crewOpenSessions = sessions.filter((s) => !s.ended_at && crew.some((c) => c.id === s.worker_id));
+  // szétosztás: kik vannak most ráosztva az embereim közül, és a mentés
+  const crewAssigned = new Set(assignees.filter((a) => crew.some((c) => c.id === a.worker_id)).map((a) => a.worker_id));
+  const distSel = distWho ?? crewAssigned;
+  const distDirty = distWho !== null && (distWho.size !== crewAssigned.size || [...distWho].some((id) => !crewAssigned.has(id)));
+  const saveDistribution = async () => {
+    setDistBusy(true);
+    try {
+      await callRpc('contractor_assign_task', { p_task: task.id, p_workers: [...distSel] });
+      await syncNow();
+      setDistWho(null);
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      notify('Nem sikerült', /Failed to fetch|NetworkError|Load failed/i.test(msg) ? 'A szétosztáshoz internet kell — próbáld újra, ha van térerő.' : msg);
+    } finally { setDistBusy(false); }
+  };
   const startWork = () => {
     const ids = crew.length ? [...(crewWho ?? new Set([myWorkerId!]))] : [myWorkerId];
     for (const id of ids) {
@@ -638,6 +656,21 @@ Biztosan leveszed?`, 'Levétel', true);
             <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
           ) : (
             <>
+        {isWorker && myAssignment && active && crew.length > 0 ? (
+          <View style={{ gap: 2 }}>
+            <Sub style={{ fontWeight: '700' }}>👥 Kire osztod az embereid közül?</Sub>
+            <Sub>Akit bejelölsz, megkapja a feladatot: visszaigazolja, dolgozik rajta és le is zárhatja.</Sub>
+            {crew.map((c) => {
+              const row = assignees.find((a) => a.worker_id === c.id);
+              return (
+                <Check key={c.id} checked={distSel.has(c.id)}
+                  onToggle={() => setDistWho((prev) => { const n = new Set(prev ?? crewAssigned); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                  label={`${c.name}${row ? (row.acknowledged_at ? ' ✓' : ' ⏳ visszaigazolásra vár') : ''}`} />
+              );
+            })}
+            {distDirty ? <Btn title={distBusy ? 'Mentés…' : 'Szétosztás mentése'} small disabled={distBusy} onPress={() => void saveDistribution()} /> : null}
+          </View>
+        ) : null}
         {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
           <View style={{ gap: 2 }}>
             <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>

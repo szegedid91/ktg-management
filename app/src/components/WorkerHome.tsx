@@ -313,7 +313,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         </Pressable>
       </View>
 
-      {closedTasks.length > 0 ? (
+      {/* a vállalkozó embere csak a futó feladatait látja — lezártat nem */}
+      {closedTasks.length > 0 && !me?.contractor_id ? (
         <Card style={{ paddingVertical: S.sm }}>
           <Pressable onPress={() => setClosedOpen(!closedOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
             <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>✔️ Lezárt feladatok</Text>
