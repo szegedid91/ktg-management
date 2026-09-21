@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { C, S } from '../ui/theme';
 import { ft, todayISO, hd } from '../lib/format';
 import { wname, quoteLabel, isOverdue } from '../lib/tasks';
-import { WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, Worker, Site } from '../lib/types';
+import { WorkerTask, TaskAssignee, TaskMaterial, TaskPhoto, TaskMaterialPricing, TaskQuote, Worker, Site } from '../lib/types';
 
 export const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
@@ -18,15 +18,20 @@ export const STATUS_SHORT: Record<string, string> = {
   assigned: 'elfogadásra vár', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva',
 };
 
-export function TaskRow({ task, assignees, materials, pricing = [], workers, sites, running, showSite = true, quotes = [], myWorkerId = null }: {
+export function TaskRow({ task, assignees, materials, pricing = [], workers, sites, running, showSite = true, quotes = [], myWorkerId = null, photos = [] }: {
   task: WorkerTask; assignees: TaskAssignee[]; materials: TaskMaterial[]; pricing?: TaskMaterialPricing[];
   workers: Worker[]; sites: Site[]; running?: boolean; showSite?: boolean; quotes?: TaskQuote[]; myWorkerId?: string | null;
+  /** munkafotók (előtte/utána) — csak a vezetői listák adják át */
+  photos?: TaskPhoto[];
 }) {
   const names = assignees.map((a) => wname(workers.find((w) => w.id === a.worker_id)));
   const acked = assignees.filter((a) => a.acknowledged_at).length;
   const site = sites.find((s) => s.id === task.site_id);
   const matCost = materials.reduce((s, m) => s + Number(m.amount), 0);
   const unpriced = materials.filter((m) => !pricing.some((p) => p.material_id === m.id)).length;
+  // kis jelzők a vezetőnek: van-e csatolt munkafotó, illetve számlafotó az anyagköltségnél
+  const photoCount = photos.filter((p) => !p.deleted_at).length;
+  const invoiceCount = materials.filter((m) => !m.deleted_at && ((m.photo_paths?.length ?? 0) > 0 || !!m.photo_path)).length;
   const quote = quoteLabel(task, quotes, myWorkerId);
   const overdue = isOverdue(task, todayISO());
   const unassigned = assignees.length === 0 && (task.status === 'assigned' || task.status === 'acknowledged');
@@ -45,6 +50,8 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
         <Text style={{ fontWeight: '700', fontSize: 14, color: C.text, flex: 1 }} numberOfLines={1}>
           {task.priority ? '🆘 ' : ''}{task.code ? `${task.code} · ` : ''}{task.title}
         </Text>
+        {photoCount > 0 ? <Text style={{ fontSize: 11, color: C.sub, fontWeight: '700' }} accessibilityLabel={`${photoCount} munkafotó`}>📷{photoCount}</Text> : null}
+        {invoiceCount > 0 ? <Text style={{ fontSize: 11, color: C.sub, fontWeight: '700' }} accessibilityLabel={`${invoiceCount} számla`}>🧾{invoiceCount}</Text> : null}
         {running ? <Text style={{ fontSize: 11, color: C.success, fontWeight: '800' }}>● fut</Text> : null}
         {task.due_date && task.status !== 'done' && task.status !== 'cancelled' ? (
           <Text style={{ fontSize: 11, color: overdue ? C.danger : C.sub, fontWeight: overdue ? '800' : '600' }}>

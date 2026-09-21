@@ -11,7 +11,7 @@ import { isActiveTask, wname, openQuotes, isOverdue } from '../lib/tasks';
 import { todayISO } from '../lib/format';
 import { TaskRow, STATUS_COLOR, UNASSIGNED_COLOR } from './TaskRow';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskPhoto, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
 export type BoardFilter = 'active' | 'unassigned' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
@@ -38,6 +38,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const workers = useTable<Worker>('workers');
   const sites = useTable<Site>('sites');
   const quotes = useTable<TaskQuote>('task_quotes');
+  const photos = useTable<TaskPhoto>('task_photos');
   const hasOpenQuote = (t: WorkerTask) => openQuotes(t.id, quotes).length > 0;
 
   const [filter, setFilter] = useState<Filter>(initialFilter);
@@ -101,7 +102,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
 
   const row = (t: WorkerTask, showSite = true) => (
     <TaskRow key={t.id} task={t} assignees={assigneesOf(t)} materials={materials.filter((m) => m.task_id === t.id)}
-      pricing={pricing} quotes={quotes} workers={workers} sites={sites} running={running.has(t.id)} showSite={showSite} />
+      pricing={pricing} quotes={quotes} workers={workers} sites={sites} running={running.has(t.id)} showSite={showSite}
+      photos={photos.filter((p) => p.task_id === t.id)} />
   );
 
   const shown = filtered.slice(0, limit);
