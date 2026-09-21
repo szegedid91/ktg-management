@@ -59,8 +59,6 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const [inviteFor, setInviteFor] = useState<string | null>(null);
   const [daysOpen, setDaysOpen] = useState(false);
   const [daysLimit, setDaysLimit] = useState(7);
-  const [closedOpen, setClosedOpen] = useState(false);
-  const [closedLimit, setClosedLimit] = useState(10);
   // bejelentkezés egy építkezésen (feladat nélkül): helyszínt kell választani,
   // mert a bér a munkaidő alapján, építkezésenként számolódik
   const [startOpen, setStartOpen] = useState(false);
@@ -81,7 +79,6 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const ackedByMe = (t: WorkerTask) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at);
   const pending = active.filter((t) => !ackedByMe(t) && !quoteOpenIds.has(t.id)).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const inProgress = active.filter((t) => ackedByMe(t));
-  const closedTasks = myTasks.filter((t) => !isActiveTask(t)).sort((a, b) => (b.done_at ?? b.updated_at).localeCompare(a.done_at ?? a.updated_at));
   const runningIds = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const row = (t: WorkerTask) => (
     <TaskRow key={t.id} task={t} assignees={assignees.filter((a) => a.task_id === t.id)} quotes={quotes} myWorkerId={wid}
@@ -315,22 +312,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         </Pressable>
       </View>
 
-      {/* a vállalkozó embere csak a futó feladatait látja — lezártat nem */}
-      {closedTasks.length > 0 && !me?.contractor_id ? (
-        <Card style={{ paddingVertical: S.sm }}>
-          <Pressable onPress={() => setClosedOpen(!closedOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-            <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>✔️ Lezárt feladatok</Text>
-            <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }}>{closedTasks.length} db</Text>
-            <Text style={{ color: C.sub, fontSize: 16 }}>{closedOpen ? '▾' : '▸'}</Text>
-          </Pressable>
-          {closedOpen ? (
-            <View style={{ gap: 6, paddingTop: 4 }}>
-              {closedTasks.slice(0, closedLimit).map(row)}
-              {closedTasks.length > closedLimit ? <Btn title={`Több (${closedTasks.length - closedLimit})`} kind="ghost" small onPress={() => setClosedLimit(closedLimit + 30)} /> : null}
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
+      {/* a munkavállaló a lezárt feladatait már nem látja — nincs „Lezárt feladatok” rész */}
 
       {periods.length > 0 ? (
         <Card style={{ paddingVertical: S.sm, gap: 6 }}>

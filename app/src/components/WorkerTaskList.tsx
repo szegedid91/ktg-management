@@ -37,9 +37,8 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   const isQuoteOpen = (t: WorkerTask) => { const q = myQuote(t.id, wid, quotes); return !!q && (q.status === 'requested' || q.status === 'submitted'); };
   // saját elfogadás szerint (több emberes feladatnál a feladat állapota a többiekre is vár)
   const ackedByMe = (t: WorkerTask) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at);
-  // a vállalkozó embere csak a futó feladatait látja — lezártat nem
-  const isCrew = !!workers.find((w) => w.id === wid)?.contractor_id;
-  if (isCrew) { tasks = tasks.filter(isActiveTask); showClosed = false; }
+  // a munkavállaló csak a futó feladatait látja — a lezártakat (kész / nem sikerült / visszavont) nem
+  tasks = tasks.filter(isActiveTask); showClosed = false;
   const [filter, setFilter] = useState<Filter | null>(initialFilter);
   const [siteId, setSiteId] = useState<string | null>(null);
 
