@@ -36,6 +36,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const isContractor = !!me?.is_contractor;
   // ha én valakinek az embere vagyok: a bérem a vállalkozómhoz kerül, az óralapot ő küldi be
   const boss = me?.contractor_id ? workers.find((w) => w.id === me.contractor_id) : undefined;
+  // a vállalkozó embere semmilyen díjazást nem lát (a bérét a vállalkozójával beszéli meg)
+  const hidePay = !!me?.contractor_id;
   const myIds = new Set([wid, ...crew.map((c) => c.id)]);
   const allSessions = useTable<WorkSession>('work_sessions').filter((s) => myIds.has(s.worker_id));
   const sessions = allSessions.filter((s) => s.worker_id === wid);
@@ -199,7 +201,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       {boss ? (
         <Card style={{ paddingVertical: S.sm, borderColor: C.primary }}>
           <Text style={{ fontWeight: '800', color: C.text }}>👥 {wname(boss)} csapatában dolgozol</Text>
-          <Sub>A béred emberenként számolódik, de a kifizetés a vállalkozódhoz kerül; az óralapot ő küldi be. A vezetők látják, mennyit dolgoztál.</Sub>
+          <Sub>A munkaidődet a vállalkozód és a vezetők is látják.</Sub>
         </Card>
       ) : null}
       {showWorkTime ? (
@@ -238,7 +240,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setStartOpen(false)} /></View>
                 <View style={{ flex: 1 }}><Btn title="▶ Bejelentkezés" small disabled={!startSite || (isContractor && crew.length > 0 && who.size === 0)} onPress={() => startSite && startAt(startSite)} /></View>
               </View>
-              <Sub>A béred a munkaidőd alapján számolódik (órabér vagy napidíj), építkezésenként és naponta.</Sub>
+              {hidePay ? null : <Sub>A béred a munkaidőd alapján számolódik (órabér vagy napidíj), építkezésenként és naponta.</Sub>}
             </View>
           ) : null}
         </Card>
@@ -340,10 +342,9 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 <Text style={{ color: C.text, fontWeight: '600' }}>{w.label}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
                 <Sub>{fmtHours(w.hours)} · {w.days} nap</Sub>
               </View>
-              <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{ft(w.amount)}</Text>
+              {hidePay ? null : <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{ft(w.amount)}</Text>}
             </View>
           ))}
-          {boss ? <Sub>A béred a vállalkozódnak kerül kifizetésre.</Sub> : null}
         </Card>
       ) : null}
 
@@ -351,7 +352,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         <Pressable onPress={() => setDaysOpen(!daysOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>📅 Napjaim</Text>
           <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }} numberOfLines={1}>
-            {days.length === 0 ? 'nincs rögzített nap' : `${days.length} nap · utolsó ${hd(days[0].work_date)}${unpaid > 0 ? ` · függő ${ft(unpaid)}` : ''}`}
+            {days.length === 0 ? 'nincs rögzített nap' : `${days.length} nap · utolsó ${hd(days[0].work_date)}${unpaid > 0 && !hidePay ? ` · függő ${ft(unpaid)}` : ''}`}
           </Text>
           <Text style={{ color: C.sub, fontSize: 16 }}>{daysOpen ? '▾' : '▸'}</Text>
         </Pressable>
@@ -364,7 +365,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                   {hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '—'}
                 </Text>
                 {a.source === 'session' || a.source === 'task' ? <Text style={{ fontSize: 11, color: C.sub }}>{a.source === 'task' ? '💬' : '⏱'}</Text> : null}
-                {a.pay_basis !== 'presence' ? (
+                {hidePay ? null : a.pay_basis !== 'presence' ? (
                   <>
                     <Text style={{ color: C.text, fontWeight: '700' }}>{ft(Number(a.amount) - Number(a.commission_amount))}</Text>
                     <Badge text={a.paid_at ? 'kifizetve' : 'függő'} color={a.paid_at ? C.success : C.warning} />
