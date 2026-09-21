@@ -84,7 +84,7 @@ function WorkerDetailInner() {
       : null;
 
   // Ha van közvetítő, az embernél a NEKI járó díjat mutatjuk (pl. 8 000 Ft órabérből
-  // 1 000 Ft a közvetítőé → 7 000 Ft), mellette a bontással. A kiszállás 1 órának számít.
+  // 1 000 Ft a közvetítőé → 7 000 Ft), bontás nélkül. A kiszállás 1 órának számít.
   const hasReferrer = !!(worker.referrer_user_id || worker.referrer_external_id) && !!worker.commission_mode;
   const cut = (gross: number, unit: 'hour' | 'day' | 'project'): number => {
     if (!hasReferrer) return 0;
@@ -94,7 +94,7 @@ function WorkerDetailInner() {
   };
   const netText = (gross: number, unit: 'hour' | 'day' | 'project') => {
     const c = cut(gross, unit);
-    return c > 0 ? `${ft(gross - c)} (${ft(gross)} − ${ft(c)} közvetítő)` : ft(gross);
+    return ft(gross - c);
   };
   const rateLine = (label: string, own: number | null, globalCompany: number, globalIndividual: number, unit: 'hour' | 'day' | 'project') => {
     const global = worker.worker_type === 'company' ? globalCompany : globalIndividual;
