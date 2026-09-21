@@ -82,12 +82,14 @@ export async function flushErrlog(): Promise<void> {
   } catch { /* offline — később újra */ } finally { flushing = false; }
 }
 
+const FOREIGN = /(chrome|moz|safari-web)-extension:\/\//;
+
 /** El nem kapott JS-hibák és promise-elutasítások figyelése (web). */
 export function installGlobalErrorLogging(): void {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || (window as any).__ktgErrlog) return;
   (window as any).__ktgErrlog = true;
   window.addEventListener('error', (e: ErrorEvent) => {
-    if (!e?.message || e.message === 'Script error.' || /ResizeObserver loop/.test(e.message)) return;
+    if (!e?.message || e.message === 'Script error.' || /ResizeObserver loop/.test(e.message) || FOREIGN.test(e.filename ?? '')) return;
     logError('js', e.message, { file: e.filename, line: e.lineno, col: e.colno, stack: e.error?.stack?.split('\n').slice(0, 6).join('\n') });
   });
   window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
@@ -95,6 +97,8 @@ export function installGlobalErrorLogging(): void {
     const msg = String(r?.message ?? r ?? '');
     // hálózati hibák nem rendszerhibák — offline is működik az app
     if (!msg || /Failed to fetch|NetworkError|Load failed|network|AbortError|aborted/i.test(msg)) return;
+    // böngészőbővítmények hibái nem a mi rendszerünk hibái
+    if (FOREIGN.test(String(r?.stack ?? ''))) return;
     logError('promise', msg, errInfo(r));
   });
 }

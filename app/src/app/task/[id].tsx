@@ -68,13 +68,15 @@ const STATUS_COLOR: Record<string, string> = {
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const task = useRow<WorkerTask>('worker_tasks', id);
+  const allTasks = useTable<WorkerTask>('worker_tasks');
   const assigneesAll = useTable<TaskAssignee>('task_assignees', true).filter((a) => a.task_id === id);
   const assignees = assigneesAll.filter((a) => !a.deleted_at);
   const workers = useTable<Worker>('workers');
   const workPhotos = useTable<TaskPhoto>('task_photos').filter((p) => p.task_id === id);
   const sites = useTable<Site>('sites');
   const profiles = useTable<Profile>('profiles');
-  const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.task_id === id);
+  const allSessions = useTable<WorkSession>('work_sessions');
+  const sessions = allSessions.filter((s) => s.task_id === id);
   const materials = useTable<TaskMaterial>('task_materials').filter((m) => m.task_id === id);
   // csak-partner táblák: munkavállalónál üresek
   const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
@@ -243,11 +245,22 @@ Biztosan leveszed?`, 'Levétel', true);
       notify('Nem sikerült', /Failed to fetch|NetworkError|Load failed/i.test(msg) ? 'A szétosztáshoz internet kell — próbáld újra, ha van térerő.' : msg);
     } finally { setDistBusy(false); }
   };
-  const startWork = () => {
+  // Egyszerre egy munkamenet futhat: ha valakinek MÁSIK feladaton / helyszínen fut a
+  // munkaideje, azt itt lezárjuk és ide váltunk (különben a szerver elutasítja az indítást).
+  const elsewhere = (ids: (string | null)[]) => allSessions.filter((s) => !s.ended_at && !s.deleted_at && s.task_id !== task.id && ids.includes(s.worker_id));
+  const startWork = async () => {
     const ids = crew.length ? [...(crewWho ?? new Set([myWorkerId!]))] : [myWorkerId];
+    const other = elsewhere(ids);
+    if (other.length) {
+      const t0 = other[0].task_id ? allTasks.find((x) => x.id === other[0].task_id) : undefined;
+      const where = t0 ? `${t0.code ? `${t0.code} · ` : ''}${t0.title}`.slice(0, 80) : (sites.find((x) => x.id === other[0].site_id)?.name ?? 'másik helyen');
+      if (!await confirmDialog('Átváltasz erre a feladatra?', `Most itt fut a munkaidő: ${where}\n\nHa átváltasz, az ott most lezárul, és ezen a feladaton indul tovább.`, 'Átváltok')) return;
+    }
+    const t = nowISO();
+    other.forEach((s) => updateRow('work_sessions', s.id, { ended_at: t }));
     for (const id of ids) {
       if (sessions.some((s) => s.worker_id === id && !s.ended_at)) continue;
-      insertRow('work_sessions', { worker_id: id, task_id: task.id, site_id: task.site_id, started_at: nowISO(), ended_at: null, note: null });
+      insertRow('work_sessions', { worker_id: id, task_id: task.id, site_id: task.site_id, started_at: t, ended_at: null, note: null });
     }
   };
   const stopWork = () => {
@@ -683,7 +696,7 @@ Biztosan leveszed?`, 'Levétel', true);
         {isWorker && myAssignment && active ? (
           openSession || crewOpenSessions.length
             ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
-            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={startWork} />
+            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={() => void startWork()} />
         ) : null}
               {startedByMe ? <Btn title="Kész ✔" onPress={() => void markDone()} /> : null}
               {!failOpen ? (
