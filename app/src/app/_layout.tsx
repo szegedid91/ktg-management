@@ -8,6 +8,7 @@ import { HeaderBell } from '../components/HeaderBell';
 import { WorkerApprovalGate } from '../components/WorkerApprovalGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { installGlobalErrorLogging, flushErrlog } from '../lib/errlog';
+import { installAutoUpdate } from '../lib/autoupdate';
 import { C, getThemeMode, loadThemeMode, subscribeTheme } from '../ui/theme';
 
 /** Vissza-gomb, ami akkor is működik, ha nincs navigációs előzmény
@@ -32,6 +33,7 @@ export default function RootLayout() {
   const [theme, setTheme] = useState(getThemeMode());
   useEffect(() => {
     installGlobalErrorLogging();
+    installAutoUpdate();
     void flushErrlog();
     void loadThemeMode();
     return subscribeTheme(setTheme);

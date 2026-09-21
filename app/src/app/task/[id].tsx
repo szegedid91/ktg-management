@@ -543,8 +543,8 @@ Biztosan leveszed?`, 'Levétel', true);
             : <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />}
           {task.priority ? <Badge text="🆘 SOS" color={C.danger} /> : null}
           {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
-          {/* a vállalkozó embere semmilyen díjazást nem lát — a vállalkozója ajánlatát sem */}
-          {task.quote_accepted_at && !workers.find((w) => w.id === myWorkerId)?.contractor_id ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
+          {/* az elfogadott ajánlat összege csak vezetőnek látszik (a szerver sem adja ki másnak); a munkavállaló a sajátját az ajánlat-részben látja */}
+          {task.quote_accepted_at && !isWorker ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
           {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
         </View>
         {edit ? (

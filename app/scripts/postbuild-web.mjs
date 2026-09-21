@@ -49,4 +49,9 @@ html = html.replace(/<body([^>]*)>/, '<body$1><div id="ktg-topbar" aria-hidden="
 if (!html.includes('id="ktg-topbar"')) throw new Error('ktg-topbar beszúrása nem sikerült');
 
 writeFileSync(path, html);
+
+// verziófájl az automatikus frissítéshez: a futó app ezt kérdezi le, és ha újabb van kint, újratölt
+const versionSrc = readFileSync(new URL('../src/lib/version.ts', import.meta.url).pathname, 'utf8');
+const version = (versionSrc.match(/APP_VERSION = '([^']+)'/) ?? [])[1] ?? '';
+writeFileSync(new URL('../dist/version.json', import.meta.url).pathname, JSON.stringify({ version }));
 console.log('PWA meta beszúrva:', path);
