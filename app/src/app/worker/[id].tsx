@@ -81,11 +81,14 @@ function WorkerDetailInner() {
 
   // Ha van közvetítő, az embernél a NEKI járó díjat mutatjuk (pl. 8 000 Ft órabérből
   // 1 000 Ft a közvetítőé → 7 000 Ft), bontás nélkül. A kiszállás 1 órának számít.
-  const hasReferrer = !!(worker.referrer_user_id || worker.referrer_external_id) && !!worker.commission_mode;
+  // vállalkozó embere: saját közvetítő híján a vállalkozóé érvényes (a szerver is így számol)
+  const ownRef = !!(worker.referrer_user_id || worker.referrer_external_id);
+  const refSrc = !ownRef && worker.contractor_id ? (allWorkers.find((x) => x.id === worker.contractor_id) ?? worker) : worker;
+  const hasReferrer = !!(refSrc.referrer_user_id || refSrc.referrer_external_id) && !!refSrc.commission_mode;
   const cut = (gross: number, unit: 'hour' | 'day' | 'project'): number => {
     if (!hasReferrer) return 0;
-    const v = Number(worker.commission_value ?? 0);
-    const c = worker.commission_mode === 'percent' ? Math.round(gross * v) / 100 : worker.commission_unit === unit ? v : 0;
+    const v = Number(refSrc.commission_value ?? 0);
+    const c = refSrc.commission_mode === 'percent' ? Math.round(gross * v) / 100 : refSrc.commission_unit === unit ? v : 0;
     return Math.max(0, Math.min(c, gross));
   };
   const netText = (gross: number, unit: 'hour' | 'day' | 'project') => {
