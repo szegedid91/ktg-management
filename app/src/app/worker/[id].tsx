@@ -77,13 +77,17 @@ function WorkerDetailInner() {
   const isPartner = !profiles.find((p) => p.id === me)?.worker_id;
   const hasAccount = profiles.some((p) => p.worker_id === worker.id);
 
-  // a közvetítőt az adatlapon szándékosan sehol nem írjuk ki (csak a szerkesztő űrlapon állítható)
 
   // Ha van közvetítő, az embernél a NEKI járó díjat mutatjuk (pl. 8 000 Ft órabérből
   // 1 000 Ft a közvetítőé → 7 000 Ft), bontás nélkül. A kiszállás 1 órának számít.
   // vállalkozó embere: saját közvetítő híján a vállalkozóé érvényes (a szerver is így számol)
   const ownRef = !!(worker.referrer_user_id || worker.referrer_external_id);
   const refSrc = !ownRef && worker.contractor_id ? (allWorkers.find((x) => x.id === worker.contractor_id) ?? worker) : worker;
+  const referrerName = refSrc.referrer_user_id
+    ? profiles.find((p) => p.id === refSrc.referrer_user_id)?.display_name
+    : refSrc.referrer_external_id
+      ? externals.find((e) => e.id === refSrc.referrer_external_id)?.name
+      : null;
   const hasReferrer = !!(refSrc.referrer_user_id || refSrc.referrer_external_id) && !!refSrc.commission_mode;
   const cut = (gross: number, unit: 'hour' | 'day' | 'project'): number => {
     if (!hasReferrer) return 0;
@@ -280,6 +284,19 @@ function WorkerDetailInner() {
                 : def != null ? `${netText(Number(def), 'hour')} (alapértelmezett)` : hourly ? `${netText(hourly, 'hour')} — 1 óra bére (alapértelmezett)` : '1 óra bére (alapértelmezett)';
               return <KV k="Kiszállási díj (helyszín / nap)" v={text} />;
             })()}
+          </>
+        ) : null}
+        {/* a fenti díjak a munkavállalónak járó összegek; a közvetítő része ezen FELÜL a teljes bérköltség része */}
+        {hasReferrer && referrerName ? (
+          <>
+            <Divider />
+            <KV k={`Közvetítő${refSrc.id !== worker.id ? ' (a vállalkozójáé)' : ''}`} v={referrerName} />
+            <KV k="Közvetítői díj" v={
+              refSrc.commission_mode === 'percent'
+                ? `${refSrc.commission_value}% a díjból`
+                : `${ft(Number(refSrc.commission_value ?? 0))} / ${refSrc.commission_unit === 'hour' ? 'óra (a kiszállás 1 órának számít)' : refSrc.commission_unit === 'day' ? 'nap' : 'projekt'}`
+            } />
+            <Sub>A fenti díjak a munkavállalónak járó összegek — a teljes bérköltség ezek és a közvetítői díj együtt.</Sub>
           </>
         ) : null}
       </Card>

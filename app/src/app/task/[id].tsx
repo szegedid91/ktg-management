@@ -1005,11 +1005,21 @@ Biztosan leveszed?`, 'Levétel', true);
             <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wageTotal)} strong />
           ) : (
             <>
-              {wageRows.map((a) => (
-                <KV key={a.id}
-                  k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Number(a.applied_rate))}` : a.pay_basis === 'daily' ? 'napi díj' : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${a.paid_at ? ' ✓' : ''}`}
-                  v={ft(Number(a.amount))} />
-              ))}
+              {wageRows.map((a) => {
+                // a munkavállaló sora a NEKI járó (közvetítővel csökkentett) díjat mutatja, a közvetítő
+                // része külön sorban áll — a kettő együtt a teljes bérköltség
+                const total = Number(a.amount); const comm = Number(a.commission_amount ?? 0);
+                const keep = total > 0 ? (total - comm) / total : 1;
+                const callout = Math.round(Number(a.callout_fee ?? 0) * keep);
+                return (
+                  <React.Fragment key={a.id}>
+                    <KV
+                      k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Math.round(Number(a.applied_rate) * keep))}` : a.pay_basis === 'daily' ? 'napi díj' : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${callout > 0 ? ` · 🚗 ${ft(callout)}` : ''}${a.paid_at ? ' ✓' : ''}`}
+                      v={ft(total - comm)} />
+                    {comm > 0 ? <KV k={`   ↳ közvetítő része${a.commission_paid_at ? ' ✓' : ''}`} v={ft(comm)} /> : null}
+                  </React.Fragment>
+                );
+              })}
               {wage.parts.filter((p) => p.amount > 0).map((p) => (
                 <KV key={`run-${p.worker.id}`} k={`${wname(p.worker)} · épp fut (${fmtHours(p.hours)}, előnézet)`} v={`~${ft(p.amount)}`} />
               ))}
