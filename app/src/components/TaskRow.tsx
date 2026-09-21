@@ -50,8 +50,16 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
         <Text style={{ fontWeight: '700', fontSize: 14, color: C.text, flex: 1 }} numberOfLines={1}>
           {task.priority ? '🆘 ' : ''}{task.code ? `${task.code} · ` : ''}{task.title}
         </Text>
-        {photoCount > 0 ? <Text style={{ fontSize: 11, color: C.sub, fontWeight: '700' }} accessibilityLabel={`${photoCount} munkafotó`}>📷{photoCount}</Text> : null}
-        {invoiceCount > 0 ? <Text style={{ fontSize: 11, color: C.sub, fontWeight: '700' }} accessibilityLabel={`${invoiceCount} számla`}>🧾{invoiceCount}</Text> : null}
+        {photoCount > 0 ? (
+          <View accessibilityLabel={`${photoCount} munkafotó`} style={{ backgroundColor: '#2B6CB0', borderRadius: 9, paddingHorizontal: 6, paddingVertical: 1 }}>
+            <Text style={{ fontSize: 11, color: '#fff', fontWeight: '800' }}>📷 {photoCount}</Text>
+          </View>
+        ) : null}
+        {invoiceCount > 0 ? (
+          <View accessibilityLabel={`${invoiceCount} számla`} style={{ backgroundColor: '#B7791F', borderRadius: 9, paddingHorizontal: 6, paddingVertical: 1 }}>
+            <Text style={{ fontSize: 11, color: '#fff', fontWeight: '800' }}>🧾 {invoiceCount}</Text>
+          </View>
+        ) : null}
         {running ? <Text style={{ fontSize: 11, color: C.success, fontWeight: '800' }}>● fut</Text> : null}
         {task.due_date && task.status !== 'done' && task.status !== 'cancelled' ? (
           <Text style={{ fontSize: 11, color: overdue ? C.danger : C.sub, fontWeight: overdue ? '800' : '600' }}>

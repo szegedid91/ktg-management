@@ -21,6 +21,7 @@ import { useAuth, consumeRecoveryRedirect } from '../lib/auth';
 const MENU: { icon: string; label: string; href: string }[] = [
   { icon: '🏗️', label: 'Építkezések', href: '/sites' },
   { icon: '📅', label: 'Naptár', href: '/calendar' },
+  { icon: '🗺️', label: 'Térkép', href: '/map' },
   { icon: '👷', label: 'Munkavállalók', href: '/workers' },
   { icon: '💰', label: 'Pénzügy', href: '/finance' },
   { icon: '🔨', label: 'Eszközök', href: '/equipment' },

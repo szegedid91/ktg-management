@@ -25,7 +25,7 @@ const MENU: { icon: string; label: string; href: string; sub: string }[] = [
   { icon: '💧', label: 'Pénzforgalom', href: '/cashflow', sub: 'várható bevétel és kiadás hetekre' },
   { icon: '🤝', label: 'Elszámolás', href: '/settlement', sub: 'közös kassza, egyenlegek, kifizetések egymás közt' },
   { icon: '📊', label: 'Statisztika', href: '/stats', sub: 'építkezésenként, munkavállalónként' },
-  { icon: '📤', label: 'Export könyvelőnek', href: '/export', sub: 'Excel / PDF' },
+  { icon: '📤', label: 'Export könyvelőnek', href: '/export', sub: 'Excel / PDF · havi bérkimutatás' },
 ];
 
 function FinanceInner() {

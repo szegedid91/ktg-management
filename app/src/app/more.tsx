@@ -15,6 +15,7 @@ import { WorkerAccountCard } from '../components/WorkerAccountCard';
 
 const ITEMS: { label: string; icon: string; href: string }[] = [
   { label: 'Munkavállalók', icon: '👷', href: '/workers' },
+  { label: 'Térkép — ki hol van', icon: '🗺️', href: '/map' },
   { label: 'Óralapok', icon: '🗓️', href: '/timesheets' },
   { label: 'Pénzügy', icon: '💰', href: '/finance' },
   { label: 'Eszközök', icon: '🔨', href: '/equipment' },
