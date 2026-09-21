@@ -36,7 +36,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const isContractor = !!me?.is_contractor;
   // ha én valakinek az embere vagyok: a bérem a vállalkozómhoz kerül, az óralapot ő küldi be
   const boss = me?.contractor_id ? workers.find((w) => w.id === me.contractor_id) : undefined;
-  // a munkavállalói fiók pénzt sehol nem lát az appban — csak órákat, napokat és kiszállásokat
+  // a munkavállalói fiók pénzt sehol nem lát az appban — csak órákat és napokat (kiszállást sem)
   const hidePay = true;
   const myIds = new Set([wid, ...crew.map((c) => c.id)]);
   const allSessions = useTable<WorkSession>('work_sessions').filter((s) => myIds.has(s.worker_id));
@@ -162,8 +162,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
     const rows = allAttendance.filter((a) => a.worker_id === p.id && k.match(a.work_date));
     const amount = rows.filter((a) => a.pay_basis !== 'presence').reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
-    const callouts = rows.filter((a) => Number(a.callout_fee ?? 0) > 0).length;
-    return { key: k.key, label: k.label, person: p, hours, amount, callouts, days: new Set(rows.map((a) => a.work_date)).size };
+    return { key: k.key, label: k.label, person: p, hours, amount, days: new Set(rows.map((a) => a.work_date)).size };
   })).flat().filter((w) => w.hours > 0 || w.days > 0);
   const unpaid = days.filter((a) => a.pay_basis !== 'presence' && !a.paid_at)
     .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
@@ -323,7 +322,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
             <View key={`${w.key}-${w.person.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: C.text, fontWeight: '600' }}>{w.label}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
-                <Sub>{fmtHours(w.hours)} · {w.days} nap{w.callouts > 0 ? ` · 🚗 ${w.callouts} kiszállás` : ''}</Sub>
+                <Sub>{fmtHours(w.hours)} · {w.days} nap</Sub>
               </View>
               {hidePay ? null : <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{ft(w.amount)}</Text>}
             </View>
@@ -349,7 +348,6 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 </Text>
                 {a.source === 'session' || a.source === 'task' ? <Text style={{ fontSize: 11, color: C.sub }}>{a.source === 'task' ? '💬' : '⏱'}</Text> : null}
                 {a.pay_basis === 'hourly' && Number(a.hours ?? 0) > 0 ? <Text style={{ color: C.text, fontWeight: '700' }}>{String(Number(a.hours)).replace('.', ',')} ó</Text> : null}
-                {Number(a.callout_fee ?? 0) > 0 ? <Text style={{ fontSize: 12, color: C.sub }}>🚗 kiszállás</Text> : null}
                 {hidePay ? null : a.pay_basis !== 'presence' ? (
                   <>
                     <Text style={{ color: C.text, fontWeight: '700' }}>{ft(Number(a.amount) - Number(a.commission_amount))}</Text>
