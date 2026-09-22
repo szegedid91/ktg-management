@@ -341,6 +341,22 @@ export interface WorkerTask extends BaseRow {
   closed_at?: string | null;
 }
 
+/** Feladat-folyamat eseménye (szerveroldali trigger írja; csak vezető olvassa) */
+export interface TaskEvent {
+  id: UUID;
+  task_id: UUID;
+  kind: 'created' | 'assigned' | 'unassigned' | 'accepted' | 'failed' | 'done' | 'closed' | 'reopened' | 'cancelled' | 'deleted'
+    | 'quote_requested' | 'quote_submitted' | 'quote_accepted' | 'quote_rejected' | 'quote_declined' | string;
+  worker_id: UUID | null;
+  actor_user_id: UUID | null;
+  note: string | null;
+  photo_paths: string[];
+  amount: number | null;
+  at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
 /** Cikktörzs-kód (pl. 001S Épület Elektromosság); S = kivitelezés/szolgáltatás/karbantartás, A = anyagbeszerzés */
 export interface ItemCode {
   id: UUID;
@@ -519,7 +535,7 @@ export const SYNC_TABLES = [
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
-  'item_codes',
+  'item_codes', 'task_events',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

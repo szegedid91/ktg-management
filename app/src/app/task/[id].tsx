@@ -20,7 +20,7 @@ import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePath
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import { downloadExport } from '../../lib/exportfile';
-import { ItemCode, itemCodeLabel } from '../../lib/types';
+import { ItemCode, itemCodeLabel, TaskEvent } from '../../lib/types';
 import {
   TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, isOpenForWorker, wname,
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
@@ -28,7 +28,7 @@ import {
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings, TaskPhoto,
 } from '../../lib/types';
-import { isOverdue } from '../../lib/tasks';
+import { isOverdue, sessionHours } from '../../lib/tasks';
 import { todayISO } from '../../lib/format';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
@@ -81,6 +81,8 @@ export default function TaskDetail() {
   const profiles = useTable<Profile>('profiles');
   const allSessions = useTable<WorkSession>('work_sessions');
   const sessions = allSessions.filter((s) => s.task_id === id);
+  // folyamat-idővonal: szerveroldali esemény-napló (csak vezetőnek szinkronizálódik)
+  const events = useTable<TaskEvent>('task_events').filter((e) => e.task_id === id);
   const materials = useTable<TaskMaterial>('task_materials').filter((m) => m.task_id === id);
   const itemCodes = useTable<ItemCode>('item_codes').sort((a, b) => a.position - b.position || a.code.localeCompare(b.code));
   // csak-partner táblák: munkavállalónál üresek
@@ -815,7 +817,7 @@ Biztosan leveszed?`, 'Levétel', true);
               onRemoveRemote={!isWorker && active ? (ph) => void removeTaskPhoto(ph) : undefined} />
           </View>
         ) : null}
-        {task.fail_reason ? (
+        {task.status === 'failed' && task.fail_reason ? (
           <View style={{ backgroundColor: C.dangerBg, padding: S.md, borderRadius: 8, gap: 4 }}>
             <Body style={{ fontWeight: '700', color: C.danger }}>⚠️ Nem sikerült — indok:</Body>
             <Body>{task.fail_reason}</Body>
@@ -848,6 +850,55 @@ Biztosan leveszed?`, 'Levétel', true);
           <Sub>{active ? `Akkor is lezárhatod, ha a munkavállaló nem jelentette készre.${sessions.some((x) => !x.ended_at) ? ' A még futó munkaidő is lezárul.' : ''} ` : ''}⏱ munkaidő és + anyag utólag is rögzíthető.</Sub>
         </Card>
       ) : null}
+
+      {/* ---------- vezető: folyamat (idővonal) ---------- */}
+      {!isWorker ? (() => {
+        const who = (e: TaskEvent) => e.worker_id ? workerName(e.worker_id) : (profiles.find((p) => p.id === e.actor_user_id)?.display_name ?? '');
+        const suffix = (e: TaskEvent) => { const w = who(e); return w ? ` — ${w}` : ''; };
+        type Item = { at: string; text: string; note?: string | null; photos?: string[]; warn?: boolean };
+        const items: Item[] = [];
+        for (const e of events) {
+          switch (e.kind) {
+            case 'created': items.push({ at: e.at, text: `📋 Feladat kiadva${suffix(e)}` }); break;
+            case 'assigned': items.push({ at: e.at, text: `👷 Kiosztva: ${who(e)}` }); break;
+            case 'unassigned': items.push({ at: e.at, text: `👤 Levéve a feladatról: ${who(e)}` }); break;
+            case 'accepted': items.push({ at: e.at, text: `✅ ${who(e)} elfogadta` }); break;
+            case 'failed': items.push({ at: e.at, text: `⚠️ Nem sikerült${suffix(e)}`, note: e.note, photos: e.photo_paths, warn: true }); break;
+            case 'done': items.push({ at: e.at, text: `✔ Készre jelentve${suffix(e)}` }); break;
+            case 'closed': items.push({ at: e.at, text: `⛔ Lezárva — nem tudták megoldani${suffix(e)}`, warn: true }); break;
+            case 'reopened': items.push({ at: e.at, text: `↩ Újranyitva${suffix(e)}` }); break;
+            case 'cancelled': items.push({ at: e.at, text: `🚫 Visszavonva${suffix(e)}` }); break;
+            case 'quote_requested': items.push({ at: e.at, text: `💬 Ajánlatkérés: ${who(e)}` }); break;
+            case 'quote_submitted': items.push({ at: e.at, text: `💬 ${who(e)} ajánlata: ${ft(e.amount ?? 0)}`, note: e.note }); break;
+            case 'quote_accepted': items.push({ at: e.at, text: `✅ Ajánlat elfogadva: ${who(e)} · ${ft(e.amount ?? 0)}`, note: e.note }); break;
+            case 'quote_rejected': items.push({ at: e.at, text: `✖ Ajánlat elutasítva: ${who(e)}`, note: e.note }); break;
+            case 'quote_declined': items.push({ at: e.at, text: `✋ ${who(e)} nem vállalja`, note: e.note }); break;
+            default: break;
+          }
+        }
+        for (const x of sessions) {
+          items.push({ at: x.started_at, text: `▶ ${workerName(x.worker_id)} elkezdte a munkát` });
+          if (x.ended_at) items.push({ at: x.ended_at, text: `⏹ ${workerName(x.worker_id)} befejezte (${fmtHours(sessionHours(x))})` });
+        }
+        // azonos időbélyegnél (egy műveletsorban) a logikai sorrend: nem sikerült → kész → lezárva
+        const rank = (t: string) => (t.startsWith('⚠️') ? 0 : t.startsWith('✔') ? 1 : t.startsWith('⛔') ? 2 : 0);
+        items.sort((a, b) => a.at.localeCompare(b.at) || rank(a.text) - rank(b.text));
+        return (
+          <Section title="🧭 Folyamat" defaultOpen summary={`${items.length} esemény`}>
+            {items.length === 0 ? <Sub>Még nincs esemény.</Sub> : null}
+            {items.map((it, i) => (
+              <View key={i} style={{ flexDirection: 'row', gap: S.sm, paddingVertical: 3, borderTopWidth: i ? 1 : 0, borderTopColor: C.border }}>
+                <Sub style={{ width: 118 }}>{hdt(it.at)}</Sub>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Body style={it.warn ? { color: C.danger, fontWeight: '700' } : undefined}>{it.text}</Body>
+                  {it.note ? <Sub>{it.note}</Sub> : null}
+                  {it.photos?.length ? <PhotoThumbs paths={it.photos} /> : null}
+                </View>
+              </View>
+            ))}
+          </Section>
+        );
+      })() : null}
 
       {/* ---------- munkavállalói műveletek ---------- */}
       {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
