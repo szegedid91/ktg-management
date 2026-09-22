@@ -939,7 +939,7 @@ Biztosan leveszed?`, 'Levétel', true);
 
       {/* ---------- anyagköltségek ---------- */}
       {isWorker && !acked ? null : (
-      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker || mat.unpriced.length > 0} plain={isWorker}
+      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker} plain={isWorker}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
         {(['before', 'after'] as const).map((kind) => {
