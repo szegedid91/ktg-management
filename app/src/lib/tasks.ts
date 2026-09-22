@@ -104,6 +104,20 @@ export function sessionHours(s: WorkSession, now = Date.now()): number {
   return Math.max(0, (end - start) / 3_600_000);
 }
 
+/** Több munkamenet együttes ideje ÁTFEDÉS NÉLKÜL (párhuzamos feladatoknál egy óra csak egyszer
+ *  számít — a szerver is így számol bért). */
+export function unionHours(list: WorkSession[], now = Date.now()): number {
+  const iv = list.map((s) => [new Date(s.started_at).getTime(), s.ended_at ? new Date(s.ended_at).getTime() : now] as [number, number])
+    .filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  let total = 0; let curS = -1; let curE = -1;
+  for (const [a, b] of iv) {
+    if (curE < 0 || a > curE) { if (curE >= 0) total += curE - curS; curS = a; curE = b; }
+    else if (b > curE) curE = b;
+  }
+  if (curE >= 0) total += curE - curS;
+  return total / 3_600_000;
+}
+
 export function fmtHours(h: number): string {
   const totalMin = Math.round(h * 60);
   const hh = Math.floor(totalMin / 60);

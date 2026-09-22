@@ -245,16 +245,16 @@ Biztosan leveszed?`, 'Levétel', true);
       notify('Nem sikerült', /Failed to fetch|NetworkError|Load failed/i.test(msg) ? 'A szétosztáshoz internet kell — próbáld újra, ha van térerő.' : msg);
     } finally { setDistBusy(false); }
   };
-  // Egyszerre egy munkamenet futhat: ha valakinek MÁSIK feladaton / helyszínen fut a
-  // munkaideje, azt itt lezárjuk és ide váltunk (különben a szerver elutasítja az indítást).
-  const elsewhere = (ids: (string | null)[]) => allSessions.filter((s) => !s.ended_at && !s.deleted_at && s.task_id !== task.id && ids.includes(s.worker_id));
+  // Egy helyszínen több feladat is futhat egyszerre; MÁSIK munkaterületen futó munkaidőt viszont
+  // itt lezárjuk és ide váltunk (különben a szerver elutasítja az indítást).
+  const elsewhere = (ids: (string | null)[]) => allSessions.filter((s) => !s.ended_at && !s.deleted_at && s.task_id !== task.id && (s.site_id ?? null) !== (task.site_id ?? null) && ids.includes(s.worker_id));
   const startWork = async () => {
     const ids = crew.length ? [...(crewWho ?? new Set([myWorkerId!]))] : [myWorkerId];
     const other = elsewhere(ids);
     if (other.length) {
       const t0 = other[0].task_id ? allTasks.find((x) => x.id === other[0].task_id) : undefined;
       const where = t0 ? `${t0.code ? `${t0.code} · ` : ''}${t0.title}`.slice(0, 80) : (sites.find((x) => x.id === other[0].site_id)?.name ?? 'másik helyen');
-      if (!await confirmDialog('Átváltasz erre a feladatra?', `Most itt fut a munkaidő: ${where}\n\nHa átváltasz, az ott most lezárul, és ezen a feladaton indul tovább.`, 'Átváltok')) return;
+      if (!await confirmDialog('Átváltasz erre a feladatra?', `Most itt fut a munkaidő: ${where}\n\nEz másik munkaterületen van. Ha átváltasz, az ott most lezárul, és itt indul tovább.`, 'Átváltok')) return;
     }
     const t = nowISO();
     other.forEach((s) => updateRow('work_sessions', s.id, { ended_at: t }));

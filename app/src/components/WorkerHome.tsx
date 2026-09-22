@@ -8,7 +8,7 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt, todayISO, localDateISO, addDaysISO } from '../lib/format';
-import { isActiveTask, fmtHours, sessionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
+import { isActiveTask, fmtHours, unionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
 import { callRpc } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { notify, confirmDialog } from '../lib/dialogs';
@@ -86,6 +86,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       materials={materials.filter((m) => m.task_id === t.id)} workers={workers} sites={sites} running={runningIds.has(t.id)} />
   );
   const openSession = sessions.find((s) => !s.ended_at);
+  // egy helyszínen több feladat is futhat egyszerre — a sáv mindet felsorolja
+  const openSessions = sessions.filter((s) => !s.ended_at);
   // munkaidő csak akkor, ha van legalább egy elfogadott, futó feladata
   // (vagy épp nyitott munkamenete, amit be kell tudnia fejezni)
   const acceptedActive = active.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at));
@@ -135,7 +137,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
 
   const todayHours = useMemo(() => {
     const today = todayISO();
-    return sessions.filter((s) => localDateISO(s.started_at) === today).reduce((sum, s) => sum + sessionHours(s), 0);
+    return unionHours(sessions.filter((s) => localDateISO(s.started_at) === today));
   }, [sessions]);
 
   const days = [...attendance].sort((a, b) => b.work_date.localeCompare(a.work_date));
@@ -160,7 +162,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   }
   const periods = periodKeys.map((k) => people.map((p) => {
     const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && k.match(localDateISO(s.started_at)));
-    const hours = own.reduce((sum, s) => sum + sessionHours(s), 0);
+    const hours = unionHours(own);
     const rows = allAttendance.filter((a) => a.worker_id === p.id && k.match(a.work_date));
     const amount = rows.filter((a) => a.pay_basis !== 'presence').reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
     return { key: k.key, label: k.label, person: p, hours, amount, days: new Set(rows.map((a) => a.work_date)).size };
@@ -211,7 +213,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 {openSession ? `● Dolgozol · kezdés ${hdt(openSession.started_at).slice(-5)}` : '⏱ Munkaidő'}
               </Text>
               <Sub>
-                {openSession?.task_id ? `${tasks.find((t) => t.id === openSession.task_id)?.title ?? 'feladat'} · ` : ''}
+                {openSessions.length ? `${openSessions.map((o) => (o.task_id ? (tasks.find((t) => t.id === o.task_id)?.title ?? 'feladat') : (sites.find((x) => x.id === o.site_id)?.name ?? 'helyszín'))).join(' + ')} · ` : ''}
                 ma {fmtHours(todayHours)}
               </Sub>
             </View>
@@ -256,7 +258,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
             <View style={{ gap: 6, paddingTop: 4 }}>
               {crew.map((c) => {
                 const today = todayISO();
-                const h = allSessions.filter((s) => s.worker_id === c.id && localDateISO(s.started_at) === today).reduce((sum, s) => sum + sessionHours(s), 0);
+                const h = unionHours(allSessions.filter((s) => s.worker_id === c.id && localDateISO(s.started_at) === today));
                 return (
                   <React.Fragment key={c.id}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 3 }}>
