@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     // feladat-összesítő (helyszín, kódok, munkaóra, kiszállás, anyagköltség) — csak Excel
     if (body.mode === 'tasks') {
       const taskId = UUID.test(body.task_id ?? '') ? body.task_id : null;
-      return await exportTasks(supabase, { taskId, siteId: site_id, from, to }, json);
+      return await exportTasks(supabase, { taskId, siteId: site_id, from, to, doneOnly: body.done_only === true }, json);
     }
 
     let expQ = supabase.from('expenses').select('*, expense_categories(name), sites(name), profiles:created_by(display_name)')

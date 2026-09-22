@@ -1,7 +1,8 @@
 // Feladat-összesítő (Excel) — az export-data funkció `mode: 'tasks'` ága.
 // Helyszínenként a hozzá tartozó feladatok kódjai, feladatonként a munkaóra,
 // a munkabér, a kiszállás és az anyagköltség. Egy feladatra (task_id), egy
-// helyszínre (site_id) vagy a kiadás dátuma szerinti időszakra szűrhető.
+// helyszínre (site_id) vagy időszakra szűrhető: a kiadás dátuma szerint, vagy
+// (done_only) a készre jelentés dátuma szerint — csak a kész feladatok.
 
 import * as XLSX from 'npm:xlsx@0.18.5';
 
@@ -9,14 +10,17 @@ const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const STATUS: Record<string, string> = { assigned: 'kiadva', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva' };
 
-export interface TaskFilter { taskId: string | null; siteId: string | null; from: string; to: string }
+export interface TaskFilter { taskId: string | null; siteId: string | null; from: string; to: string; doneOnly: boolean }
+/** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
+const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
 
 export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknown, s?: number) => Response) {
   let tq = supabase.from('worker_tasks')
     .select('id, code, title, status, site_id, created_at, done_at, quote_amount, quote_accepted_at')
-    .is('deleted_at', null).gte('created_at', f.from).lt('created_at', nextDay(f.to)).order('created_at');
+    .is('deleted_at', null).order('created_at');
   if (f.taskId) tq = tq.eq('id', f.taskId);
   if (f.siteId) tq = tq.eq('site_id', f.siteId);
+  if (f.doneOnly) tq = tq.eq('status', 'done').not('done_at', 'is', null);
   const [{ data: tasks, error }, { data: sites }, { data: workers }, { data: assignees }, { data: sessions },
     { data: attendance }, { data: materials }, { data: pricing }, { data: finance }] = await Promise.all([
     tq,
@@ -35,7 +39,12 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const nameOf = (id: string | null) => (id ? ((workers ?? []).find((w: any) => w.id === id)?.name ?? '?') : '');
   const resaleOf = new Map<string, number>((pricing ?? []).map((p: any) => [p.material_id, Number(p.resale_net)]));
   const invoiceOf = new Map<string, number | null>((finance ?? []).map((x: any) => [x.task_id, x.invoice_net == null ? null : Number(x.invoice_net)]));
-  const list = (tasks ?? []) as any[];
+  // időszak-szűrés magyar naptári nap szerint (kiadás vagy készre jelentés dátuma)
+  const list = ((tasks ?? []) as any[]).filter((t) => {
+    if (f.taskId) return true;
+    const d = budDay(f.doneOnly ? t.done_at : t.created_at);
+    return d >= f.from && d <= f.to;
+  });
   const ids = new Set(list.map((t) => t.id));
   const by = <T extends { task_id: string }>(rows: T[] | null) => {
     const m = new Map<string, T[]>();
@@ -132,16 +141,11 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   XLSX.utils.book_append_sheet(wb, s2, 'Helyszínek');
   XLSX.utils.book_append_sheet(wb, s3, 'Munkaidő');
   XLSX.utils.book_append_sheet(wb, s4, 'Anyagok');
-  const stem = f.taskId && rows[0] ? `feladat_${(rows[0].code || 'osszefoglalo').replace(/[^\w-]+/g, '_')}` : `feladatok_${f.from}_${f.to}`;
+  const stem = f.taskId && rows[0] ? `feladat_${(rows[0].code || 'osszefoglalo').replace(/[^\w-]+/g, '_')}`
+    : `${f.doneOnly ? 'kesz_feladatok' : 'feladatok'}_${f.from}_${f.to}`;
   return json({
     filename: `${stem}.xlsx`,
     mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     base64: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }),
   });
-}
-
-function nextDay(iso: string): string {
-  const d = new Date(iso + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
 }

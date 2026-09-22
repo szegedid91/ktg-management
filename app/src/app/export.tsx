@@ -29,13 +29,21 @@ function ExportScreenInner() {
   const [tFrom, setTFrom] = useState('');
   const [tTo, setTTo] = useState(todayISO());
   const [tSite, setTSite] = useState<string | null>(null);
+  // heti összesítő a készre jelentett feladatokból (hétfő–vasárnap, léptethető; a dátumok kézzel is írhatók)
+  const mondayOf = (iso: string) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+  const addDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const [wFrom, setWFrom] = useState(mondayOf(todayISO()));
+  const [wTo, setWTo] = useState(addDays(mondayOf(todayISO()), 6));
+  const [wSite, setWSite] = useState<string | null>(null);
+  const shiftWeek = (n: number) => { const m = addDays(mondayOf(wFrom), 7 * n); setWFrom(m); setWTo(addDays(m, 6)); };
 
-  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' = 'books') => {
+  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'week' = 'books') => {
     setBusy(`${mode}-${format}`);
     try {
       await downloadExport(
         mode === 'wages' ? { mode, month, worker_id: workerId, format }
           : mode === 'tasks' ? { mode, from: tFrom.trim() || undefined, to: tTo.trim() || undefined, site_id: tSite }
+          : mode === 'week' ? { mode: 'tasks', done_only: true, from: wFrom.trim(), to: wTo.trim(), site_id: wSite }
           : { from, to, site_id: site, format },
       );
     } catch (e: any) {
@@ -104,7 +112,30 @@ function ExportScreenInner() {
       </Card>
 
       <Card>
-        <H2>Feladat-összesítő</H2>
+        <H2>Heti összesítő — készre jelentett feladatok</H2>
+        <Sub>Az időszakban készre jelentett feladatok, ugyanazokkal a munkalapokkal (Feladatok, Helyszínek, Munkaidő, Anyagok). A hét léptethető, vagy a dátumok kézzel is megadhatók.</Sub>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
+          <Btn title="‹" kind="ghost" small onPress={() => shiftWeek(-1)} />
+          <H2 style={{ flex: 1, textAlign: 'center' }}>{wFrom.replace(/-/g, '.')}. – {wTo.replace(/-/g, '.')}.</H2>
+          <Btn title="›" kind="ghost" small onPress={() => shiftWeek(1)} />
+        </View>
+        <Input label="Készre jelentve ettől (ÉÉÉÉ-HH-NN)" value={wFrom} onChangeText={setWFrom} />
+        <Input label="Készre jelentve eddig (ÉÉÉÉ-HH-NN)" value={wTo} onChangeText={setWTo} />
+        <Picker
+          label="Építkezés"
+          items={sites}
+          selectedId={wSite}
+          getId={(s) => s.id}
+          getLabel={(s) => s.name}
+          onSelect={setWSite}
+          allowNull
+          nullLabel="— minden építkezés —"
+        />
+        <Btn title={busy === 'week-xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx', 'week')} disabled={!!busy} />
+      </Card>
+
+      <Card>
+        <H2>Feladat-összesítő (minden feladat)</H2>
         <Sub>Helyszínenként a hozzá tartozó feladatok kódjai; feladatonként a munkaóra, a munkabér, a kiszállás és az anyagköltség. Excel: Feladatok, Helyszínek, Munkaidő, Anyagok munkalap. Egy feladat összefoglalója a feladat Pénzügy részéből is kérhető.</Sub>
         <Input label="Kiadva ettől (ÉÉÉÉ-HH-NN, üres = kezdettől)" value={tFrom} onChangeText={setTFrom} />
         <Input label="Kiadva eddig (ÉÉÉÉ-HH-NN)" value={tTo} onChangeText={setTTo} />
