@@ -30,7 +30,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     supabase.from('sites').select('id, name, address'),
     supabase.from('workers').select('id, name'),
     supabase.from('task_assignees').select('task_id, worker_id').is('deleted_at', null),
-    supabase.from('work_sessions').select('task_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).not('task_id', 'is', null),
+    supabase.from('work_sessions').select('task_id, worker_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).not('task_id', 'is', null),
     supabase.from('attendance').select('task_id, worker_id, work_date, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null).not('task_id', 'is', null),
     supabase.from('task_materials').select('id, task_id, worker_id, amount, note, created_at').is('deleted_at', null),
     supabase.from('task_material_pricing').select('material_id, resale_net').is('deleted_at', null),
@@ -57,46 +57,64 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   };
   const assBy = by<any>(assignees), sesBy = by<any>(sessions), attBy = by<any>(attendance), matBy = by<any>(materials);
 
+  // egy sor = egy feladat egy munkavállalóval (a vállalkozó emberei külön sorban); a feladat-szintű
+  // értékek (elfogadott ajánlat bére, továbbszámlázott anyag, kiszámlázott, haszon) az első soron állnak
   type Row = {
-    site: string; address: string; code: string; item: string; title: string; status: string; workers: string; hours: number;
-    wage: number; callout: number; matCost: number; matResale: number; cost: number; invoice: number | null; profit: number | null;
+    taskId: string; first: boolean; site: string; code: string; item: string; title: string; status: string; worker: string; hours: number;
+    wage: number; callout: number; matCost: number; cost: number; matResale: number; invoice: number | null; profit: number | null;
     created: string; done: string; siteId: string;
   };
-  const rows: Row[] = list.map((t) => {
+  const rows: Row[] = list.flatMap((t) => {
     const s = siteOf.get(t.site_id) ?? { name: '— helyszín nélkül —', address: '' };
     const att = attBy.get(t.id) ?? [];
-    const callout = att.reduce((a, x) => a + Number(x.callout_fee ?? 0), 0);
-    // bér: elfogadott ajánlatnál az ajánlat összege, egyébként a könyvelt napok (a kiszállás külön oszlop)
-    const wage = t.quote_accepted_at && t.quote_amount != null
-      ? Number(t.quote_amount)
-      : att.reduce((a, x) => a + Number(x.amount), 0) - callout;
-    // munkaóra: az elszámolt (bérrel könyvelt) órák; ahol nincs ilyen (pl. elfogadott ajánlat), a tényleges munkaidő
-    const booked = att.reduce((a, x) => a + Number(x.hours ?? 0), 0);
-    const hours = booked > 0 ? r2(booked)
-      : r2((sesBy.get(t.id) ?? []).reduce((a, x) => a + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 3600000, 0));
+    const ses = sesBy.get(t.id) ?? [];
     const mats = matBy.get(t.id) ?? [];
-    const matCost = mats.reduce((a, m) => a + Number(m.amount), 0);
     const matResale = mats.reduce((a, m) => a + (resaleOf.get(m.id) ?? 0), 0);
     const invoice = invoiceOf.get(t.id) ?? null;
-    const cost = wage + callout + matCost;
-    return {
-      site: s.name, address: s.address, code: t.code ?? '', item: t.item_codes ? `${t.item_codes.code} ${t.item_codes.name}` : '', title: t.title, status: STATUS[t.status] ?? t.status,
-      workers: [...new Set((assBy.get(t.id) ?? []).map((a: any) => nameOf(a.worker_id)))].join(', '),
-      hours, wage, callout, matCost, matResale, cost, invoice,
-      profit: invoice == null ? null : invoice + matResale - wage - callout - matCost,
-      created: hd(t.created_at), done: hd(t.done_at), siteId: t.site_id ?? '',
+    const quoteWage = t.quote_accepted_at && t.quote_amount != null ? Number(t.quote_amount) : null;
+    // kiosztottak + akinek munkaideje / anyagköltsége van a feladaton (a kiosztás sorrendjében)
+    const wids: (string | null)[] = [...new Set<string | null>([
+      ...(assBy.get(t.id) ?? []).map((a: any) => a.worker_id as string),
+      ...att.map((a: any) => a.worker_id as string),
+      ...mats.map((m: any) => m.worker_id as string | null).filter((x) => x),
+    ])];
+    if (wids.length === 0) wids.push(null);
+    const base = {
+      taskId: t.id, site: s.name, code: t.code ?? '', item: t.item_codes ? `${t.item_codes.code} ${t.item_codes.name}` : '', title: t.title,
+      status: STATUS[t.status] ?? t.status, created: hd(t.created_at), done: hd(t.done_at), siteId: t.site_id ?? '',
     };
-  }).sort((a, b) => a.site.localeCompare(b.site, 'hu') || a.code.localeCompare(b.code, 'hu'));
+    let taskCost = 0;
+    const out: Row[] = wids.map((wid, i) => {
+      const first = i === 0;
+      const myAtt = att.filter((a: any) => a.worker_id === wid);
+      const callout = myAtt.reduce((a, x) => a + Number(x.callout_fee ?? 0), 0);
+      // bér: elfogadott ajánlatnál az ajánlat összege (első sor), egyébként a könyvelt napok (a kiszállás külön oszlop)
+      const wage = quoteWage != null ? (first ? quoteWage : 0) : myAtt.reduce((a, x) => a + Number(x.amount), 0) - callout;
+      // munkaóra: az elszámolt (bérrel könyvelt) órák; ahol nincs ilyen (pl. elfogadott ajánlat), a tényleges munkaidő
+      const booked = myAtt.reduce((a, x) => a + Number(x.hours ?? 0), 0);
+      const hours = booked > 0 ? r2(booked)
+        : r2(ses.filter((x: any) => x.worker_id === wid).reduce((a, x) => a + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 3600000, 0));
+      // anyag: a munkavállaló saját tételei; a vezető által (munkavállaló nélkül) rögzített tétel az első soron
+      const matCost = mats.filter((m: any) => m.worker_id === wid || (first && !m.worker_id)).reduce((a, m) => a + Number(m.amount), 0);
+      const cost = wage + callout + matCost;
+      taskCost += cost;
+      return { ...base, first, worker: wid ? nameOf(wid) : '', hours, wage, callout, matCost, cost,
+        matResale: first ? matResale : 0, invoice: first ? invoice : null, profit: null };
+    });
+    if (invoice != null) out[0].profit = invoice + matResale - taskCost;
+    return out;
+  }).sort((a, b) => a.site.localeCompare(b.site, 'hu') || a.code.localeCompare(b.code, 'hu') || a.taskId.localeCompare(b.taskId) || (a.first ? -1 : b.first ? 1 : 0));
 
   const taskSheet = rows.map((r) => ({
-    'Helyszín': r.site, 'Cím': r.address, 'Feladat kód': r.code, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállalók': r.workers,
-    'Munkaóra': r.hours, 'Munkabér (Ft)': r.wage, 'Kiszállás (Ft)': r.callout, 'Anyagköltség (Ft)': r.matCost,
-    'Összes költség (Ft)': r.cost, 'Anyag továbbszámlázva (Ft)': r.matResale,
-    'Kiszámlázott (Ft)': r.invoice ?? '', 'Haszon (Ft)': r.profit ?? '', 'Kiadva': r.created, 'Elkészült': r.done,
+    'Feladat kód': r.code, 'Helyszín': r.site, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállaló': r.worker,
+    'Munkaóra': r.hours, 'Munkabér (Ft)': r.wage, 'Kiszállás (Ft)': r.callout, 'Anyagköltség (Ft)': r.matCost, 'Összes költség (Ft)': r.cost,
+    'Anyag továbbszámlázva (Ft)': r.first ? r.matResale : '', 'Kiszámlázott (Ft)': r.invoice ?? '', 'Haszon (Ft)': r.profit ?? '',
+    'Kiadva': r.created, 'Elkészült': r.done,
   }));
   const sum = (f: (r: Row) => number, rs: Row[] = rows) => rs.reduce((s, r) => s + f(r), 0);
+  const taskCount = new Set(rows.map((r) => r.taskId)).size;
   taskSheet.push({
-    'Helyszín': 'ÖSSZESEN', 'Cím': '', 'Feladat kód': '', 'Cikktörzs': '', 'Feladat': `${rows.length} feladat`, 'Állapot': '', 'Munkavállalók': '',
+    'Feladat kód': 'ÖSSZESEN', 'Helyszín': '', 'Cikktörzs': '', 'Feladat': `${taskCount} feladat`, 'Állapot': '', 'Munkavállaló': '',
     'Munkaóra': r2(sum((r) => r.hours)), 'Munkabér (Ft)': sum((r) => r.wage), 'Kiszállás (Ft)': sum((r) => r.callout),
     'Anyagköltség (Ft)': sum((r) => r.matCost), 'Összes költség (Ft)': sum((r) => r.cost), 'Anyag továbbszámlázva (Ft)': sum((r) => r.matResale),
     'Kiszámlázott (Ft)': sum((r) => r.invoice ?? 0), 'Haszon (Ft)': sum((r) => r.profit ?? 0), 'Kiadva': '', 'Elkészült': '',
@@ -106,8 +124,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const siteGroups = new Map<string, Row[]>();
   for (const r of rows) siteGroups.set(r.siteId, [...(siteGroups.get(r.siteId) ?? []), r]);
   const siteSheet = [...siteGroups.values()].map((rs) => ({
-    'Helyszín': rs[0].site, 'Cím': rs[0].address,
-    'Feladat kódok': rs.map((r) => r.code || r.title).join(', '), 'Feladatok (db)': rs.length,
+    'Helyszín': rs[0].site,
+    'Feladat kódok': [...new Set(rs.map((r) => r.code || r.title))].join(', '), 'Feladatok (db)': new Set(rs.map((r) => r.taskId)).size,
     'Munkaóra': r2(sum((r) => r.hours, rs)), 'Munkabér (Ft)': sum((r) => r.wage, rs), 'Kiszállás (Ft)': sum((r) => r.callout, rs),
     'Anyagköltség (Ft)': sum((r) => r.matCost, rs), 'Összes költség (Ft)': sum((r) => r.cost, rs),
     'Anyag továbbszámlázva (Ft)': sum((r) => r.matResale, rs), 'Kiszámlázott (Ft)': sum((r) => r.invoice ?? 0, rs),
@@ -134,9 +152,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
 
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.json_to_sheet(taskSheet);
-  s1['!cols'] = [{ wch: 26 }, { wch: 26 }, { wch: 12 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 26 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }];
+  s1['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }];
   const s2 = XLSX.utils.json_to_sheet(siteSheet);
-  s2['!cols'] = [{ wch: 26 }, { wch: 26 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
+  s2['!cols'] = [{ wch: 26 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
   const s3 = XLSX.utils.json_to_sheet(daySheet);
   s3['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 7 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 9 }];
   const s4 = XLSX.utils.json_to_sheet(matSheet);
