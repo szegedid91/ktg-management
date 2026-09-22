@@ -259,7 +259,7 @@ function SettingsInner() {
         summary={pendingReq ? '⏳ függő javaslat' : partners.map((p) => `${p.display_name} ${Math.round(Number(p.profit_share_percent ?? 0))}%`).join(' · ')}>
         {pendingReq ? (
           <>
-            <Sub>🤝 Függőben lévő módosítási javaslat ({hd(pendingReq.created_at.slice(0, 10))}, javasolta: {profiles.find((p) => p.id === pendingReq.proposed_by)?.display_name ?? '?'}):</Sub>
+            <Sub>🤝 Függőben lévő módosítási javaslat ({hd(pendingReq.created_at)}, javasolta: {profiles.find((p) => p.id === pendingReq.proposed_by)?.display_name ?? '?'}):</Sub>
             {pendingReq.shares.map((s) => (
               <Body key={s.user_id} style={{ fontWeight: '700' }}>
                 {profiles.find((p) => p.id === s.user_id)?.display_name ?? '?'}: {Number(s.percent)}%

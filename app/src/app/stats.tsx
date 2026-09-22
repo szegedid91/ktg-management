@@ -215,7 +215,7 @@ function StatsInner() {
 
   const visibleSites = sites
     .filter((s) => {
-      const closedBefore = s.status === 'closed' && !!s.closed_at && s.closed_at.slice(0, 10) < rangeStart;
+      const closedBefore = s.status === 'closed' && !!s.closed_at && localDateISO(s.closed_at) < rangeStart;
       const fa = firstActivity.get(s.id);
       const startsAfter = fa ? fa >= rangeEnd : false;
       return !closedBefore && !startsAfter;

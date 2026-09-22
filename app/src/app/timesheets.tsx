@@ -102,7 +102,7 @@ export default function Timesheets() {
           <Body style={{ fontWeight: '700' }}>{hd(r.week)} – {hd(addDaysISO(r.week, 6))}</Body>
           <Sub>{r.hours.toFixed(1)} óra · {r.days} nap · <Text style={{ fontWeight: '700', color: C.text }}>{ft(r.amount)}</Text></Sub>
           {r.sheet?.submitted_note ? <Sub>„{r.sheet.submitted_note}”</Sub> : null}
-          {r.sheet?.decided_at ? <Sub style={{ fontSize: 11 }}>{r.status === 'approved' ? '✅' : '✖'} {hd(r.sheet.decided_at.slice(0, 10))} · {profiles.find((p) => p.id === r.sheet!.decided_by)?.display_name ?? ''}{r.sheet.decision_note ? ` — ${r.sheet.decision_note}` : ''}</Sub> : null}
+          {r.sheet?.decided_at ? <Sub style={{ fontSize: 11 }}>{r.status === 'approved' ? '✅' : '✖'} {hd(r.sheet.decided_at)} · {profiles.find((p) => p.id === r.sheet!.decided_by)?.display_name ?? ''}{r.sheet.decision_note ? ` — ${r.sheet.decision_note}` : ''}</Sub> : null}
         </Card>
       ))}
     </Screen>
