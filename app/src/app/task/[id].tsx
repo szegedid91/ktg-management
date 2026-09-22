@@ -179,6 +179,8 @@ Biztosan leveszed?`, 'Levétel', true);
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
   const openSession = sessions.find((s) => !s.ended_at && s.worker_id === myWorkerId);
   const active = isActiveTask(task);
+  // a vezető lezárt (kész / nem sikerült) feladathoz is rögzíthet utólag anyagköltséget, munkaidőt és fotót
+  const partnerEdit = !isWorker && task.status !== 'cancelled';
   // ajánlatok: a napló sorai; munkavállalónál a saját legutóbbi sora számít
   const quoteLog = quotesOf(task.id, allQuotes);
   const mine = myQuote(task.id, myWorkerId, allQuotes);
@@ -876,7 +878,7 @@ Biztosan leveszed?`, 'Levétel', true);
       )}
 
       {/* ---------- utólagos rögzítés (vezető) ---------- */}
-      {!isWorker && active ? (
+      {partnerEdit ? (
         <Card style={{ paddingVertical: S.sm }}>
           <Pressable onPress={() => setRetroOpen(!retroOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
             <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>🕓 Utólagos rögzítés</Text>
@@ -912,13 +914,13 @@ Biztosan leveszed?`, 'Levétel', true);
         {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
         {(['before', 'after'] as const).map((kind) => {
           const list = workPhotos.filter((p) => p.kind === kind);
-          const canAdd = active && (isWorker ? !!myAssignment : true);
+          const canAdd = isWorker ? active && !!myAssignment : partnerEdit;
           if (!canAdd && list.length === 0) return null;
           return (
             <View key={kind} style={{ gap: 4 }}>
               <Text style={{ fontWeight: '700', color: C.text }}>{kind === 'before' ? '📷 Előtte' : '📷 Utána'}{list.length ? ` (${list.length})` : ''}</Text>
               <PhotoThumbs paths={list.map((p) => p.path)}
-                onRemoveRemote={active && (!isWorker || list.every((p) => p.worker_id === myWorkerId)) ? (ph) => void removeWorkPhoto(ph) : undefined} />
+                onRemoveRemote={(isWorker ? active && list.every((p) => p.worker_id === myWorkerId) : partnerEdit) ? (ph) => void removeWorkPhoto(ph) : undefined} />
               {canAdd ? <Btn title={photoBusy === kind ? 'Feltöltés…' : kind === 'before' ? '📷 Előtte fotó feltöltése' : '📷 Utána fotó feltöltése'}
                 kind="secondary" small={!isWorker} disabled={photoBusy !== null} onPress={() => void addWorkPhotos(kind)} /> : null}
             </View>
@@ -973,7 +975,7 @@ Biztosan leveszed?`, 'Levétel', true);
         {materials.length > 0 ? (
           <KV k="Anyag összesen (beszerzés)" v={ft(mat.cost)} strong />
         ) : null}
-        {(isWorker ? !!myAssignment : true) && active ? (
+        {(isWorker ? !!myAssignment && active : partnerEdit) ? (
           !matOpen ? (
             <Btn title={isWorker ? '📦 Anyagot vettem — költség rögzítése' : '+ Anyagköltség hozzáadása'} kind="secondary" onPress={() => setMatOpen(true)} />
           ) : (
