@@ -8,7 +8,7 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow } from '../lib/repo';
 import { ft, hd, hdt, todayISO, localDateISO, addDaysISO } from '../lib/format';
-import { isActiveTask, fmtHours, unionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
+import { isOpenForWorker, fmtHours, unionHours, wname, myQuote, weekStartISO } from '../lib/tasks';
 import { callRpc } from '../lib/repo';
 import { syncNow } from '../lib/sync';
 import { notify, confirmDialog } from '../lib/dialogs';
@@ -68,7 +68,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
 
   const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid).map((a) => a.task_id));
   const myTasks = tasks.filter((t) => myTaskIds.has(t.id));
-  const active = myTasks.filter(isActiveTask);
+  const active = myTasks.filter(isOpenForWorker);
   const qOf = (t: WorkerTask) => myQuote(t.id, wid, quotes);
   // ajánlatkérések: ajánlatot adok vagy nem vállalom (nincs „elfogadás”);
   // beküldött ajánlat: visszaigazolásra vár; elfogadott → normál feladat

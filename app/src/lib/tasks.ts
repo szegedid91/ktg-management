@@ -22,6 +22,13 @@ export function isActiveTask(t: WorkerTask): boolean {
   return t.status === 'assigned' || t.status === 'acknowledged';
 }
 
+/** A munkavállalónak nyitott feladat: a futók és a „nem sikerült” is — az utóbbi
+ *  folytatható és készre jelenthető (pl. aznap nem volt eszköz); csak a kész és
+ *  a visszavont tűnik el neki. */
+export function isOpenForWorker(t: WorkerTask): boolean {
+  return isActiveTask(t) || t.status === 'failed';
+}
+
 /** Kifizetetlen bér-sor, amiben a munkavállalónak tényleg jár pénz
  *  (a 0 Ft-os / csak jelenlét sorok nem számítanak) — minden képernyő ezt használja */
 export function unpaidWorkerPart(a: { pay_basis: string; paid_at: string | null; amount: number | string; commission_amount: number | string }): number {

@@ -6,7 +6,7 @@ import { View, Text, Pressable } from 'react-native';
 import { Sub, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { isActiveTask, myQuote } from '../lib/tasks';
+import { isOpenForWorker, myQuote } from '../lib/tasks';
 import { getCurrentUserId } from '../lib/repo';
 import { TaskRow, STATUS_COLOR } from './TaskRow';
 import { WorkerTask, TaskAssignee, TaskMaterial, TaskQuote, WorkSession, Worker, Site, Profile } from '../lib/types';
@@ -37,29 +37,29 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   const isQuoteOpen = (t: WorkerTask) => { const q = myQuote(t.id, wid, quotes); return !!q && (q.status === 'requested' || q.status === 'submitted'); };
   // saját elfogadás szerint (több emberes feladatnál a feladat állapota a többiekre is vár)
   const ackedByMe = (t: WorkerTask) => assignees.some((a) => a.task_id === t.id && a.worker_id === wid && a.acknowledged_at);
-  // a munkavállaló csak a futó feladatait látja — a lezártakat (kész / nem sikerült / visszavont) nem
-  tasks = tasks.filter(isActiveTask); showClosed = false;
+  // a munkavállaló csak a nyitott feladatait látja (futó + nem sikerült, ami folytatható) — a készet / visszavontat nem
+  tasks = tasks.filter(isOpenForWorker); showClosed = false;
   const [filter, setFilter] = useState<Filter | null>(initialFilter);
   const [siteId, setSiteId] = useState<string | null>(null);
 
   const running = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const counts = {
-    quote: tasks.filter((t) => isActiveTask(t) && isQuoteOpen(t)).length,
-    assigned: tasks.filter((t) => isActiveTask(t) && !ackedByMe(t) && !isQuoteOpen(t)).length,
-    acknowledged: tasks.filter((t) => isActiveTask(t) && ackedByMe(t)).length,
-    closed: tasks.filter((t) => !isActiveTask(t)).length,
+    quote: tasks.filter((t) => isOpenForWorker(t) && isQuoteOpen(t)).length,
+    assigned: tasks.filter((t) => isOpenForWorker(t) && !ackedByMe(t) && !isQuoteOpen(t)).length,
+    acknowledged: tasks.filter((t) => isOpenForWorker(t) && ackedByMe(t)).length,
+    closed: tasks.filter((t) => !isOpenForWorker(t)).length,
   };
   // helyszín-szűrő csak akkor, ha a feladatai több helyszínen vannak
-  const siteIds = useMemo(() => Array.from(new Set(tasks.filter(isActiveTask).map((t) => t.site_id ?? ''))), [tasks]);
+  const siteIds = useMemo(() => Array.from(new Set(tasks.filter(isOpenForWorker).map((t) => t.site_id ?? ''))), [tasks]);
   const showSites = siteIds.length >= 2;
   const siteName = (id: string) => (id ? sites.find((s) => s.id === id)?.name ?? 'Ismeretlen' : 'Helyszín nélkül');
 
   const list = tasks
-    .filter((t) => filter === null ? isActiveTask(t)
-      : filter === 'closed' ? !isActiveTask(t)
-      : filter === 'quote' ? isActiveTask(t) && isQuoteOpen(t)
-      : filter === 'assigned' ? isActiveTask(t) && !ackedByMe(t) && !isQuoteOpen(t)
-      : isActiveTask(t) && ackedByMe(t))
+    .filter((t) => filter === null ? isOpenForWorker(t)
+      : filter === 'closed' ? !isOpenForWorker(t)
+      : filter === 'quote' ? isOpenForWorker(t) && isQuoteOpen(t)
+      : filter === 'assigned' ? isOpenForWorker(t) && !ackedByMe(t) && !isQuoteOpen(t)
+      : isOpenForWorker(t) && ackedByMe(t))
     .filter((t) => siteId === null || (t.site_id ?? '') === siteId)
     // rögzítés dátuma szerint, a legfrissebb elöl
     .sort((a, b) => b.created_at.localeCompare(a.created_at));

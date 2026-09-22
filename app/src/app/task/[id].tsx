@@ -21,7 +21,7 @@ import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import { downloadExport } from '../../lib/exportfile';
 import {
-  TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, wname,
+  TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, isOpenForWorker, wname,
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
@@ -180,7 +180,8 @@ Biztosan leveszed?`, 'Levétel', true);
   const workerName = (wid: string) => wname(workers.find((w) => w.id === wid));
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
   const openSession = sessions.find((s) => !s.ended_at && s.worker_id === myWorkerId);
-  const active = isActiveTask(task);
+  // a munkavállalónak a „nem sikerült” feladat is nyitott: folytathatja és készre jelentheti
+  const active = isWorker ? isOpenForWorker(task) : isActiveTask(task);
   // a vezető lezárt (kész / nem sikerült) feladathoz is rögzíthet utólag anyagköltséget, munkaidőt és fotót
   const partnerEdit = !isWorker && task.status !== 'cancelled';
   // ajánlatok: a napló sorai; munkavállalónál a saját legutóbbi sora számít
@@ -600,7 +601,12 @@ Biztosan leveszed?`, 'Levétel', true);
             {assignees.length > 1 ? (
               <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
             ) : null}
-            {task.done_at ? <Sub>{task.status === 'failed' ? '⚠️ Lezárva' : '✔ Készre jelentve'}: {hdt(task.done_at)}</Sub> : null}
+            {task.status === 'failed' ? (
+              <View style={{ borderWidth: 1, borderColor: C.warning, borderRadius: S.radiusSm, padding: S.sm, gap: 2 }}>
+                <Body style={{ fontWeight: '800' }}>⚠️ Nem sikerültre jelentve: {hdt(task.done_at)}</Body>
+                <Sub>A feladat nyitva marad: folytathatod, és ha elkészült, jelöld készre.</Sub>
+              </View>
+            ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub> : null}
           </>
         ) : (
           <>
@@ -610,7 +616,7 @@ Biztosan leveszed?`, 'Levétel', true);
         </View>
         <KV k="Kiadta" v={creator} />
         <KV k="Rögzítve" v={hdt(task.created_at)} />
-        {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Lezárva (nem sikerült)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
+        {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
         {!isWorker && active ? (
           dueEdit === null ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
