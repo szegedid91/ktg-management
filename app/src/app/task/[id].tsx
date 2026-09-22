@@ -33,10 +33,12 @@ import { todayISO } from '../../lib/format';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
 /** plain: mindig nyitva, összecsukó nyíl és összegzés nélkül (munkavállalói, egyszerű nézet) */
-function Section({ title, summary, defaultOpen = false, accent, plain, children }: {
-  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; plain?: boolean; children: React.ReactNode;
+function Section({ title, summary, defaultOpen = false, accent, plain, openSignal, children }: {
+  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; plain?: boolean; openSignal?: number; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // a műveletsáv gombja kinyitja a szakaszt (a jel számlálója változik)
+  useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
   if (plain) {
     return (
       <Card style={accent ? { borderColor: C.primary } : undefined}>
@@ -87,11 +89,10 @@ export default function TaskDetail() {
   const allQuotes = useTable<TaskQuote>('task_quotes');
   const subtasks = useTable<TaskSubtask>('task_subtasks').filter((s) => s.task_id === id).sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
   const [newSub, setNewSub] = useState('');
-  const [dueEdit, setDueEdit] = useState<string | null>(null);
-  // feladat adatainak szerkesztése (vezető): cím, kód, részletek, helyszín
-  const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null; sos: boolean } | null>(null);
-  // kiosztás módosítása: hozzáadás / levétel (elfogadott munkavállalónál figyelmeztetéssel)
-  const [assignOpen, setAssignOpen] = useState(false);
+  // feladat adatainak szerkesztése (vezető) egy űrlapon: cím, kód, részletek, helyszín, cikktörzs, határidő, kiosztás
+  const [edit, setEdit] = useState<{ title: string; code: string; details: string; site_id: string | null; sos: boolean; due: string; item_code_id: string | null } | null>(null);
+  // a műveletsáv gombjai kinyitják a megfelelő szakaszt
+  const [openSig, setOpenSig] = useState({ time: 0, mat: 0 });
   // utólagos rögzítés (a munka már megtörtént): munkaidő felvitele, készre állítás
   const noteCount = useTable<TaskNote>('task_notes').filter((n) => n.task_id === id).length;
   const appSettings = useTable<AppSettings>('app_settings')[0] ?? null;
@@ -433,12 +434,6 @@ Biztosan leveszed?`, 'Levétel', true);
     insertRow('task_subtasks', { task_id: task.id, title: v, position: subtasks.length, photo_required: false, photo_paths: [], done_at: null, done_by: null, created_by: me });
     setNewSub('');
   };
-  const saveDue = () => {
-    const v = (dueEdit ?? '').trim();
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { notify('Határidő', 'ÉÉÉÉ-HH-NN formában add meg.'); return; }
-    updateRow('worker_tasks', task.id, { due_date: v || null });
-    setDueEdit(null);
-  };
 
   // ---------- anyagköltség: összeg felismerése a blokk fotójából ----------
   const recognizeMaterial = async () => {
@@ -551,301 +546,8 @@ Biztosan leveszed?`, 'Levétel', true);
     if (target === 'fail') setFailPhotos((ps) => [...ps, ...list]); else setMatPhotos((ps) => [...ps, ...list]);
   };
 
-  return (
-    <Screen>
-      <Stack.Screen options={{ title: task.code ? `${task.code} · ${task.title}` : task.title }} />
-
-      <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-          {active && assignees.length === 0
-            ? <Badge text="📋 Kiosztatlan — még senkinek sem szól" color="#6B46C1" />
-            : <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />}
-          {task.priority ? <Badge text="🆘 SOS" color={C.danger} /> : null}
-          {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
-          {/* az elfogadott ajánlat összege csak vezetőnek látszik (a szerver sem adja ki másnak); a munkavállaló a sajátját az ajánlat-részben látja */}
-          {task.quote_accepted_at && !isWorker ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
-          {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
-        </View>
-        {edit ? (
-          <View style={{ gap: S.sm }}>
-            <Input label="Feladat címe *" value={edit.title} onChangeText={(v) => setEdit({ ...edit, title: v })} />
-            <Input label="Kód (hibakód / feladatkód)" value={edit.code} onChangeText={(v) => setEdit({ ...edit, code: v })} autoCapitalize="none" />
-            <Input label="Részletek" value={edit.details} onChangeText={(v) => setEdit({ ...edit, details: v })} multiline />
-            <Picker label="Helyszín" items={sites.filter((x) => x.status === 'active' || x.id === edit.site_id).sort((x, y) => x.name.localeCompare(y.name, 'hu'))}
-              selectedId={edit.site_id} getId={(x) => x.id} getLabel={(x) => `${x.name}${x.address ? ` · ${x.address}` : ''}`}
-              onSelect={(sid) => setEdit({ ...edit, site_id: sid })} placeholder="Válassz helyszínt…" allowNull nullLabel="Nincs helyszín" />
-            <Check checked={edit.sos} onToggle={() => setEdit({ ...edit, sos: !edit.sos })} label="🆘 SOS — sürgős feladat" sub="Kiemelten jelenik meg a munkavállalónál és a listákban." />
-            <View style={{ flexDirection: 'row', gap: S.sm }}>
-              <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setEdit(null)} /></View>
-              <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={!edit.title.trim()} onPress={() => {
-                updateRow('worker_tasks', task.id, {
-                  title: edit.title.trim(), code: edit.code.trim() || null, details: edit.details.trim() || null, site_id: edit.site_id,
-                  priority: edit.sos ? 1 : 0,
-                });
-                setEdit(null);
-                notify('Mentve ✅', 'A feladat adatai frissültek — a munkavállaló is az újat látja.');
-              }} /></View>
-            </View>
-          </View>
-        ) : (
-          <>
-            <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
-            {task.details ? <Body>{task.details}</Body> : null}
-          </>
-        )}
-        <Divider />
-        {isWorker ? (
-          <>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-              <Sub style={{ flex: 1 }}>📍 {site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : 'nincs helyszín'}</Sub>
-              {site?.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
-            </View>
-            {task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? <Sub>🏷️ {itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!)}</Sub> : null}
-            {assignees.length > 1 ? (
-              <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
-            ) : null}
-            {task.status === 'failed' ? (
-              <View style={{ borderWidth: 1, borderColor: C.warning, borderRadius: S.radiusSm, padding: S.sm, gap: 2 }}>
-                <Body style={{ fontWeight: '800' }}>⚠️ Nem sikerültre jelentve: {hdt(task.done_at)}</Body>
-                <Sub>A feladat nyitva marad: folytathatod, és ha elkészült, jelöld készre.</Sub>
-              </View>
-            ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub> : null}
-          </>
-        ) : (
-          <>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-          <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
-          {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
-        </View>
-        <KV k="Kiadta" v={creator} />
-        <KV k="Rögzítve" v={hdt(task.created_at)} />
-        {active ? (
-          <Picker label="Cikktörzs-kód" items={itemCodes} selectedId={task.item_code_id ?? null} getId={(c) => c.id}
-            getLabel={(c) => `${itemCodeLabel(c)} · ${c.group === 'A' ? 'anyagbeszerzés' : 'kivitelezés'}`}
-            onSelect={(v) => updateRow('worker_tasks', task.id, { item_code_id: v })} allowNull nullLabel="— nincs kód —" />
-        ) : (
-          <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
-        )}
-        {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
-        {!isWorker && active ? (
-          dueEdit === null ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Sub>Határidő: <Text style={{ color: C.text, fontWeight: '700' }}>{task.due_date ? hd(task.due_date) : 'nincs'}</Text></Sub>
-              <Btn title={task.due_date ? 'Módosít' : 'Határidő'} kind="ghost" small onPress={() => setDueEdit(task.due_date ?? '')} />
-            </View>
-          ) : (
-            <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
-              <View style={{ flex: 1 }}><Input label="Határidő (ÉÉÉÉ-HH-NN, üres = nincs)" value={dueEdit} onChangeText={setDueEdit} placeholder="2026-09-30" /></View>
-              <Btn title="Mentés" small onPress={saveDue} />
-            </View>
-          )
-        ) : null}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-          <View style={{ flex: 1 }}><KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '—'} /></View>
-          {!isWorker && active ? <Btn title={assignOpen ? 'Kész' : 'Módosít'} kind="ghost" small onPress={() => setAssignOpen(!assignOpen)} /> : null}
-        </View>
-        {assignOpen && !isWorker && active ? (
-          <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
-            <Sub>Pipáld ki, kinek szóljon a feladat. Az új munkavállaló értesítést kap és elfogadja; a levett munkavállaló is értesül.</Sub>
-            {assignable.length > 6 ? <Input value={assignQ} onChangeText={setAssignQ} placeholder="Keresés név / szakma szerint…" /> : null}
-            {assignable.filter((w) => {
-              const q = assignQ.trim().toLowerCase();
-              return !q || `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q) || assignees.some((a) => a.worker_id === w.id);
-            }).map((w) => {
-              const row = assignees.find((a) => a.worker_id === w.id);
-              return (
-                <Check key={w.id} checked={!!row} onToggle={() => void toggleAssignee(w)}
-                  label={`${wname(w)}${w.is_contractor ? ' 👥' : ''}${row?.acknowledged_at ? ' ✓ elfogadta' : row ? ' ⏳' : ''}`}
-                  sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />
-              );
-            })}
-          </View>
-        ) : null}
-        {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
-          </>
-        )}
-        {(task.photo_paths ?? []).length > 0 || !isWorker ? (
-          <View style={{ gap: 4 }}>
-            <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
-            <PhotoThumbs paths={task.photo_paths ?? []}
-              onRemoveRemote={!isWorker && active ? (ph) => void removeTaskPhoto(ph) : undefined} />
-            {!isWorker && active ? (
-              <View style={{ flexDirection: 'row', gap: S.sm }}>
-                <Btn title={busy ? '…' : '+ Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} />
-                {!edit ? <Btn title="✏️ Szerkesztés" kind="ghost" small
-                  onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null, sos: task.priority > 0 })} /> : null}
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-        {task.fail_reason ? (
-          <View style={{ backgroundColor: C.dangerBg, padding: S.md, borderRadius: 8, gap: 4 }}>
-            <Body style={{ fontWeight: '700', color: C.danger }}>⚠️ Nem sikerült — indok:</Body>
-            <Body>{task.fail_reason}</Body>
-            <PhotoThumbs paths={task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []} />
-          </View>
-        ) : null}
-      </Card>
-
-      {/* ---------- vezető: feladat lezárása ---------- */}
-      {!isWorker && active ? (
-        <Card style={{ borderColor: C.success, gap: S.sm }}>
-          <Btn title="✔ Feladat lezárása — kész" onPress={() => void markDoneByPartner()} />
-          <Sub>Akkor is lezárhatod, ha a munkavállaló nem jelentette készre.{sessions.some((x) => !x.ended_at) ? ' A még futó munkaidő is lezárul.' : ''}</Sub>
-        </Card>
-      ) : null}
-
-      {/* ---------- munkavállalói műveletek ---------- */}
-      {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
-        <Card style={{ borderColor: C.accent }}>
-          {!myAssignment.acknowledged_at ? (
-            <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
-          ) : (
-            <>
-        {isWorker && myAssignment && active && crew.length > 0 ? (
-          <View style={{ gap: 2 }}>
-            <Sub style={{ fontWeight: '700' }}>👥 Kire osztod az embereid közül?</Sub>
-            <Sub>Akit bejelölsz, megkapja a feladatot: visszaigazolja, dolgozik rajta és le is zárhatja.</Sub>
-            {crew.map((c) => {
-              const row = assignees.find((a) => a.worker_id === c.id);
-              return (
-                <Check key={c.id} checked={distSel.has(c.id)}
-                  onToggle={() => setDistWho((prev) => { const n = new Set(prev ?? crewAssigned); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
-                  label={`${c.name}${row ? (row.acknowledged_at ? ' ✓' : ' ⏳ visszaigazolásra vár') : ''}`} />
-              );
-            })}
-            {distDirty ? <Btn title={distBusy ? 'Mentés…' : 'Szétosztás mentése'} small disabled={distBusy} onPress={() => void saveDistribution()} /> : null}
-          </View>
-        ) : null}
-        {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
-          <View style={{ gap: 2 }}>
-            <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>
-            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => (
-              <Check key={p.id} checked={(crewWho ?? new Set([myWorkerId!])).has(p.id)} onToggle={() => setCrewWho((s) => { const n = new Set(s ?? [myWorkerId!]); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
-            ))}
-          </View>
-        ) : null}
-        {isWorker && myAssignment && active ? (
-          openSession || crewOpenSessions.length
-            ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
-            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={() => void startWork()} />
-        ) : null}
-              {startedByMe ? <Btn title="Kész ✔" onPress={() => void markDone()} /> : null}
-              {!failOpen ? (
-                <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" small onPress={() => setFailOpen(true)} />
-              ) : (
-                <View style={{ gap: S.sm }}>
-                  <Sub>Kötelező leírni, miért nem sikerült. Több fotót is csatolhatsz.</Sub>
-                  <Input label="Indoklás *" value={failReason} onChangeText={setFailReason} multiline placeholder="pl. hiányzik az anyag / nem lehetett bejutni…" />
-                  <View style={{ flexDirection: 'row', gap: S.sm }}>
-                    <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'fail')} /></View>
-                    <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'fail')} /></View>
-                  </View>
-                  <PhotoThumbs local={failPhotos} onRemoveLocal={(i) => setFailPhotos((ps) => ps.filter((_, j) => j !== i))} />
-                  <View style={{ flexDirection: 'row', gap: S.sm }}>
-                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setFailOpen(false)} /></View>
-                    <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Küldés'} kind="danger" onPress={() => void submitFail()} disabled={busy || failReason.trim().length < 3} /></View>
-                  </View>
-                </View>
-              )}
-            </>
-          )}
-        </Card>
-      ) : null}
-
-      {isWorker && (!acked || !timing?.startedAt) ? null : (
-      <Section title="⏱ Munkaidő" defaultOpen={isWorker} plain={isWorker}
-        summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
-        {timing?.startedAt ? (
-          <>
-            <KV k="Kezdés" v={hdt(timing.startedAt)} />
-            <KV k={timing.running ? 'Eddig (fut)' : 'Ledolgozott idő'} v={`${fmtHours(timing.hours)} · ${timing.days} nap`} />
-            {timing.finishedAt ? <KV k="Befejezés" v={hdt(timing.finishedAt)} strong /> : null}
-          </>
-        ) : <Sub>Még nem kezdték el.</Sub>}
-        {sessions.length > 0 ? (
-          <View style={{ gap: 2 }}>
-            {[...sessions].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 10).map((s) => (
-              <SessionEditor key={s.id} session={s} label={workerName(s.worker_id)} editable={!isWorker} />
-            ))}
-          </View>
-        ) : null}
-      </Section>
-      )}
-
-      {/* ---------- részfeladatok ---------- */}
-      {SUBTASKS_ENABLED && (subtasks.length > 0 || (!isWorker && active)) ? (
-        <Section title="☑ Részfeladatok" defaultOpen={subtasks.some((s) => !s.done_at)}
-          summary={subtasks.length ? `${subtasks.filter((s) => s.done_at).length}/${subtasks.length} kész` : 'nincs'}>
-          {subtasks.map((s, i) => (
-            <View key={s.id} style={{ gap: 4, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-                <Pressable disabled={isWorker ? !acked || !active : !active} onPress={() => void toggleSub(s)} hitSlop={8}
-                  style={{ width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: s.done_at ? C.success : C.border, backgroundColor: s.done_at ? C.success : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ color: '#fff', fontWeight: '900' }}>{s.done_at ? '✓' : ''}</Text>
-                </Pressable>
-                <Body style={{ flex: 1, fontWeight: '600', textDecorationLine: s.done_at ? 'line-through' : 'none', color: s.done_at ? C.sub : C.text }}>{i + 1}. {s.title}</Body>
-                {s.photo_required ? <Badge text={(s.photo_paths ?? []).length ? '📷 ✓' : '📷 kötelező'} color={(s.photo_paths ?? []).length ? C.success : C.warning} /> : null}
-                {(isWorker ? acked && active : active) ? <Btn title={subBusy === s.id ? '…' : '📷'} kind="ghost" small disabled={subBusy === s.id} onPress={() => void addSubPhoto(s)} /> : null}
-                {!isWorker && active ? <Btn title="🗑️" kind="ghost" small onPress={() => softDeleteRow('task_subtasks', s.id)} /> : null}
-              </View>
-              {(s.photo_paths ?? []).length ? <PhotoThumbs paths={s.photo_paths} /> : null}
-              {s.done_at ? <Sub style={{ fontSize: 11 }}>kész: {hdt(s.done_at)}{s.done_by ? ` · ${profiles.find((p) => p.id === s.done_by)?.display_name ?? workers.find((w) => w.id === myWorkerId)?.name ?? ''}` : ''}</Sub> : null}
-            </View>
-          ))}
-          {!isWorker && active ? (
-            <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
-              <View style={{ flex: 1 }}><Input label="Új lépés" value={newSub} onChangeText={setNewSub} placeholder="pl. Fugázás" /></View>
-              <Btn title="+ Hozzáad" kind="secondary" small onPress={addSubtask} disabled={!newSub.trim()} />
-            </View>
-          ) : null}
-          {isWorker && !acked ? <Sub>A lépéseket a feladat elfogadása után tudod pipálni.</Sub> : null}
-        </Section>
-      ) : null}
-
-      {/* ---------- ajánlat: munkavállaló ---------- */}
-      {isWorker && mine ? (
-        <Card style={{ borderColor: C.primary }}>
-          <H2>💬 Ajánlat</H2>
-          {mine.status === 'requested' ? (
-            <>
-              <Sub>Ajánlatot kértek tőled erre a munkára. Add meg, mennyiért vállalod — vagy jelezd, ha nem vállalod.</Sub>
-              <Input label="Ajánlati ár (Ft)" value={quoteAmount} onChangeText={setQuoteAmount} keyboardType="numeric" placeholder="pl. 120 000" />
-              <Input label="Megjegyzés" value={quoteNote} onChangeText={setQuoteNote} placeholder="opcionális (pl. anyag nélkül, 3 nap)" />
-              <Btn title="Ajánlat küldése 💬" onPress={sendQuote} disabled={!quoteAmount} />
-            </>
-          ) : mine.status === 'submitted' ? (
-            <>
-              <KV k="Ajánlatod" v={ft(mine.amount ?? 0)} strong />
-              {mine.note ? <Sub>{mine.note}</Sub> : null}
-              <Sub>🕐 Beküldve {hdt(mine.submitted_at ?? mine.updated_at)} — visszaigazolásra vár. Ha elfogadják, a feladat a folyamatban lévők közé kerül.</Sub>
-            </>
-          ) : mine.status === 'accepted' ? (
-            <>
-              <KV k="Elfogadott ajánlatod" v={ft(mine.amount ?? 0)} strong />
-              <Sub>✅ Elfogadva {hdt(mine.decided_at ?? mine.updated_at)} — a feladat a tiéd, kezdheted.</Sub>
-            </>
-          ) : (
-            <Sub>{mine.status === 'declined' ? '✋ Nem vállaltad ezt a munkát.' : `Az ajánlatkérés lezárult${mine.decision_note ? ` — ${mine.decision_note}` : ''}.`}</Sub>
-          )}
-          {quoteOpenForMe ? (
-            !declineOpen ? (
-              <Btn title="Nem vállalom ✋" kind="ghost" onPress={() => setDeclineOpen(true)} />
-            ) : (
-              <View style={{ gap: S.sm }}>
-                <Input label="Miért nem? (opcionális)" value={declineReason} onChangeText={setDeclineReason} placeholder="pl. nincs rá kapacitásom" />
-                <View style={{ flexDirection: 'row', gap: S.sm }}>
-                  <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setDeclineOpen(false)} /></View>
-                  <View style={{ flex: 1 }}><Btn title="Nem vállalom" kind="danger" onPress={() => void declineQuote()} /></View>
-                </View>
-              </View>
-            )
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* ---------- ajánlat: partner (napló + újrakérés) ---------- */}
-      {!isWorker && (isQuoteTask || active) ? (
+  // szakaszok (a sorrend szerep szerint más: a munkavállalónál megjegyzések → fotók/anyag, a vezetőnél anyag → megjegyzések → ajánlatok)
+  const quotesPartnerBlock = !isWorker && (isQuoteTask || active) ? (
         <Section title="💬 Ajánlatok" accent={openQuotes(task.id, allQuotes).length > 0}
           defaultOpen={isQuoteTask && !task.quote_accepted_at}
           summary={task.quote_accepted_at ? `elfogadva ${ft(task.quote_amount ?? 0)}`
@@ -898,48 +600,14 @@ Biztosan leveszed?`, 'Levétel', true);
             </View>
           ) : null}
         </Section>
-      ) : null}
-
-      {/* munkavállaló: megjegyzést csak a feladat elfogadása után lát és ír */}
-      {isWorker && !acked ? null : (
+      ) : null;
+  const notesBlock = isWorker && !acked ? null : (
       <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={isWorker || noteCount > 0} plain={isWorker}>
         <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : true} />
       </Section>
-      )}
-
-      {/* ---------- utólagos rögzítés (vezető) ---------- */}
-      {partnerEdit ? (
-        <Card style={{ paddingVertical: S.sm }}>
-          <Pressable onPress={() => setRetroOpen(!retroOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-            <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>🕓 Utólagos rögzítés</Text>
-            <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }}>ha a munka már megtörtént</Text>
-            <Text style={{ color: C.sub, fontSize: 16 }}>{retroOpen ? '▾' : '▸'}</Text>
-          </Pressable>
-          {retroOpen ? (
-            <View style={{ gap: S.sm, paddingTop: S.sm }}>
-              <Sub>Ha a feladatot utólag viszed fel: add meg, ki és mennyit dolgozott, rögzítsd az anyagköltséget (📦 lent), majd jelöld késznek. A bér a munkaidőből képződik (órabérnél megkezdett órák), ajánlatos feladatnál az elfogadott ajánlat.</Sub>
-              {assignees.length === 0
-                ? <Sub style={{ color: C.warning }}>Még senkihez sincs rendelve — a fenti „Kiosztva · Módosít” gombbal add meg, ki dolgozott.</Sub>
-                : assignees.length > 1
-                ? <Picker label="Ki dolgozott?" items={assignees.map((x) => ({ id: x.worker_id, name: workerName(x.worker_id) }))}
-                    selectedId={retroWorker ?? assignees[0].worker_id} getId={(x) => x.id} getLabel={(x) => x.name} onSelect={setRetroWorker} placeholder="Válassz…" />
-                : <Sub>Munkavállaló: <Text style={{ fontWeight: '700', color: C.text }}>{workerName(assignees[0].worker_id)}</Text></Sub>}
-              <View style={{ flexDirection: 'row', gap: S.sm }}>
-                <View style={{ flex: 2 }}><Input label="Nap (ÉÉÉÉ-HH-NN)" value={retroDate} onChangeText={setRetroDate} placeholder={todayISO()} /></View>
-                <View style={{ flex: 1 }}><Input label="Kezdés" value={retroStart} onChangeText={setRetroStart} placeholder="07:00" /></View>
-                <View style={{ flex: 1 }}><Input label="Befejezés" value={retroEnd} onChangeText={setRetroEnd} placeholder="15:00" /></View>
-              </View>
-              <Btn title="⏱ Munkaidő rögzítése" kind="secondary" small disabled={assignees.length === 0} onPress={addRetroSession} />
-              <Sub style={{ fontSize: 11 }}>Több napot is felvihetsz egymás után; a rögzített menetek a ⏱ Munkaidő résznél látszanak és ott javíthatók.</Sub>
-              <Btn title="✔ Késznek jelölöm" onPress={() => void markDoneByPartner()} />
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* ---------- anyagköltségek ---------- */}
-      {isWorker && !acked ? null : (
-      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker} plain={isWorker}
+      );
+  const materialsBlock = isWorker && !acked ? null : (
+      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker} plain={isWorker} openSignal={openSig.mat}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
         {(['before', 'after'] as const).map((kind) => {
@@ -1027,7 +695,314 @@ Biztosan leveszed?`, 'Levétel', true);
           )
         ) : null}
       </Section>
+      );
+
+  return (
+    <Screen>
+      <Stack.Screen options={{ title: task.code ? `${task.code} · ${task.title}` : task.title }} />
+
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+          {active && assignees.length === 0
+            ? <Badge text="📋 Kiosztatlan — még senkinek sem szól" color="#6B46C1" />
+            : <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />}
+          {task.priority ? <Badge text="🆘 SOS" color={C.danger} /> : null}
+          {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
+          {/* az elfogadott ajánlat összege csak vezetőnek látszik (a szerver sem adja ki másnak); a munkavállaló a sajátját az ajánlat-részben látja */}
+          {task.quote_accepted_at && !isWorker ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
+          {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
+        </View>
+        {edit ? (
+          <View style={{ gap: S.sm }}>
+            <Input label="Feladat címe *" value={edit.title} onChangeText={(v) => setEdit({ ...edit, title: v })} />
+            <Input label="Kód (hibakód / feladatkód)" value={edit.code} onChangeText={(v) => setEdit({ ...edit, code: v })} autoCapitalize="none" />
+            <Input label="Részletek" value={edit.details} onChangeText={(v) => setEdit({ ...edit, details: v })} multiline />
+            <Picker label="Helyszín" items={sites.filter((x) => x.status === 'active' || x.id === edit.site_id).sort((x, y) => x.name.localeCompare(y.name, 'hu'))}
+              selectedId={edit.site_id} getId={(x) => x.id} getLabel={(x) => `${x.name}${x.address ? ` · ${x.address}` : ''}`}
+              onSelect={(sid) => setEdit({ ...edit, site_id: sid })} placeholder="Válassz helyszínt…" allowNull nullLabel="Nincs helyszín" />
+            <Picker label="Cikktörzs-kód" items={itemCodes} selectedId={edit.item_code_id} getId={(c) => c.id}
+              getLabel={(c) => `${itemCodeLabel(c)} · ${c.group === 'A' ? 'anyagbeszerzés' : 'kivitelezés'}`}
+              onSelect={(v) => setEdit({ ...edit, item_code_id: v })} allowNull nullLabel="— nincs kód —" />
+            <Input label="Határidő (ÉÉÉÉ-HH-NN, üres = nincs)" value={edit.due} onChangeText={(v) => setEdit({ ...edit, due: v })} placeholder="2026-09-30" />
+            <Check checked={edit.sos} onToggle={() => setEdit({ ...edit, sos: !edit.sos })} label="🆘 SOS — sürgős feladat" sub="Kiemelten jelenik meg a munkavállalónál és a listákban." />
+            {active ? (
+              <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
+                <Sub style={{ fontWeight: '700' }}>Kiosztva — kinek szóljon a feladat?</Sub>
+                <Sub>Az új munkavállaló értesítést kap és elfogadja; a levett munkavállaló is értesül. A pipálás azonnal érvényes.</Sub>
+                {assignable.length > 6 ? <Input value={assignQ} onChangeText={setAssignQ} placeholder="Keresés név / szakma szerint…" /> : null}
+                {assignable.filter((w) => {
+                  const q = assignQ.trim().toLowerCase();
+                  return !q || `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q) || assignees.some((a) => a.worker_id === w.id);
+                }).map((w) => {
+                  const row = assignees.find((a) => a.worker_id === w.id);
+                  return (
+                    <Check key={w.id} checked={!!row} onToggle={() => void toggleAssignee(w)}
+                      label={`${wname(w)}${w.is_contractor ? ' 👥' : ''}${row?.acknowledged_at ? ' ✓ elfogadta' : row ? ' ⏳' : ''}`}
+                      sub={w.nickname ? `${w.name}${w.trade ? ` · ${w.trade}` : ''}` : (w.trade ?? undefined)} />
+                  );
+                })}
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setEdit(null)} /></View>
+              <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={!edit.title.trim()} onPress={() => {
+                const due = edit.due.trim();
+                if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) { notify('Határidő', 'ÉÉÉÉ-HH-NN formában add meg.'); return; }
+                updateRow('worker_tasks', task.id, {
+                  title: edit.title.trim(), code: edit.code.trim() || null, details: edit.details.trim() || null, site_id: edit.site_id,
+                  priority: edit.sos ? 1 : 0, due_date: due || null, item_code_id: edit.item_code_id,
+                });
+                setEdit(null);
+                notify('Mentve ✅', 'A feladat adatai frissültek — a munkavállaló is az újat látja.');
+              }} /></View>
+            </View>
+          </View>
+        ) : (
+          <>
+            <H2>{task.code ? `${task.code} — ` : ''}{task.title}</H2>
+            {task.details ? <Body>{task.details}</Body> : null}
+          </>
+        )}
+        <Divider />
+        {isWorker ? (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+              <Sub style={{ flex: 1 }}>📍 {site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : 'nincs helyszín'}</Sub>
+              {site?.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+            </View>
+            {task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? <Sub>🏷️ {itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!)}</Sub> : null}
+            {assignees.length > 1 ? (
+              <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
+            ) : null}
+            {task.status === 'failed' ? (
+              <View style={{ borderWidth: 1, borderColor: C.warning, borderRadius: S.radiusSm, padding: S.sm, gap: 2 }}>
+                <Body style={{ fontWeight: '800' }}>⚠️ Nem sikerültre jelentve: {hdt(task.done_at)}</Body>
+                <Sub>A feladat nyitva marad: folytathatod, és ha elkészült, jelöld készre.</Sub>
+              </View>
+            ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub> : null}
+          </>
+        ) : (
+          <>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+          <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
+          {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+        </View>
+        <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
+        <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
+        {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
+        {active ? <KV k="Határidő" v={task.due_date ? hd(task.due_date) : 'nincs'} /> : null}
+        <KV k="Kiadta" v={`${creator} · ${hdt(task.created_at)}`} />
+        {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
+        {active && !edit ? (
+          <Btn title="✏️ Szerkesztés" kind="ghost" small
+            onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null, sos: task.priority > 0, due: task.due_date ?? '', item_code_id: task.item_code_id ?? null })} />
+        ) : null}
+          </>
+        )}
+        {(task.photo_paths ?? []).length > 0 || !isWorker ? (
+          <View style={{ gap: 4 }}>
+            <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
+            <PhotoThumbs paths={task.photo_paths ?? []}
+              onRemoveRemote={!isWorker && active ? (ph) => void removeTaskPhoto(ph) : undefined} />
+          </View>
+        ) : null}
+        {task.fail_reason ? (
+          <View style={{ backgroundColor: C.dangerBg, padding: S.md, borderRadius: 8, gap: 4 }}>
+            <Body style={{ fontWeight: '700', color: C.danger }}>⚠️ Nem sikerült — indok:</Body>
+            <Body>{task.fail_reason}</Body>
+            <PhotoThumbs paths={task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : []} />
+          </View>
+        ) : null}
+      </Card>
+
+      {/* ---------- vezető: műveletsáv ---------- */}
+      {partnerEdit ? (
+        <Card style={{ borderColor: active ? C.success : C.border, gap: S.sm }}>
+          {active ? <Btn title="✔ Feladat lezárása — kész" onPress={() => void markDoneByPartner()} /> : null}
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <View style={{ flex: 1 }}><Btn title="⏱ Munkaidő" kind="secondary" small onPress={() => { setRetroOpen(true); setOpenSig((x) => ({ ...x, time: x.time + 1 })); }} /></View>
+            <View style={{ flex: 1 }}><Btn title="+ Anyag" kind="secondary" small onPress={() => { setMatOpen(true); setOpenSig((x) => ({ ...x, mat: x.mat + 1 })); }} /></View>
+            {active ? <View style={{ flex: 1 }}><Btn title={busy ? '…' : '📷 Fotó'} kind="secondary" small disabled={busy} onPress={() => void addTaskPhoto()} /></View> : null}
+          </View>
+          <Sub>{active ? `Akkor is lezárhatod, ha a munkavállaló nem jelentette készre.${sessions.some((x) => !x.ended_at) ? ' A még futó munkaidő is lezárul.' : ''} ` : ''}⏱ munkaidő és + anyag utólag is rögzíthető.</Sub>
+        </Card>
+      ) : null}
+
+      {/* ---------- munkavállalói műveletek ---------- */}
+      {isWorker && myAssignment && active && !quoteOpenForMe && !(isQuoteTask && mine && mine.status !== 'accepted') ? (
+        <Card style={{ borderColor: C.accent }}>
+          {!myAssignment.acknowledged_at ? (
+            <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
+          ) : (
+            <>
+        {isWorker && myAssignment && active && crew.length > 0 ? (
+          <View style={{ gap: 2 }}>
+            <Sub style={{ fontWeight: '700' }}>👥 Kire osztod az embereid közül?</Sub>
+            <Sub>Akit bejelölsz, megkapja a feladatot: visszaigazolja, dolgozik rajta és le is zárhatja.</Sub>
+            {crew.map((c) => {
+              const row = assignees.find((a) => a.worker_id === c.id);
+              return (
+                <Check key={c.id} checked={distSel.has(c.id)}
+                  onToggle={() => setDistWho((prev) => { const n = new Set(prev ?? crewAssigned); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                  label={`${c.name}${row ? (row.acknowledged_at ? ' ✓' : ' ⏳ visszaigazolásra vár') : ''}`} />
+              );
+            })}
+            {distDirty ? <Btn title={distBusy ? 'Mentés…' : 'Szétosztás mentése'} small disabled={distBusy} onPress={() => void saveDistribution()} /> : null}
+          </View>
+        ) : null}
+        {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
+          <View style={{ gap: 2 }}>
+            <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>
+            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => (
+              <Check key={p.id} checked={(crewWho ?? new Set([myWorkerId!])).has(p.id)} onToggle={() => setCrewWho((s) => { const n = new Set(s ?? [myWorkerId!]); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
+            ))}
+          </View>
+        ) : null}
+        {isWorker && myAssignment && active ? (
+          openSession || crewOpenSessions.length
+            ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
+            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={() => void startWork()} />
+        ) : null}
+              {startedByMe ? <Btn title="Kész ✔" onPress={() => void markDone()} /> : null}
+              {!failOpen ? (
+                <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" small onPress={() => setFailOpen(true)} />
+              ) : (
+                <View style={{ gap: S.sm }}>
+                  <Sub>Kötelező leírni, miért nem sikerült. Több fotót is csatolhatsz.</Sub>
+                  <Input label="Indoklás *" value={failReason} onChangeText={setFailReason} multiline placeholder="pl. hiányzik az anyag / nem lehetett bejutni…" />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'fail')} /></View>
+                    <View style={{ flex: 1 }}><Btn title="🖼 Galéria" kind="ghost" small onPress={() => void pick(false, 'fail')} /></View>
+                  </View>
+                  <PhotoThumbs local={failPhotos} onRemoveLocal={(i) => setFailPhotos((ps) => ps.filter((_, j) => j !== i))} />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setFailOpen(false)} /></View>
+                    <View style={{ flex: 1 }}><Btn title={busy ? '…' : 'Küldés'} kind="danger" onPress={() => void submitFail()} disabled={busy || failReason.trim().length < 3} /></View>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+        </Card>
+      ) : null}
+
+      {isWorker && (!acked || !timing?.startedAt) ? null : (
+      <Section title="⏱ Munkaidő" defaultOpen={isWorker} plain={isWorker} openSignal={openSig.time}
+        summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
+        {timing?.startedAt ? (
+          <>
+            <KV k="Kezdés" v={hdt(timing.startedAt)} />
+            <KV k={timing.running ? 'Eddig (fut)' : 'Ledolgozott idő'} v={`${fmtHours(timing.hours)} · ${timing.days} nap`} />
+            {timing.finishedAt ? <KV k="Befejezés" v={hdt(timing.finishedAt)} strong /> : null}
+          </>
+        ) : <Sub>Még nem kezdték el.</Sub>}
+        {sessions.length > 0 ? (
+          <View style={{ gap: 2 }}>
+            {[...sessions].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 10).map((s) => (
+              <SessionEditor key={s.id} session={s} label={workerName(s.worker_id)} editable={!isWorker} />
+            ))}
+          </View>
+        ) : null}
+        {partnerEdit ? (
+          !retroOpen ? (
+            <Btn title="🕓 Munkaidő rögzítése utólag" kind="ghost" small onPress={() => setRetroOpen(true)} />
+          ) : (
+            <View style={{ gap: S.sm, paddingTop: S.sm, borderTopWidth: 1, borderTopColor: C.border }}>
+              <Sub style={{ fontWeight: '700' }}>🕓 Utólagos rögzítés — ha a munka már megtörtént</Sub>
+              <Sub>Add meg, ki és mennyit dolgozott; a bér a munkaidőből képződik (órabérnél megkezdett órák), ajánlatos feladatnál az elfogadott ajánlat. Több napot is felvihetsz egymás után; a rögzített menetek itt fent látszanak és javíthatók.</Sub>
+              {assignees.length === 0
+                ? <Sub style={{ color: C.warning }}>Még senkihez sincs rendelve — a „✏️ Szerkesztés” gombbal add meg, ki dolgozott.</Sub>
+                : assignees.length > 1
+                ? <Picker label="Ki dolgozott?" items={assignees.map((x) => ({ id: x.worker_id, name: workerName(x.worker_id) }))}
+                    selectedId={retroWorker ?? assignees[0].worker_id} getId={(x) => x.id} getLabel={(x) => x.name} onSelect={setRetroWorker} placeholder="Válassz…" />
+                : <Sub>Munkavállaló: <Text style={{ fontWeight: '700', color: C.text }}>{workerName(assignees[0].worker_id)}</Text></Sub>}
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 2 }}><Input label="Nap (ÉÉÉÉ-HH-NN)" value={retroDate} onChangeText={setRetroDate} placeholder={todayISO()} /></View>
+                <View style={{ flex: 1 }}><Input label="Kezdés" value={retroStart} onChangeText={setRetroStart} placeholder="07:00" /></View>
+                <View style={{ flex: 1 }}><Input label="Befejezés" value={retroEnd} onChangeText={setRetroEnd} placeholder="15:00" /></View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 1 }}><Btn title="Bezár" kind="ghost" small onPress={() => setRetroOpen(false)} /></View>
+                <View style={{ flex: 2 }}><Btn title="⏱ Munkaidő rögzítése" kind="secondary" small disabled={assignees.length === 0} onPress={addRetroSession} /></View>
+              </View>
+            </View>
+          )
+        ) : null}
+      </Section>
       )}
+
+      {/* ---------- részfeladatok ---------- */}
+      {SUBTASKS_ENABLED && (subtasks.length > 0 || (!isWorker && active)) ? (
+        <Section title="☑ Részfeladatok" defaultOpen={subtasks.some((s) => !s.done_at)}
+          summary={subtasks.length ? `${subtasks.filter((s) => s.done_at).length}/${subtasks.length} kész` : 'nincs'}>
+          {subtasks.map((s, i) => (
+            <View key={s.id} style={{ gap: 4, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+                <Pressable disabled={isWorker ? !acked || !active : !active} onPress={() => void toggleSub(s)} hitSlop={8}
+                  style={{ width: 26, height: 26, borderRadius: 6, borderWidth: 2, borderColor: s.done_at ? C.success : C.border, backgroundColor: s.done_at ? C.success : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>{s.done_at ? '✓' : ''}</Text>
+                </Pressable>
+                <Body style={{ flex: 1, fontWeight: '600', textDecorationLine: s.done_at ? 'line-through' : 'none', color: s.done_at ? C.sub : C.text }}>{i + 1}. {s.title}</Body>
+                {s.photo_required ? <Badge text={(s.photo_paths ?? []).length ? '📷 ✓' : '📷 kötelező'} color={(s.photo_paths ?? []).length ? C.success : C.warning} /> : null}
+                {(isWorker ? acked && active : active) ? <Btn title={subBusy === s.id ? '…' : '📷'} kind="ghost" small disabled={subBusy === s.id} onPress={() => void addSubPhoto(s)} /> : null}
+                {!isWorker && active ? <Btn title="🗑️" kind="ghost" small onPress={() => softDeleteRow('task_subtasks', s.id)} /> : null}
+              </View>
+              {(s.photo_paths ?? []).length ? <PhotoThumbs paths={s.photo_paths} /> : null}
+              {s.done_at ? <Sub style={{ fontSize: 11 }}>kész: {hdt(s.done_at)}{s.done_by ? ` · ${profiles.find((p) => p.id === s.done_by)?.display_name ?? workers.find((w) => w.id === myWorkerId)?.name ?? ''}` : ''}</Sub> : null}
+            </View>
+          ))}
+          {!isWorker && active ? (
+            <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
+              <View style={{ flex: 1 }}><Input label="Új lépés" value={newSub} onChangeText={setNewSub} placeholder="pl. Fugázás" /></View>
+              <Btn title="+ Hozzáad" kind="secondary" small onPress={addSubtask} disabled={!newSub.trim()} />
+            </View>
+          ) : null}
+          {isWorker && !acked ? <Sub>A lépéseket a feladat elfogadása után tudod pipálni.</Sub> : null}
+        </Section>
+      ) : null}
+
+      {/* ---------- ajánlat: munkavállaló ---------- */}
+      {isWorker && mine ? (
+        <Card style={{ borderColor: C.primary }}>
+          <H2>💬 Ajánlat</H2>
+          {mine.status === 'requested' ? (
+            <>
+              <Sub>Ajánlatot kértek tőled erre a munkára. Add meg, mennyiért vállalod — vagy jelezd, ha nem vállalod.</Sub>
+              <Input label="Ajánlati ár (Ft)" value={quoteAmount} onChangeText={setQuoteAmount} keyboardType="numeric" placeholder="pl. 120 000" />
+              <Input label="Megjegyzés" value={quoteNote} onChangeText={setQuoteNote} placeholder="opcionális (pl. anyag nélkül, 3 nap)" />
+              <Btn title="Ajánlat küldése 💬" onPress={sendQuote} disabled={!quoteAmount} />
+            </>
+          ) : mine.status === 'submitted' ? (
+            <>
+              <KV k="Ajánlatod" v={ft(mine.amount ?? 0)} strong />
+              {mine.note ? <Sub>{mine.note}</Sub> : null}
+              <Sub>🕐 Beküldve {hdt(mine.submitted_at ?? mine.updated_at)} — visszaigazolásra vár. Ha elfogadják, a feladat a folyamatban lévők közé kerül.</Sub>
+            </>
+          ) : mine.status === 'accepted' ? (
+            <>
+              <KV k="Elfogadott ajánlatod" v={ft(mine.amount ?? 0)} strong />
+              <Sub>✅ Elfogadva {hdt(mine.decided_at ?? mine.updated_at)} — a feladat a tiéd, kezdheted.</Sub>
+            </>
+          ) : (
+            <Sub>{mine.status === 'declined' ? '✋ Nem vállaltad ezt a munkát.' : `Az ajánlatkérés lezárult${mine.decision_note ? ` — ${mine.decision_note}` : ''}.`}</Sub>
+          )}
+          {quoteOpenForMe ? (
+            !declineOpen ? (
+              <Btn title="Nem vállalom ✋" kind="ghost" onPress={() => setDeclineOpen(true)} />
+            ) : (
+              <View style={{ gap: S.sm }}>
+                <Input label="Miért nem? (opcionális)" value={declineReason} onChangeText={setDeclineReason} placeholder="pl. nincs rá kapacitásom" />
+                <View style={{ flexDirection: 'row', gap: S.sm }}>
+                  <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setDeclineOpen(false)} /></View>
+                  <View style={{ flex: 1 }}><Btn title="Nem vállalom" kind="danger" onPress={() => void declineQuote()} /></View>
+                </View>
+              </View>
+            )
+          ) : null}
+        </Card>
+      ) : null}
+
+      {isWorker ? <>{notesBlock}{materialsBlock}</> : <>{materialsBlock}{notesBlock}{quotesPartnerBlock}</>}
 
       {/* ---------- partner: pénzügy ---------- */}
       {!isWorker && wage ? (
@@ -1080,11 +1055,15 @@ Biztosan leveszed?`, 'Levétel', true);
             </Text>
           </View>
           <Sub>Haszon = kiszámlázott + továbbszámlázott anyag − bérköltség − anyag beszerzési ára.</Sub>
+        </Section>
+      ) : null}
+
+      {/* ---------- vezető: ritka műveletek ---------- */}
+      {!isWorker ? (
+        <Section title="⋯ További műveletek" summary={active ? 'export · visszavonás · törlés' : 'export · törlés'}>
           <Btn title={xlsBusy ? 'Készül…' : '📊 Összefoglaló Excelbe'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary()} />
-          <View style={{ flexDirection: 'row', gap: S.sm }}>
-            {active ? <View style={{ flex: 1 }}><Btn title="Visszavonás" kind="ghost" small onPress={() => void cancelTask()} /></View> : null}
-            <View style={{ flex: 1 }}><Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} /></View>
-          </View>
+          {active ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
+          <Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} />
         </Section>
       ) : null}
     </Screen>
