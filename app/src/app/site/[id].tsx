@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { smartBack } from '../../lib/nav';
-import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Badge, Row, Segmented } from '../../ui/kit';
+import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Badge, Row, Segmented, Input } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
 import { useTable, useRow, useOnlineView } from '../../lib/hooks';
 import { callRpc, fetchView, getCurrentUserId, updateRow, markInvoicePaid, queueRpc } from '../../lib/repo';
@@ -23,6 +23,8 @@ export default function SiteDetail() {
   const site = useRow<Site>('sites', id);
   const [tab, setTab] = useState<Tab>('tasks');
   const [costTab, setCostTab] = useState<'expenses' | 'wages'>('expenses');
+  // adatok szerkesztése (név, cím, megjegyzés)
+  const [edit, setEdit] = useState<{ name: string; address: string; note: string } | null>(null);
   const expenses = useTable<Expense>('expenses').filter((e) => e.site_id === id);
   const attendance = useTable<Attendance>('attendance').filter((a) => a.site_id === id);
   const siteTasks = useTable<WorkerTask>('worker_tasks').filter((t) => t.site_id === id);
@@ -88,10 +90,27 @@ export default function SiteDetail() {
       <Stack.Screen options={{ title: site.name }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
         <Badge text={closed ? 'lezárt' : 'aktív'} color={closed ? C.sub : C.success} />
-        {site.address ? <Sub style={{ flex: 1 }}>{site.address}</Sub> : null}
+        {site.address ? <Sub style={{ flex: 1 }}>{site.address}</Sub> : <View style={{ flex: 1 }} />}
         {site.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+        {!edit ? <Btn title="✏️ Szerkesztés" kind="ghost" small onPress={() => setEdit({ name: site.name, address: site.address ?? '', note: site.note ?? '' })} /> : null}
       </View>
       {closed ? <Sub style={{ color: C.warning }}>Ez az építkezés lezárt, csak olvasható.</Sub> : null}
+      {edit ? (
+        <Card>
+          <H2>Adatok szerkesztése</H2>
+          <Input label="Név *" value={edit.name} onChangeText={(t) => setEdit({ ...edit, name: t })} />
+          <Input label="Cím" value={edit.address} onChangeText={(t) => setEdit({ ...edit, address: t })} placeholder="opcionális" />
+          <Input label="Megjegyzés" value={edit.note} onChangeText={(t) => setEdit({ ...edit, note: t })} multiline placeholder="opcionális" />
+          {edit.address.trim() !== (site.address ?? '').trim() && site.lat != null ? <Sub>A cím változik — a térképes hely a régi címre mutat; alább a „Hely a térképen” résznél frissítheted.</Sub> : null}
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => setEdit(null)} /></View>
+            <View style={{ flex: 1 }}><Btn title="Mentés" disabled={!edit.name.trim()} onPress={() => {
+              updateRow('sites', site.id, { name: edit.name.trim(), address: edit.address.trim() || null, note: edit.note.trim() || null });
+              setEdit(null);
+            }} /></View>
+          </View>
+        </Card>
+      ) : null}
       <SiteGeofenceCard site={site} />
 
       <View style={{ flexDirection: 'row', gap: S.sm }}>
