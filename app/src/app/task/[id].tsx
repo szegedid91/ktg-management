@@ -19,6 +19,7 @@ import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
+import { downloadExport } from '../../lib/exportfile';
 import {
   TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, wname,
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
@@ -170,6 +171,7 @@ Biztosan leveszed?`, 'Levétel', true);
   const [matNote, setMatNote] = useState('');
   const [matPhotos, setMatPhotos] = useState<PickedPhoto[]>([]);
   const [busy, setBusy] = useState(false);
+  const [xlsBusy, setXlsBusy] = useState(false);
 
   if (!task) return <Screen><Empty text="Feladat nem található (szinkronizálás folyamatban?)" /></Screen>;
 
@@ -457,6 +459,18 @@ Biztosan leveszed?`, 'Levétel', true);
     if (!await confirmDialog('Anyagköltség törlése', `${ft(m.amount)}${m.note ? ` — ${m.note}` : ''}\n\nA hozzá tartozó fotók is törlődnek a tárolóból.`, 'Törlés', true)) return;
     void removeStoragePaths('tasks', materialPhotos(m));
     softDeleteRow('task_materials', m.id);
+  };
+
+  // a feladat összefoglalója Excelben (helyszín, kód, munkaóra, bér, kiszállás, anyagköltség)
+  const exportSummary = async () => {
+    setXlsBusy(true);
+    try {
+      await downloadExport({ mode: 'tasks', task_id: task.id });
+    } catch (e: any) {
+      notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
+    } finally {
+      setXlsBusy(false);
+    }
   };
 
   const deleteTask = async () => {
@@ -1050,6 +1064,7 @@ Biztosan leveszed?`, 'Levétel', true);
             </Text>
           </View>
           <Sub>Haszon = kiszámlázott + továbbszámlázott anyag − bérköltség − anyag beszerzési ára.</Sub>
+          <Btn title={xlsBusy ? 'Készül…' : '📊 Összefoglaló Excelbe'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary()} />
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             {active ? <View style={{ flex: 1 }}><Btn title="Visszavonás" kind="ghost" small onPress={() => void cancelTask()} /></View> : null}
             <View style={{ flex: 1 }}><Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} /></View>

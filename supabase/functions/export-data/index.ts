@@ -9,6 +9,7 @@ import { PDFDocument, rgb, StandardFonts } from 'npm:pdf-lib@1.17.1';
 import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
 import { identifyCaller } from './caller.ts';
 import { exportWages } from './wages.ts';
+import { exportTasks } from './tasks.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,6 +49,11 @@ Deno.serve(async (req) => {
       const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(body.month ?? '') ? body.month : new Date().toISOString().slice(0, 7);
       const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
       return await exportWages(supabase, month, workerId, format, json);
+    }
+    // feladat-összesítő (helyszín, kódok, munkaóra, kiszállás, anyagköltség) — csak Excel
+    if (body.mode === 'tasks') {
+      const taskId = UUID.test(body.task_id ?? '') ? body.task_id : null;
+      return await exportTasks(supabase, { taskId, siteId: site_id, from, to }, json);
     }
 
     let expQ = supabase.from('expenses').select('*, expense_categories(name), sites(name), profiles:created_by(display_name)')

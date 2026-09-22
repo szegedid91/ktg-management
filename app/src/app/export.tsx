@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { Platform, View } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented, Empty } from '../ui/kit';
+import { View } from 'react-native';
+import { Screen, Card, H2, Sub, Btn, Input, Picker, Empty } from '../ui/kit';
 import { S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
-import { supabase } from '../lib/supabase';
+import { downloadExport } from '../lib/exportfile';
 import { todayISO } from '../lib/format';
 import { Site, Worker } from '../lib/types';
-import { notify, confirmDialog } from '../lib/dialogs';
+import { notify } from '../lib/dialogs';
 
 function ExportScreenInner() {
   const sites = useTable<Site>('sites');
@@ -27,27 +25,19 @@ function ExportScreenInner() {
   };
   const monthLabel = `${month.slice(0, 4)}. ${['január', 'február', 'március', 'április', 'május', 'június', 'július', 'augusztus', 'szeptember', 'október', 'november', 'december'][Number(month.slice(5)) - 1]}`;
 
-  const doExport = async (format: 'xlsx' | 'pdf', wages = false) => {
-    setBusy((wages ? 'w-' : '') + format);
-    try {
-      const { data, error } = await supabase.functions.invoke('export-data', {
-        body: wages ? { mode: 'wages', month, worker_id: workerId, format } : { from, to, site_id: site, format },
-      });
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+  // feladat-összesítő
+  const [tFrom, setTFrom] = useState('');
+  const [tTo, setTTo] = useState(todayISO());
+  const [tSite, setTSite] = useState<string | null>(null);
 
-      if (Platform.OS === 'web') {
-        const a = document.createElement('a');
-        a.href = `data:${data.mime};base64,${data.base64}`;
-        a.download = data.filename;
-        a.click();
-      } else {
-        const path = FileSystem.cacheDirectory + data.filename;
-        await FileSystem.writeAsStringAsync(path, data.base64, { encoding: FileSystem.EncodingType.Base64 });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(path, { mimeType: data.mime, dialogTitle: data.filename });
-        }
-      }
+  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' = 'books') => {
+    setBusy(`${mode}-${format}`);
+    try {
+      await downloadExport(
+        mode === 'wages' ? { mode, month, worker_id: workerId, format }
+          : mode === 'tasks' ? { mode, from: tFrom.trim() || undefined, to: tTo.trim() || undefined, site_id: tSite }
+          : { from, to, site_id: site, format },
+      );
     } catch (e: any) {
       notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
     } finally {
@@ -77,10 +67,10 @@ function ExportScreenInner() {
         />
         <View style={{ flexDirection: 'row', gap: S.md }}>
           <View style={{ flex: 1 }}>
-            <Btn title={busy === 'xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx')} disabled={!!busy} />
+            <Btn title={busy === 'books-xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx')} disabled={!!busy} />
           </View>
           <View style={{ flex: 1 }}>
-            <Btn title={busy === 'pdf' ? 'Készül…' : '📄 PDF'} kind="secondary" onPress={() => void doExport('pdf')} disabled={!!busy} />
+            <Btn title={busy === 'books-pdf' ? 'Készül…' : '📄 PDF'} kind="secondary" onPress={() => void doExport('pdf')} disabled={!!busy} />
           </View>
         </View>
       </Card>
@@ -105,12 +95,30 @@ function ExportScreenInner() {
         />
         <View style={{ flexDirection: 'row', gap: S.md }}>
           <View style={{ flex: 1 }}>
-            <Btn title={busy === 'w-xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx', true)} disabled={!!busy} />
+            <Btn title={busy === 'wages-xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx', 'wages')} disabled={!!busy} />
           </View>
           <View style={{ flex: 1 }}>
-            <Btn title={busy === 'w-pdf' ? 'Készül…' : '📄 PDF'} kind="secondary" onPress={() => void doExport('pdf', true)} disabled={!!busy} />
+            <Btn title={busy === 'wages-pdf' ? 'Készül…' : '📄 PDF'} kind="secondary" onPress={() => void doExport('pdf', 'wages')} disabled={!!busy} />
           </View>
         </View>
+      </Card>
+
+      <Card>
+        <H2>Feladat-összesítő</H2>
+        <Sub>Helyszínenként a hozzá tartozó feladatok kódjai; feladatonként a munkaóra, a munkabér, a kiszállás és az anyagköltség. Excel: Feladatok, Helyszínek, Munkaidő, Anyagok munkalap. Egy feladat összefoglalója a feladat Pénzügy részéből is kérhető.</Sub>
+        <Input label="Kiadva ettől (ÉÉÉÉ-HH-NN, üres = kezdettől)" value={tFrom} onChangeText={setTFrom} />
+        <Input label="Kiadva eddig (ÉÉÉÉ-HH-NN)" value={tTo} onChangeText={setTTo} />
+        <Picker
+          label="Építkezés"
+          items={sites}
+          selectedId={tSite}
+          getId={(s) => s.id}
+          getLabel={(s) => s.name}
+          onSelect={setTSite}
+          allowNull
+          nullLabel="— minden építkezés —"
+        />
+        <Btn title={busy === 'tasks-xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx', 'tasks')} disabled={!!busy} />
       </Card>
     </Screen>
   );
