@@ -56,7 +56,7 @@ function ExportScreenInner() {
   return (
     <Screen>
       <Card>
-        <H2>Export könyvelőnek</H2>
+        <H2>Könyvelési export</H2>
         <Sub>
           Excel: költséglista számlafotó-hivatkozásokkal, bérek, bevételek,
           ÁFA-bontás külön munkalapokon. PDF: nyomtatható összesítő.

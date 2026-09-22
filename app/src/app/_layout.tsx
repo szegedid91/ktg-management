@@ -93,7 +93,7 @@ export default function RootLayout() {
         <Stack.Screen name="audit" options={{ title: 'Audit napló' }} />
         <Stack.Screen name="errors" options={{ title: 'Hibanapló' }} />
         <Stack.Screen name="map" options={{ title: 'Térkép' }} />
-        <Stack.Screen name="export" options={{ title: 'Export könyvelőnek' }} />
+        <Stack.Screen name="export" options={{ title: 'Exportálás' }} />
       </Stack>
       </ErrorBoundary>
       <WorkerApprovalGate />
