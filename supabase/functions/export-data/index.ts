@@ -53,7 +53,9 @@ Deno.serve(async (req) => {
     // feladat-összesítő (helyszín, kódok, munkaóra, kiszállás, anyagköltség) — csak Excel
     if (body.mode === 'tasks') {
       const taskId = UUID.test(body.task_id ?? '') ? body.task_id : null;
-      return await exportTasks(supabase, { taskId, siteId: site_id, from, to, doneOnly: body.done_only === true }, json);
+      // done_only: a régebbi kliensek mezője (= status 'done')
+      const status = (['all', 'open', 'done', 'failed'] as const).find((x) => x === body.status) ?? (body.done_only === true ? 'done' : 'all');
+      return await exportTasks(supabase, { taskId, siteId: site_id, from, to, status }, json);
     }
 
     let expQ = supabase.from('expenses').select('*, expense_categories(name), sites(name), profiles:created_by(display_name)')

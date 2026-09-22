@@ -1,8 +1,8 @@
 // Feladat-összesítő (Excel) — az export-data funkció `mode: 'tasks'` ága.
 // Helyszínenként a hozzá tartozó feladatok kódjai, feladatonként a munkaóra,
 // a munkabér, a kiszállás és az anyagköltség. Egy feladatra (task_id), egy
-// helyszínre (site_id) vagy időszakra szűrhető: a kiadás dátuma szerint, vagy
-// (done_only) a készre jelentés dátuma szerint — csak a kész feladatok.
+// helyszínre (site_id), állapotra (status: all | open | done | failed) és időszakra
+// szűrhető: kész / nem sikerült feladatnál a lezárás dátuma, egyébként a kiadás dátuma szerint.
 
 import * as XLSX from 'npm:xlsx@0.18.5';
 
@@ -10,7 +10,8 @@ const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const STATUS: Record<string, string> = { assigned: 'kiadva', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva' };
 
-export interface TaskFilter { taskId: string | null; siteId: string | null; from: string; to: string; doneOnly: boolean }
+export type TaskStatusFilter = 'all' | 'open' | 'done' | 'failed';
+export interface TaskFilter { taskId: string | null; siteId: string | null; from: string; to: string; status: TaskStatusFilter }
 /** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
 const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
 
@@ -20,7 +21,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     .is('deleted_at', null).order('created_at');
   if (f.taskId) tq = tq.eq('id', f.taskId);
   if (f.siteId) tq = tq.eq('site_id', f.siteId);
-  if (f.doneOnly) tq = tq.eq('status', 'done').not('done_at', 'is', null);
+  if (f.status === 'done') tq = tq.eq('status', 'done');
+  else if (f.status === 'failed') tq = tq.eq('status', 'failed');
+  else if (f.status === 'open') tq = tq.in('status', ['assigned', 'acknowledged']);
   const [{ data: tasks, error }, { data: sites }, { data: workers }, { data: assignees }, { data: sessions },
     { data: attendance }, { data: materials }, { data: pricing }, { data: finance }] = await Promise.all([
     tq,
@@ -39,10 +42,11 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const nameOf = (id: string | null) => (id ? ((workers ?? []).find((w: any) => w.id === id)?.name ?? '?') : '');
   const resaleOf = new Map<string, number>((pricing ?? []).map((p: any) => [p.material_id, Number(p.resale_net)]));
   const invoiceOf = new Map<string, number | null>((finance ?? []).map((x: any) => [x.task_id, x.invoice_net == null ? null : Number(x.invoice_net)]));
-  // időszak-szűrés magyar naptári nap szerint (kiadás vagy készre jelentés dátuma)
+  // időszak-szűrés magyar naptári nap szerint (lezárás vagy kiadás dátuma)
+  const byDone = f.status === 'done' || f.status === 'failed';
   const list = ((tasks ?? []) as any[]).filter((t) => {
     if (f.taskId) return true;
-    const d = budDay(f.doneOnly ? t.done_at : t.created_at);
+    const d = budDay((byDone && t.done_at) || t.created_at);
     return d >= f.from && d <= f.to;
   });
   const ids = new Set(list.map((t) => t.id));
@@ -142,7 +146,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   XLSX.utils.book_append_sheet(wb, s3, 'Munkaidő');
   XLSX.utils.book_append_sheet(wb, s4, 'Anyagok');
   const stem = f.taskId && rows[0] ? `feladat_${(rows[0].code || 'osszefoglalo').replace(/[^\w-]+/g, '_')}`
-    : `${f.doneOnly ? 'kesz_feladatok' : 'feladatok'}_${f.from}_${f.to}`;
+    : `${{ all: 'feladatok', open: 'folyamatban_feladatok', done: 'kesz_feladatok', failed: 'nem_sikerult_feladatok' }[f.status]}_${f.from}_${f.to}`;
   return json({
     filename: `${stem}.xlsx`,
     mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
