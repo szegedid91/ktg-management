@@ -20,6 +20,7 @@ import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePath
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import { downloadExport } from '../../lib/exportfile';
+import { ItemCode, itemCodeLabel } from '../../lib/types';
 import {
   TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, isOpenForWorker, wname,
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
@@ -79,6 +80,7 @@ export default function TaskDetail() {
   const allSessions = useTable<WorkSession>('work_sessions');
   const sessions = allSessions.filter((s) => s.task_id === id);
   const materials = useTable<TaskMaterial>('task_materials').filter((m) => m.task_id === id);
+  const itemCodes = useTable<ItemCode>('item_codes').sort((a, b) => a.position - b.position || a.code.localeCompare(b.code));
   // csak-partner táblák: munkavállalónál üresek
   const pricing = useTable<TaskMaterialPricing>('task_material_pricing');
   const finance = useTable<TaskFinance>('task_finance').find((f) => f.task_id === id);
@@ -598,6 +600,7 @@ Biztosan leveszed?`, 'Levétel', true);
               <Sub style={{ flex: 1 }}>📍 {site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : 'nincs helyszín'}</Sub>
               {site?.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
             </View>
+            {task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? <Sub>🏷️ {itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!)}</Sub> : null}
             {assignees.length > 1 ? (
               <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
             ) : null}
@@ -616,6 +619,13 @@ Biztosan leveszed?`, 'Levétel', true);
         </View>
         <KV k="Kiadta" v={creator} />
         <KV k="Rögzítve" v={hdt(task.created_at)} />
+        {active ? (
+          <Picker label="Cikktörzs-kód" items={itemCodes} selectedId={task.item_code_id ?? null} getId={(c) => c.id}
+            getLabel={(c) => `${itemCodeLabel(c)} · ${c.group === 'A' ? 'anyagbeszerzés' : 'kivitelezés'}`}
+            onSelect={(v) => updateRow('worker_tasks', task.id, { item_code_id: v })} allowNull nullLabel="— nincs kód —" />
+        ) : (
+          <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
+        )}
         {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
         {!isWorker && active ? (
           dueEdit === null ? (

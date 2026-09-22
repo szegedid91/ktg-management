@@ -16,7 +16,7 @@ const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { time
 
 export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknown, s?: number) => Response) {
   let tq = supabase.from('worker_tasks')
-    .select('id, code, title, status, site_id, created_at, done_at, quote_amount, quote_accepted_at')
+    .select('id, code, title, status, site_id, created_at, done_at, quote_amount, quote_accepted_at, item_code_id, item_codes(code, name)')
     .is('deleted_at', null).order('created_at');
   if (f.taskId) tq = tq.eq('id', f.taskId);
   if (f.siteId) tq = tq.eq('site_id', f.siteId);
@@ -54,7 +54,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const assBy = by<any>(assignees), sesBy = by<any>(sessions), attBy = by<any>(attendance), matBy = by<any>(materials);
 
   type Row = {
-    site: string; address: string; code: string; title: string; status: string; workers: string; hours: number;
+    site: string; address: string; code: string; item: string; title: string; status: string; workers: string; hours: number;
     wage: number; callout: number; matCost: number; matResale: number; cost: number; invoice: number | null; profit: number | null;
     created: string; done: string; siteId: string;
   };
@@ -76,7 +76,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     const invoice = invoiceOf.get(t.id) ?? null;
     const cost = wage + callout + matCost;
     return {
-      site: s.name, address: s.address, code: t.code ?? '', title: t.title, status: STATUS[t.status] ?? t.status,
+      site: s.name, address: s.address, code: t.code ?? '', item: t.item_codes ? `${t.item_codes.code} ${t.item_codes.name}` : '', title: t.title, status: STATUS[t.status] ?? t.status,
       workers: [...new Set((assBy.get(t.id) ?? []).map((a: any) => nameOf(a.worker_id)))].join(', '),
       hours, wage, callout, matCost, matResale, cost, invoice,
       profit: invoice == null ? null : invoice + matResale - wage - callout - matCost,
@@ -85,14 +85,14 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   }).sort((a, b) => a.site.localeCompare(b.site, 'hu') || a.code.localeCompare(b.code, 'hu'));
 
   const taskSheet = rows.map((r) => ({
-    'Helyszín': r.site, 'Cím': r.address, 'Feladat kód': r.code, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállalók': r.workers,
+    'Helyszín': r.site, 'Cím': r.address, 'Feladat kód': r.code, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállalók': r.workers,
     'Munkaóra': r.hours, 'Munkabér (Ft)': r.wage, 'Kiszállás (Ft)': r.callout, 'Anyagköltség (Ft)': r.matCost,
     'Összes költség (Ft)': r.cost, 'Anyag továbbszámlázva (Ft)': r.matResale,
     'Kiszámlázott (Ft)': r.invoice ?? '', 'Haszon (Ft)': r.profit ?? '', 'Kiadva': r.created, 'Elkészült': r.done,
   }));
   const sum = (f: (r: Row) => number, rs: Row[] = rows) => rs.reduce((s, r) => s + f(r), 0);
   taskSheet.push({
-    'Helyszín': 'ÖSSZESEN', 'Cím': '', 'Feladat kód': '', 'Feladat': `${rows.length} feladat`, 'Állapot': '', 'Munkavállalók': '',
+    'Helyszín': 'ÖSSZESEN', 'Cím': '', 'Feladat kód': '', 'Cikktörzs': '', 'Feladat': `${rows.length} feladat`, 'Állapot': '', 'Munkavállalók': '',
     'Munkaóra': r2(sum((r) => r.hours)), 'Munkabér (Ft)': sum((r) => r.wage), 'Kiszállás (Ft)': sum((r) => r.callout),
     'Anyagköltség (Ft)': sum((r) => r.matCost), 'Összes költség (Ft)': sum((r) => r.cost), 'Anyag továbbszámlázva (Ft)': sum((r) => r.matResale),
     'Kiszámlázott (Ft)': sum((r) => r.invoice ?? 0), 'Haszon (Ft)': sum((r) => r.profit ?? 0), 'Kiadva': '', 'Elkészült': '',
@@ -130,7 +130,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
 
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.json_to_sheet(taskSheet);
-  s1['!cols'] = [{ wch: 26 }, { wch: 26 }, { wch: 12 }, { wch: 32 }, { wch: 12 }, { wch: 26 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }];
+  s1['!cols'] = [{ wch: 26 }, { wch: 26 }, { wch: 12 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 26 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }];
   const s2 = XLSX.utils.json_to_sheet(siteSheet);
   s2['!cols'] = [{ wch: 26 }, { wch: 26 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
   const s3 = XLSX.utils.json_to_sheet(daySheet);

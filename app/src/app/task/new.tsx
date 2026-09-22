@@ -12,7 +12,7 @@ import { getCurrentUserId } from '../../lib/repo';
 import { notify } from '../../lib/dialogs';
 import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
-import { Site, Worker, TaskTemplate, Profile, WorkSession, Attendance, TaskMaterial, TaskAssignee, WorkerTask } from '../../lib/types';
+import { Site, Worker, TaskTemplate, Profile, WorkSession, Attendance, TaskMaterial, TaskAssignee, WorkerTask, ItemCode, ITEM_GROUP_LABEL, itemCodeLabel } from '../../lib/types';
 import { addDaysISO, todayISO, hd, ft } from '../../lib/format';
 import { wname, sessionHours, fmtHours } from '../../lib/tasks';
 
@@ -76,6 +76,21 @@ export default function NewTask() {
       });
   }, [title, doneTasks, allSessions, allAttendance, allMaterials, allAssignees, allWorkers]);
   const [code, setCode] = useState('');
+  // cikktörzs-kód: legördülő, a listából vagy új kóddal bővítve
+  const itemCodes = useTable<ItemCode>('item_codes').sort((a, b) => a.position - b.position || a.code.localeCompare(b.code));
+  const [itemCode, setItemCode] = useState<string | null>(null);
+  const [newCodeOpen, setNewCodeOpen] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [newCodeName, setNewCodeName] = useState('');
+  const [newCodeGroup, setNewCodeGroup] = useState<ItemCode['group']>('S');
+  const addItemCode = () => {
+    const c = newCode.trim().toUpperCase(), n = newCodeName.trim();
+    if (!c || !n) { notify('Új kód', 'Add meg a kódot és a megnevezést is.'); return; }
+    if (itemCodes.some((x) => x.code.toUpperCase() === c)) { notify('Új kód', 'Ez a kód már szerepel a listában.'); return; }
+    const id = newId();
+    insertRow('item_codes', { id, code: c, name: n, group: newCodeGroup, position: 100, created_by: getCurrentUserId() });
+    setItemCode(id); setNewCodeOpen(false); setNewCode(''); setNewCodeName('');
+  };
   const [details, setDetails] = useState('');
   const [site, setSite] = useState<string | null>(siteId ?? null);
   const [quote, setQuote] = useState(false);
@@ -142,6 +157,7 @@ export default function NewTask() {
       quote_requested: quote,
       photo_paths: paths,
       due_date: dueDate || null,
+      item_code_id: itemCode,
     });
     subtasks.forEach((s, i) => insertRow('task_subtasks', {
       task_id: taskId, title: s.title, position: i, photo_required: s.photo_required, photo_paths: [], done_at: null, done_by: null,
@@ -190,6 +206,29 @@ export default function NewTask() {
                 <Sub>{t.done_at ? hd(t.done_at) : ''} · {fmtHours(hours)} · bér {ft(wage)} · anyag {ft(mats)}{names ? ` · 👷 ${names}` : ''}</Sub>
               </Pressable>
             ))}
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: S.sm }}>
+          <View style={{ flex: 1 }}>
+            <Picker label="Cikktörzs-kód" items={itemCodes} selectedId={itemCode} getId={(c) => c.id}
+              getLabel={(c) => `${itemCodeLabel(c)} · ${c.group === 'A' ? 'anyagbeszerzés' : 'kivitelezés'}`} onSelect={setItemCode}
+              allowNull nullLabel="— nincs kód —" />
+          </View>
+          <Btn title={newCodeOpen ? 'Mégse' : '+ Új kód'} kind="ghost" small onPress={() => setNewCodeOpen(!newCodeOpen)} />
+        </View>
+        {newCodeOpen ? (
+          <View style={{ gap: S.sm, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
+            <Sub style={{ fontWeight: '700' }}>Új cikktörzs-kód a listába</Sub>
+            <Input label="Kód *" value={newCode} onChangeText={setNewCode} placeholder="pl. 009S" autoCapitalize="none" />
+            <Input label="Megnevezés *" value={newCodeName} onChangeText={setNewCodeName} placeholder="pl. Festés" />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+              {(['S', 'A'] as const).map((g) => (
+                <Pressable key={g} onPress={() => setNewCodeGroup(g)} style={chip(newCodeGroup === g, C.primary)}>
+                  <Text style={{ fontWeight: '700', fontSize: 13, color: newCodeGroup === g ? '#fff' : C.text }}>{newCodeGroup === g ? '✓ ' : ''}{ITEM_GROUP_LABEL[g]}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Btn title="Hozzáadás a listához" small onPress={addItemCode} />
           </View>
         ) : null}
         <Picker label="Helyszín (építkezés) *" items={sites} selectedId={site} getId={(s) => s.id}

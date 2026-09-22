@@ -335,7 +335,24 @@ export interface WorkerTask extends BaseRow {
   /** határidő; lejárta után a partnerek és a munkavállaló riasztást kapnak */
   due_date: string | null;
   overdue_notified_at: string | null;
+  /** cikktörzs-kód (item_codes) */
+  item_code_id?: string | null;
 }
+
+/** Cikktörzs-kód (pl. 001S Épület Elektromosság); S = kivitelezés/szolgáltatás/karbantartás, A = anyagbeszerzés */
+export interface ItemCode {
+  id: UUID;
+  code: string;
+  name: string;
+  group: 'S' | 'A';
+  position: number;
+  created_by: UUID | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+export const ITEM_GROUP_LABEL: Record<ItemCode['group'], string> = { S: 'Kivitelezés / Szolgáltatás / Karbantartás', A: 'Anyagbeszerzés' };
+export const itemCodeLabel = (c: ItemCode) => `${c.code} ${c.name}`;
 
 /** Részfeladat (pipálható lépés); kötelező fotó esetén csak fotóval pipálható */
 export interface TaskSubtask {
@@ -500,6 +517,7 @@ export const SYNC_TABLES = [
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
+  'item_codes',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];
