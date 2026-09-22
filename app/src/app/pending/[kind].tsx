@@ -89,7 +89,7 @@ function PendingScreenInner() {
         const netRate = Math.round(Number(a.applied_rate) * keep);
         const netCallout = Math.round(Number(a.callout_fee ?? 0) * keep);
         detail = (contractor ? `${w?.name ?? '?'} · ` : '') + (a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(netRate)}`
-          : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
+          : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj a nap első helyszínén' : Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
           : 'projektdíj');
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
         if (netCallout > 0) detail += ` · 🚗 kiszállás ${ft(netCallout)}`;

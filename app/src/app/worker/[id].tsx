@@ -341,7 +341,7 @@ function WorkerDetailInner() {
           <View key={a.id} style={{ paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
-                {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
+                {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? ' · napi díj máshol elszámolva' : Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
                 {a.source === 'session' ? ' · ⏱' : a.source === 'task' ? ' · 💬' : ''}
                 {(() => {
                   // kiszállás: a munkavállalónak járó (közvetítővel csökkentett) rész — benne van a sor összegében

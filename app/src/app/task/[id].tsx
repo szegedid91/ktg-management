@@ -1016,7 +1016,7 @@ Biztosan leveszed?`, 'Levétel', true);
                 return (
                   <React.Fragment key={a.id}>
                     <KV
-                      k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Math.round(Number(a.applied_rate) * keep))}` : a.pay_basis === 'daily' ? 'napi díj' : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${callout > 0 ? ` · 🚗 ${ft(callout)}` : ''}${a.paid_at ? ' ✓' : ''}`}
+                      k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Math.round(Number(a.applied_rate) * keep))}` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${callout > 0 ? ` · 🚗 ${ft(callout)}` : ''}${a.paid_at ? ' ✓' : ''}`}
                       v={ft(total - comm)} />
                     {comm > 0 ? <KV k={`   ↳ közvetítő része${a.commission_paid_at ? ' ✓' : ''}`} v={ft(comm)} /> : null}
                   </React.Fragment>
