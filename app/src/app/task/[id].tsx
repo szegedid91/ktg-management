@@ -343,6 +343,14 @@ Biztosan leveszed?`, 'Levétel', true);
     if (asg && !asg.acknowledged_at) updateRow('task_assignees', asg.id, { acknowledged_at: nowISO() });
     notify('Munkaidő rögzítve ⏱', `${workerName(wid)} · ${hd(retroDate)} ${retroStart}–${retroEnd}. A bér automatikusan képződik (megkezdett órák).`);
   };
+  // nem sikerült feladat vezetői lezárása: nem tudták megoldani — a munkavállalónál eltűnik
+  const closeFailed = async () => {
+    if (!await confirmDialog('Lezárás', 'A feladat „nem sikerült” állapotban lezárul: a munkavállaló már nem látja és nem folytathatja. Később újranyitható. Rendben?', 'Lezárás', true)) return;
+    sessions.filter((x) => !x.ended_at).forEach((x) => updateRow('work_sessions', x.id, { ended_at: nowISO() }));
+    updateRow('worker_tasks', task.id, { closed_at: nowISO() });
+    notify('Lezárva ⛔', 'A feladat nem sikerültként lezárva.');
+  };
+
   const markDoneByPartner = async () => {
     if (assignees.length === 0 && !await confirmDialog('Nincs kiosztva', 'A feladat senkihez sincs rendelve. Így is késznek jelölöd?', 'Kész')) return;
     if (assignees.length > 0 && !await confirmDialog('Készre állítás', `A feladat késznek lesz jelölve (${assignees.map((x) => workerName(x.worker_id)).join(', ')}). Rendben?`, 'Kész')) return;
@@ -792,7 +800,8 @@ Biztosan leveszed?`, 'Levétel', true);
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {active ? <KV k="Határidő" v={task.due_date ? hd(task.due_date) : 'nincs'} /> : null}
         <KV k="Kiadta" v={`${creator} · ${hdt(task.created_at)}`} />
-        {task.done_at ? <KV k={task.status === 'failed' ? '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)' : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
+        {task.done_at ? <KV k={task.status === 'failed' ? (task.closed_at ? '⛔ Nem sikerült — lezárva' : '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)') : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
+        {task.closed_at ? <KV k="Lezárva (nem tudták megoldani)" v={hdt(task.closed_at)} /> : null}
         {active && !edit ? (
           <Btn title="✏️ Szerkesztés" kind="ghost" small
             onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null, sos: task.priority > 0, due: task.due_date ?? '', item_code_id: task.item_code_id ?? null })} />
@@ -819,6 +828,18 @@ Biztosan leveszed?`, 'Levétel', true);
       {partnerEdit ? (
         <Card style={{ borderColor: active ? C.success : C.border, gap: S.sm }}>
           {active ? <Btn title="✔ Feladat lezárása — kész" onPress={() => void markDoneByPartner()} /> : null}
+          {task.status === 'failed' && !task.closed_at ? (
+            <View style={{ gap: S.sm }}>
+              <Sub>A munkavállaló nem sikerültre jelentette; nála nyitva marad, folytathatja. Döntsd el: mégis kész, vagy lezárod, mert nem tudták megoldani.</Sub>
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 1 }}><Btn title="✔ Mégis kész" onPress={() => void markDoneByPartner()} /></View>
+                <View style={{ flex: 1 }}><Btn title="⛔ Lezárás — nem sikerült" kind="danger" onPress={() => void closeFailed()} /></View>
+              </View>
+            </View>
+          ) : null}
+          {task.status === 'failed' && task.closed_at ? (
+            <Btn title="↩ Újranyitás a munkavállalónak" kind="ghost" small onPress={() => { updateRow('worker_tasks', task.id, { closed_at: null }); notify('Újranyitva', 'A munkavállaló újra látja és folytathatja a feladatot.'); }} />
+          ) : null}
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <View style={{ flex: 1 }}><Btn title="⏱ Munkaidő" kind="secondary" small onPress={() => { setRetroOpen(true); setOpenSig((x) => ({ ...x, time: x.time + 1 })); }} /></View>
             <View style={{ flex: 1 }}><Btn title="+ Anyag" kind="secondary" small onPress={() => { setMatOpen(true); setOpenSig((x) => ({ ...x, mat: x.mat + 1 })); }} /></View>

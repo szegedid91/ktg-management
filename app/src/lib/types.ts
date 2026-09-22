@@ -337,6 +337,8 @@ export interface WorkerTask extends BaseRow {
   overdue_notified_at: string | null;
   /** cikktörzs-kód (item_codes) */
   item_code_id?: string | null;
+  /** nem sikerült feladat vezetői lezárása („nem tudták megoldani”) — utána a munkavállaló már nem látja */
+  closed_at?: string | null;
 }
 
 /** Cikktörzs-kód (pl. 001S Épület Elektromosság); S = kivitelezés/szolgáltatás/karbantartás, A = anyagbeszerzés */

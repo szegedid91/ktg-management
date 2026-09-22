@@ -69,7 +69,7 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
         <Text style={{ fontSize: 11, color: quote ? C.primary : color, fontWeight: '700' }} numberOfLines={1}>{status}</Text>
       </View>
       <Text style={{ fontSize: 12, color: C.sub }} numberOfLines={1}>
-        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')} · {hd(task.created_at.slice(0, 10))}{task.done_at ? ` · ${task.status === 'failed' ? '⚠️ nem sikerült' : '✔ kész'} ${hd(task.done_at.slice(0, 10))}` : ''}
+        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')} · {hd(task.created_at.slice(0, 10))}{task.done_at ? ` · ${task.status === 'failed' ? (task.closed_at ? '⛔ nem sikerült · lezárva' : '⚠️ nem sikerült · nyitva') : '✔ kész'} ${hd(task.done_at.slice(0, 10))}` : ''}
         {matCost > 0 ? ` · 📦 ${ft(matCost)}${unpriced ? ` (${unpriced} beárazandó)` : ''}` : ''}
       </Text>
     </Pressable>

@@ -11,7 +11,7 @@ import { confirmDialog } from '../lib/dialogs';
 import {
   Site, Attendance, Profile, WorkerTask, TaskAssignee, WorkSession, Worker, TaskQuote,
 } from '../lib/types';
-import { isActiveTask, wname } from '../lib/tasks';
+import { isActiveTask, isFailedOpen, wname } from '../lib/tasks';
 import { Todo } from '../components/TodoTile';
 import { WorkerHome } from '../components/WorkerHome';
 import { SyncBanner } from '../components/SyncBanner';
@@ -98,7 +98,8 @@ function DashboardInner() {
   const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
   const submittedQuotes = quotes.filter((q) => q.status === 'submitted' && activeTasks.some((t) => t.id === q.task_id));
   const quoteTasks = activeTasks.filter((t) => submittedQuotes.some((q) => q.task_id === t.id));
-  const failedRecent = tasks.filter((t) => t.status === 'failed' && (t.done_at ?? t.updated_at) >= new Date(Date.now() - 14 * 864e5).toISOString());
+  // nem sikerültre jelentett feladatok, amíg a vezető el nem dönti: kész vagy lezárás (nem tudták megoldani)
+  const failedOpen = tasks.filter(isFailedOpen);
   const runningCount = activeTasks.filter((t) => runningTaskIds.has(t.id)).length;
   const pendingWorkers = workers.filter((w) => !w.approved_at);
   const overdueTasks = activeTasks.filter((t) => t.due_date && t.due_date < today);
@@ -122,8 +123,8 @@ function DashboardInner() {
       detail: pendingPrio ? `ebből ${pendingPrio} SOS 🆘` : 'még egyik sincs elfogadva', color: '#B7791F', href: '/tasks?filter=assigned' } : null,
     quoteTasks.length ? { key: 'quote', icon: '💬', title: 'Ajánlat vár elfogadásra', count: quoteTasks.length,
       detail: `${submittedQuotes.length} ajánlat érkezett — nézd meg és dönts`, color: C.primary, href: '/tasks?filter=quote' } : null,
-    failedRecent.length ? { key: 'failed', icon: '⚠️', title: 'Nem sikerült feladat (14 nap)', count: failedRecent.length,
-      detail: 'nézd meg az indoklást és a fotókat', color: C.danger, href: '/tasks?filter=failed' } : null,
+    failedOpen.length ? { key: 'failed', icon: '⚠️', title: 'Nem sikerültre jelentett feladat', count: failedOpen.length,
+      detail: 'a munkavállalónál nyitva marad — nézd meg az indoklást, majd jelöld késznek vagy zárd le', color: C.danger, href: '/tasks?filter=failed' } : null,
     runningCount ? { key: 'running', icon: '●', title: 'Épp folyik a munka', count: runningCount,
       detail: 'feladaton indított munkaidő', color: C.success, href: '/tasks?filter=running' } : null,
   ].filter(Boolean) as { key: string; icon: string; title: string; count: number; detail: string; color: string; href: string }[];

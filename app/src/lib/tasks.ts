@@ -26,7 +26,12 @@ export function isActiveTask(t: WorkerTask): boolean {
  *  folytatható és készre jelenthető (pl. aznap nem volt eszköz); csak a kész és
  *  a visszavont tűnik el neki. */
 export function isOpenForWorker(t: WorkerTask): boolean {
-  return isActiveTask(t) || t.status === 'failed';
+  return isActiveTask(t) || (t.status === 'failed' && !t.closed_at);
+}
+
+/** Nem sikerültre jelentett, még el nem döntött feladat: a vezető teendője (kész / lezárás) */
+export function isFailedOpen(t: WorkerTask): boolean {
+  return t.status === 'failed' && !t.closed_at;
 }
 
 /** Kifizetetlen bér-sor, amiben a munkavállalónak tényleg jár pénz

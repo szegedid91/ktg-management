@@ -17,7 +17,7 @@ const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { time
 
 export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknown, s?: number) => Response) {
   let tq = supabase.from('worker_tasks')
-    .select('id, code, title, status, site_id, created_at, done_at, quote_amount, quote_accepted_at, item_code_id, item_codes(code, name)')
+    .select('id, code, title, status, site_id, created_at, done_at, closed_at, quote_amount, quote_accepted_at, item_code_id, item_codes(code, name)')
     .is('deleted_at', null).order('created_at');
   if (f.taskId) tq = tq.eq('id', f.taskId);
   if (f.siteId) tq = tq.eq('site_id', f.siteId);
@@ -81,7 +81,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     if (wids.length === 0) wids.push(null);
     const base = {
       taskId: t.id, site: s.name, code: t.code ?? '', item: t.item_codes ? `${t.item_codes.code} ${t.item_codes.name}` : '', title: t.title,
-      status: STATUS[t.status] ?? t.status, created: hd(t.created_at), done: hd(t.done_at), siteId: t.site_id ?? '',
+      status: t.status === 'failed' ? (t.closed_at ? 'nem sikerült (lezárva)' : 'nem sikerült (nyitva)') : (STATUS[t.status] ?? t.status), created: hd(t.created_at), done: hd(t.done_at), siteId: t.site_id ?? '',
     };
     let taskCost = 0;
     const out: Row[] = wids.map((wid, i) => {
