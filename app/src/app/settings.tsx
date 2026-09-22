@@ -7,7 +7,7 @@ import { updateRow, callRpc, getCurrentUserId, softDeleteRow, insertRow, fetchVi
 import { syncNow } from '../lib/sync';
 import { supabase } from '../lib/supabase';
 import { parseAmount, hd } from '../lib/format';
-import { AppSettings, Profile, ExpenseCategory, ShareChangeRequest } from '../lib/types';
+import { AppSettings, Profile, ExpenseCategory, ShareChangeRequest, ItemCode, ITEM_GROUP_LABEL } from '../lib/types';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { PercentSlider } from '../components/PercentSlider';
 import { PartnerAccountCard } from '../components/PartnerAccountCard';
@@ -47,6 +47,11 @@ function SettingsInner() {
   const settings = useTable<AppSettings>('app_settings')[0];
   const profiles = useTable<Profile>('profiles');
   const categories = useTable<ExpenseCategory>('expense_categories');
+  // cikktörzs-kódok (új feladat legördülője): lista, szerkesztés, törlés, felvétel
+  const itemCodes = useTable<ItemCode>('item_codes').sort((a, b) => a.position - b.position || a.code.localeCompare(b.code));
+  const [icEdit, setIcEdit] = useState<{ id: string; code: string; name: string; group: ItemCode['group'] } | null>(null);
+  const [icNew, setIcNew] = useState({ code: '', name: '', group: 'S' as ItemCode['group'] });
+  const icDup = (code: string, exceptId?: string) => itemCodes.some((c) => c.id !== exceptId && c.code.toUpperCase() === code.trim().toUpperCase());
   const me = getCurrentUserId();
   const myProfile = profiles.find((p) => p.id === me);
   // az admin nem üzleti partner: a részesedés-kártyán nem szerepel;
@@ -334,6 +339,61 @@ function SettingsInner() {
           </View>
         </Section>
       ) : null}
+
+      <Section icon="🔖" title="Cikktörzs-kódok" summary={`${itemCodes.length} db`} open={open === 'codes'} onToggle={() => tog('codes')}>
+        <Sub>Az új feladat űrlapjának legördülője. S = kivitelezés / szolgáltatás / karbantartás, A = anyagbeszerzés. A törölt kód a korábbi feladatokon megmarad.</Sub>
+        {(['S', 'A'] as const).map((g) => (
+          <View key={g} style={{ gap: 4 }}>
+            <Body style={{ fontWeight: '800' }}>{ITEM_GROUP_LABEL[g]}</Body>
+            {itemCodes.filter((c) => c.group === g).map((c) => icEdit?.id === c.id ? (
+              <View key={c.id} style={{ gap: S.sm, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
+                <View style={{ flexDirection: 'row', gap: S.sm }}>
+                  <View style={{ width: 110 }}><Input label="Kód" value={icEdit.code} onChangeText={(v) => setIcEdit({ ...icEdit, code: v })} autoCapitalize="none" /></View>
+                  <View style={{ flex: 1 }}><Input label="Megnevezés" value={icEdit.name} onChangeText={(v) => setIcEdit({ ...icEdit, name: v })} /></View>
+                </View>
+                <Segmented value={icEdit.group} onChange={(v) => setIcEdit({ ...icEdit, group: v as ItemCode['group'] })}
+                  options={[{ value: 'S', label: 'Kivitelezés' }, { value: 'A', label: 'Anyagbeszerzés' }]} />
+                <View style={{ flexDirection: 'row', gap: S.sm }}>
+                  <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setIcEdit(null)} /></View>
+                  <View style={{ flex: 1 }}><Btn title="Mentés" small onPress={() => {
+                    const code = icEdit.code.trim().toUpperCase(), name = icEdit.name.trim();
+                    if (!code || !name) { notify('Cikktörzs-kód', 'A kód és a megnevezés is kell.'); return; }
+                    if (icDup(code, c.id)) { notify('Cikktörzs-kód', 'Ez a kód már szerepel a listában.'); return; }
+                    updateRow('item_codes', c.id, { code, name, group: icEdit.group });
+                    setIcEdit(null);
+                  }} /></View>
+                </View>
+              </View>
+            ) : (
+              <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
+                <Text style={{ width: 52, color: C.text, fontWeight: '800', fontSize: 13 }}>{c.code}</Text>
+                <Text style={{ flex: 1, color: C.text, fontSize: 14 }}>{c.name}</Text>
+                <Btn title="✏️" kind="ghost" small onPress={() => setIcEdit({ id: c.id, code: c.code, name: c.name, group: c.group })} />
+                <Btn title="✕" kind="ghost" small onPress={() => {
+                  void confirmDialog('Kód törlése', `${c.code} ${c.name}\n\nA korábbi feladatokon megmarad, csak új feladathoz nem lesz választható.`, 'Törlés', true)
+                    .then((ok) => { if (ok) softDeleteRow('item_codes', c.id); });
+                }} />
+              </View>
+            ))}
+          </View>
+        ))}
+        <View style={{ gap: S.sm, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
+          <Sub style={{ fontWeight: '700' }}>Új kód</Sub>
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <View style={{ width: 110 }}><Input label="Kód" value={icNew.code} onChangeText={(v) => setIcNew({ ...icNew, code: v })} placeholder="pl. 009S" autoCapitalize="none" /></View>
+            <View style={{ flex: 1 }}><Input label="Megnevezés" value={icNew.name} onChangeText={(v) => setIcNew({ ...icNew, name: v })} placeholder="pl. Festés" /></View>
+          </View>
+          <Segmented value={icNew.group} onChange={(v) => setIcNew({ ...icNew, group: v as ItemCode['group'] })}
+            options={[{ value: 'S', label: 'Kivitelezés' }, { value: 'A', label: 'Anyagbeszerzés' }]} />
+          <Btn title="Felvesz" small onPress={() => {
+            const code = icNew.code.trim().toUpperCase(), name = icNew.name.trim();
+            if (!code || !name) { notify('Cikktörzs-kód', 'A kód és a megnevezés is kell.'); return; }
+            if (icDup(code)) { notify('Cikktörzs-kód', 'Ez a kód már szerepel a listában.'); return; }
+            insertRow('item_codes', { code, name, group: icNew.group, position: 100, created_by: getCurrentUserId() });
+            setIcNew({ code: '', name: '', group: icNew.group });
+          }} />
+        </View>
+      </Section>
 
       <Section icon="🏷️" title="Költség-kategóriák" summary={`${categories.length} db`} open={open === 'cats'} onToggle={() => tog('cats')}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
