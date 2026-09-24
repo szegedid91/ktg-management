@@ -10,7 +10,7 @@ import { useTable, useOnlineView, useIsWorker } from '../lib/hooks';
 import { fetchView } from '../lib/repo';
 import { hdt, hd, ft, todayISO, addDaysISO } from '../lib/format';
 import {
-  AuditLogRow, Profile, Site, Worker, ExternalPerson, ExpenseCategory, Equipment,
+  AuditLogRow, Profile, Site, Worker, ExternalPerson, ExpenseCategory, Equipment, WorkerTask, ItemCode, itemCodeLabel,
 } from '../lib/types';
 
 const TABLE_LABELS: Record<string, string> = {
@@ -19,7 +19,7 @@ const TABLE_LABELS: Record<string, string> = {
   comments: 'Komment', invoices: 'Számla', settlements: 'Elszámolás',
   equipment: 'Eszköz', equipment_moves: 'Eszközmozgatás', profiles: 'Profil',
   app_settings: 'Beállítások', expense_categories: 'Kategória',
-  worker_tasks: 'Feladat', task_materials: 'Anyagköltség', work_sessions: 'Munkaidő',
+  worker_tasks: 'Feladat', task_materials: 'Anyagköltség', work_sessions: 'Munkaidő', task_photos: 'Munkafotó',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -49,7 +49,18 @@ const FIELD_LABELS: Record<string, string> = {
   default_vat_rate: 'Alapértelmezett ÁFA (%)',
   notify_comments: 'Komment értesítés', notify_big_expense: 'Nagy költés riasztás',
   notify_weekly: 'Heti összefoglaló', notify_overdue: 'Lejárat értesítés',
+  // feladatok, munkaidő, anyagköltség, munkafotó
+  task_id: 'Feladat', code: 'Feladatkód', details: 'Részletek', priority: 'Sürgős (SOS)', item_code_id: 'Cikktörzs-kód',
+  acknowledged_at: 'Elfogadva', done_at: 'Készre / nem sikerültre jelentve', fail_reason: 'Nem sikerült — indok',
+  fail_photo_paths: 'Nem sikerült — fotók', photo_paths: 'Fotók', started_at: 'Munka kezdete', ended_at: 'Munka vége',
+  quote_requested: 'Ajánlatkérés', quote_amount: 'Ajánlat összege', quote_note: 'Ajánlat megjegyzése',
+  quote_submitted_at: 'Ajánlat beküldve', quote_accepted_at: 'Ajánlat elfogadva', quote_accepted_by: 'Ajánlatot elfogadta',
+  kind: 'Fotó típusa', source: 'Forrás', lat: 'Térkép (szélesség)', lng: 'Térkép (hosszúság)',
 };
+/** feladatnál a határidő nem fizetési határidő */
+const TASK_FIELD_LABELS: Record<string, string> = { due_date: 'Határidő' };
+const TASK_STATUS: Record<string, string> = { assigned: 'kiadva', acknowledged: 'elfogadva — folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva' };
+const TIMESTAMP_FIELDS = new Set(['acknowledged_at', 'done_at', 'started_at', 'ended_at', 'quote_submitted_at', 'quote_accepted_at', 'moved_at']);
 
 const MONEY_FIELDS = new Set([
   'net_amount', 'gross_amount', 'vat_amount', 'amount', 'commission_amount', 'applied_rate',
@@ -65,6 +76,7 @@ const SKIP_FIELDS = new Set([
   'paid_at', 'paid_by', 'commission_paid_at', 'commission_paid_by',
   'paid_marked_by', 'closed_at', 'closed_by', 'invoiced_at',
   'push_token', 'storage_path', 'photo_path', 'bank_account_enc',
+  'overdue_notified_at', 'reminded_at', 'path', 'fail_photo_path',
 ]);
 
 const BASIS_LABELS: Record<string, string> = {
@@ -97,6 +109,8 @@ function AuditInner() {
   const externals = useTable<ExternalPerson>('external_people', true);
   const categories = useTable<ExpenseCategory>('expense_categories', true);
   const equipment = useTable<Equipment>('equipment', true);
+  const tasks = useTable<WorkerTask>('worker_tasks', true);
+  const itemCodes = useTable<ItemCode>('item_codes', true);
 
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string | null>(null);
@@ -159,10 +173,22 @@ function AuditInner() {
   const extName = (id: unknown) => externals.find((e) => e.id === id)?.name ?? 'ismeretlen külsős';
   const catName = (id: unknown) => categories.find((c) => c.id === id)?.name ?? 'ismeretlen kategória';
   const eqName = (id: unknown) => equipment.find((e) => e.id === id)?.name ?? 'ismeretlen eszköz';
+  const taskName = (id: unknown) => { const t = tasks.find((x) => x.id === id); return t ? `${t.code ? `${t.code} · ` : ''}${t.title}` : 'ismeretlen feladat'; };
+  const itemName = (id: unknown) => { const c = itemCodes.find((x) => x.id === id); return c ? itemCodeLabel(c) : 'ismeretlen kód'; };
 
-  const fmtVal = (field: string, v: unknown): string => {
+  const fmtVal = (field: string, v: unknown, table = ''): string => {
     if (v === null || v === undefined || v === '') return 'üres';
     if (typeof v === 'boolean') return v ? 'igen' : 'nem';
+    if (TIMESTAMP_FIELDS.has(field)) return hdt(String(v));
+    if (field === 'task_id') return taskName(v);
+    if (field === 'item_code_id') return itemName(v);
+    if (field === 'quote_accepted_by') return userName(v);
+    if (field === 'priority') return Number(v) > 0 ? 'igen' : 'nem';
+    if (field === 'kind') return v === 'before' ? 'előtte' : v === 'after' ? 'utána' : String(v);
+    if (field === 'source') return v === 'session' ? 'munkaidőből' : v === 'manual' ? 'kézi' : String(v);
+    if (field === 'status' && table === 'worker_tasks') return TASK_STATUS[String(v)] ?? String(v);
+    if (field === 'quote_amount') return ft(Number(v));
+    if (field === 'due_date') return hd(String(v));
     if (MONEY_FIELDS.has(field)) return ft(Number(v));
     if (DATE_FIELDS.has(field)) return hd(String(v));
     if (field === 'site_id') return siteName(v);
@@ -203,6 +229,13 @@ function AuditInner() {
       case 'equipment_moves':
         return `${eqName(d.equipment_id)} → ${d.site_id ? siteName(d.site_id) : d.location_label ?? '?'}`;
       case 'expense_photos': return 'számlafotó';
+      case 'worker_tasks': return `${d.code ? `${d.code} · ` : ''}${d.title ?? ''}${d.site_id ? ` · ${siteName(d.site_id)}` : ''}`;
+      case 'work_sessions':
+        return `${workerNm(d.worker_id)} — ${d.started_at ? hdt(String(d.started_at)) : ''}${d.ended_at ? ` → ${hdt(String(d.ended_at))}` : ' (fut)'} · ${siteName(d.site_id)}${d.task_id ? ` · ${taskName(d.task_id)}` : ''}`;
+      case 'task_materials':
+        return `${ft(Number(d.amount ?? 0))}${d.note ? ` — ${d.note}` : ''} · ${taskName(d.task_id)}${d.worker_id ? ` · ${workerNm(d.worker_id)}` : ''}`;
+      case 'task_photos':
+        return `${d.kind === 'before' ? 'előtte' : 'utána'} fotó · ${taskName(d.task_id)}${d.worker_id ? ` · ${workerNm(d.worker_id)}` : ''}`;
       default: return '';
     }
   };
@@ -229,9 +262,30 @@ function AuditInner() {
         if (o.status === 'active' && n.status === 'closed') return 'Építkezés lezárva';
         if (o.status === 'closed' && n.status === 'active') return 'Építkezés újranyitva';
       }
+      if (r.table_name === 'worker_tasks') {
+        if (!o.closed_at && n.closed_at) return 'Nem sikerült feladat lezárva (nem tudták megoldani)';
+        if (o.closed_at && !n.closed_at) return 'Nem sikerült feladat újranyitva';
+        if (o.status !== n.status) {
+          if (n.status === 'acknowledged') return 'Feladat elfogadva';
+          if (n.status === 'done') return 'Feladat készre jelentve';
+          if (n.status === 'failed') return 'Feladat nem sikerültre jelentve';
+          if (n.status === 'cancelled') return 'Feladat visszavonva';
+          if (n.status === 'assigned') return 'Feladat újra kiadva';
+        }
+        if (n.status === 'failed' && o.fail_reason !== n.fail_reason) return 'Feladat újra nem sikerültre jelentve';
+        if (!o.quote_accepted_at && n.quote_accepted_at) return 'Ajánlat elfogadva';
+      }
+      if (r.table_name === 'work_sessions') {
+        if (!o.ended_at && n.ended_at) return 'Munkaidő befejezve';
+        if (o.started_at !== n.started_at || o.ended_at !== n.ended_at) return 'Munkaidő javítva';
+      }
       return `${label} módosítva`;
     }
     if (r.action === 'DELETE') return `${label} végleg törölve`;
+    if (r.table_name === 'work_sessions') return n.ended_at ? 'Munkaidő rögzítve (utólag)' : 'Munkaidő elkezdve';
+    if (r.table_name === 'worker_tasks') return 'Feladat kiadva';
+    if (r.table_name === 'task_materials') return 'Anyagköltség rögzítve';
+    if (r.table_name === 'task_photos') return 'Munkafotó feltöltve';
     return `${label} létrehozva`;
   };
 
@@ -244,8 +298,8 @@ function AuditInner() {
       const oldV = (r.old_data as any)[key];
       const newV = (r.new_data as any)[key];
       if (JSON.stringify(oldV) === JSON.stringify(newV)) continue;
-      const label = FIELD_LABELS[key] ?? key;
-      out.push(`${label}: ${fmtVal(key, oldV)} → ${fmtVal(key, newV)}`);
+      const label = (r.table_name === 'worker_tasks' ? TASK_FIELD_LABELS[key] : undefined) ?? FIELD_LABELS[key] ?? key;
+      out.push(`${label}: ${fmtVal(key, oldV, r.table_name)} → ${fmtVal(key, newV, r.table_name)}`);
     }
     return out.slice(0, 8);
   };
@@ -268,6 +322,7 @@ function AuditInner() {
       case 'expense_photos': return d.expense_id ? `/expense/${d.expense_id}` : null;
       case 'worker_tasks': return `/task/${r.record_id}`;
       case 'task_materials':
+      case 'task_photos':
       case 'work_sessions': return d.task_id ? `/task/${d.task_id}` : d.worker_id ? `/worker/${d.worker_id}` : null;
       case 'comments': {
         const map: Record<string, string> = {

@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 import { Sub, Input, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
-import { updateRow } from '../lib/repo';
+import { updateRow, softDeleteRow } from '../lib/repo';
 import { hdt } from '../lib/format';
 import { fmtHours, sessionHours } from '../lib/tasks';
 import { notify, confirmDialog } from '../lib/dialogs';
@@ -57,6 +57,15 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
   // telefon offline volt, később szinkronizált), ezt jelezzük: a bérhez a
   // gombnyomás ideje számít, de látszik, mikor lett ténylegesen rögzítve
   const eventAt = session.ended_at ?? session.started_at;
+  // téves / duplán rögzített menet törlése — a bér a nap többi menetéből újraszámolódik
+  const remove = async () => {
+    const ok = await confirmDialog('Munkaidő törlése',
+      `${label ? `${label}: ` : ''}${hdt(session.started_at)} → ${session.ended_at ? hdt(session.ended_at) : 'fut'} · ${fmtHours(sessionHours(session))}\n\nA menet törlődik, a nap bére a megmaradt munkaidőből számolódik újra (kifizetett nap nem változik).`,
+      'Törlés', true);
+    if (!ok) return;
+    softDeleteRow('work_sessions', session.id);
+    notify('Törölve 🗑️', 'A munkaidő-menet törölve, a bér újraszámolódott.');
+  };
   const syncLagMin = session.updated_at ? Math.round((new Date(session.updated_at).getTime() - new Date(eventAt).getTime()) / 60000) : 0;
   const lateSync = syncLagMin >= 5;
 
@@ -69,6 +78,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
         </Sub>
         {editable && !open ? <Btn title={running ? 'Lezárás' : '✏️'} kind="ghost" small onPress={running ? () => void closeNow() : begin} /> : null}
         {editable && !open && running ? <Btn title="✏️" kind="ghost" small onPress={begin} /> : null}
+        {editable && !open ? <Btn title="🗑️" kind="ghost" small onPress={() => void remove()} /> : null}
       </View>
       {open ? (
         <View style={{ gap: S.sm, backgroundColor: C.bg, borderRadius: 8, padding: S.sm }}>
