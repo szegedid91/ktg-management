@@ -14,7 +14,7 @@ import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { Site, Worker, TaskTemplate, Profile, WorkSession, Attendance, TaskMaterial, TaskAssignee, WorkerTask, ItemCode, ITEM_GROUP_LABEL, itemCodeLabel } from '../../lib/types';
 import { addDaysISO, todayISO, hd, ft } from '../../lib/format';
-import { wname, sessionHours, fmtHours } from '../../lib/tasks';
+import { wname, sessionHours, fmtHours, taskWageShares } from '../../lib/tasks';
 
 /** Összecsukható szakasz ikonnal és rövid összegzéssel. */
 function Sec({ icon, title, summary, open, onToggle, children }: {
@@ -48,7 +48,8 @@ export default function NewTask() {
 
   const [title, setTitle] = useState('');
   // hasonló korábbi (kész) feladatok: mennyibe került legutóbb
-  const doneTasks = useTable<WorkerTask>('worker_tasks').filter((t) => t.status === 'done');
+  const allTasksAll = useTable<WorkerTask>('worker_tasks');
+  const doneTasks = allTasksAll.filter((t) => t.status === 'done');
   const allSessions = useTable<WorkSession>('work_sessions');
   const allAttendance = useTable<Attendance>('attendance');
   const allMaterials = useTable<TaskMaterial>('task_materials');
@@ -68,13 +69,13 @@ export default function NewTask() {
       .slice(0, 3)
       .map(({ t }) => {
         const hours = allSessions.filter((s) => s.task_id === t.id && s.ended_at).reduce((sum, s) => sum + sessionHours(s), 0);
-        const wageRows = allAttendance.filter((a) => a.task_id === t.id).reduce((sum, a) => sum + Number(a.amount), 0);
+        const wageRows = taskWageShares(t.id, allAttendance, allSessions, allTasksAll).reduce((sum, x) => sum + x.amount, 0);
         const wage = t.quote_accepted_at && t.quote_amount != null ? Number(t.quote_amount) : wageRows;
         const mats = allMaterials.filter((m) => m.task_id === t.id).reduce((sum, m) => sum + Number(m.amount), 0);
         const names = allAssignees.filter((a) => a.task_id === t.id).map((a) => wname(allWorkers.find((w) => w.id === a.worker_id))).join(', ');
         return { t, hours, wage, mats, names };
       });
-  }, [title, doneTasks, allSessions, allAttendance, allMaterials, allAssignees, allWorkers]);
+  }, [title, doneTasks, allTasksAll, allSessions, allAttendance, allMaterials, allAssignees, allWorkers]);
   const [code, setCode] = useState('');
   // cikktörzs-kód: legördülő, a listából vagy új kóddal bővítve
   const itemCodes = useTable<ItemCode>('item_codes').sort((a, b) => a.position - b.position || a.code.localeCompare(b.code));

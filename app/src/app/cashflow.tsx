@@ -11,7 +11,7 @@ import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { useAuth } from '../lib/auth';
 import { ft, hd, todayISO, addDaysISO, localDateISO } from '../lib/format';
-import { isActiveTask, unpaidWorkerPart, sessionHours, wname } from '../lib/tasks';
+import { isActiveTask, unpaidWorkerPart, sessionHours, wname, taskWageShares } from '../lib/tasks';
 import {
   Attendance, Invoice, Expense, WorkerTask, TaskAssignee, WorkSession, Worker, AppSettings, Profile,
 } from '../lib/types';
@@ -119,7 +119,8 @@ export default function Cashflow() {
       const ack = assignees.filter((a) => a.task_id === t.id && (a.acknowledged_at || t.status === 'acknowledged'));
       if (ack.length === 0) continue;
       // amit ehhez a feladathoz már bérként lekönyveltünk, az fent (esedékes) szerepel
-      const booked = attendance.filter((a) => a.task_id === t.id).reduce((s, a) => s + Number(a.amount), 0);
+      const shares = taskWageShares(t.id, attendance, sessions, tasks);
+      const booked = shares.reduce((s, x) => s + x.amount, 0);
       if (t.quote_accepted_at && t.quote_amount != null) {
         const est = Math.max(0, Number(t.quote_amount) - booked);
         if (est > 0) { put(weeks[0], { kind: 'task', label: `${t.title} — elfogadott ajánlat`, amount: est }); projectedTasks++; }
@@ -134,7 +135,7 @@ export default function Cashflow() {
         const basis = w.default_pay_basis === 'daily' ? 'daily' : 'hourly';
         const raw = basis === 'daily' ? days * rateOf(w, 'daily') : hours * rateOf(w, 'hourly');
         // több munkavállalónál a lekönyvelt részt arányosan nem tudjuk szétosztani — csak a saját sorait vonjuk le
-        const ownBooked = attendance.filter((x) => x.task_id === t.id && x.worker_id === w.id).reduce((s, x) => s + Number(x.amount), 0);
+        const ownBooked = shares.filter((x) => x.row.worker_id === w.id).reduce((s, x) => s + x.amount, 0);
         const est = Math.max(0, Math.round(raw) - ownBooked);
         if (est > 0) { put(weeks[0], { kind: 'task', label: `${t.title} — ${wname(w)} (${basis === 'daily' ? `${days} nap` : `${hours.toFixed(1)} ó`})`, amount: est }); projectedTasks++; }
       }

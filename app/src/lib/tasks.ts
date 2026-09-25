@@ -2,7 +2,7 @@ import { localDateISO } from './format';
 // Feladat-számítások a lokális tükörből: munkaidő, bérköltség (idő- vagy
 // ajánlat-alapú), anyagköltség/továbbszámlázás, haszon.
 
-import { TaskMaterial, TaskMaterialPricing, TaskQuote, TaskStatus, Worker, WorkerTask, WorkSession, AppSettings } from './types';
+import { TaskMaterial, TaskMaterialPricing, TaskQuote, TaskStatus, Worker, WorkerTask, WorkSession, AppSettings, Attendance } from './types';
 
 /** Munkavállaló megjelenített neve: becenév, ha van. */
 export function wname(w: { name: string; nickname?: string | null } | undefined | null): string {
@@ -212,6 +212,39 @@ export function materialTotals(materials: TaskMaterial[], pricing: TaskMaterialP
   const unpriced = materials.filter((m) => !priceOf(m));
   const resale = priced.reduce((s, m) => s + Number(priceOf(m)!.resale_net), 0);
   return { cost, resale, unpriced, priced, priceOf };
+}
+
+/** A nap bér-sorának (munkavállaló × helyszín × nap) a feladatra eső része. A bér napra és
+ *  helyszínre egyben képződik; ha aznap ugyanott több feladaton is dolgozott (párhuzamos
+ *  feladatok), a sort a feladatokra fordított munkaidő arányában osztjuk el. Az elfogadott
+ *  ajánlatos feladat menetei nem számítanak (azt az ajánlat fizeti). A kézzel rögzített nap
+ *  teljes egészében a rajta megjelölt feladaté. */
+export type TaskWageShare = { row: Attendance; share: number; hours: number; amount: number; commission: number; callout: number };
+export function taskWageShares(taskId: string, attendance: Attendance[], sessions: WorkSession[], tasks: WorkerTask[]): TaskWageShare[] {
+  const quoted = new Set(tasks.filter((t) => t.quote_accepted_at).map((t) => t.id));
+  const closed = sessions.filter((s) => s.ended_at && !s.deleted_at);
+  const key = (w: string, site: string | null, day: string) => `${w}|${site ?? ''}|${day}`;
+  const dur = (s: WorkSession) => Math.max(0, new Date(s.ended_at!).getTime() - new Date(s.started_at).getTime());
+  // a feladat menetei által érintett napok
+  const days = new Set(closed.filter((s) => s.task_id === taskId).map((s) => key(s.worker_id, s.site_id, localDateISO(s.started_at))));
+  const out: TaskWageShare[] = [];
+  for (const a of attendance) {
+    if (a.deleted_at) continue;
+    const k = key(a.worker_id, a.site_id, a.work_date);
+    let share = 0;
+    if (a.source !== 'session') share = a.task_id === taskId ? 1 : 0;
+    else if (a.task_id === taskId || days.has(k)) {
+      const ds = closed.filter((s) => key(s.worker_id, s.site_id, localDateISO(s.started_at)) === k && !(s.task_id && quoted.has(s.task_id)));
+      const total = ds.reduce((x, s) => x + dur(s), 0);
+      const mine = ds.filter((s) => s.task_id === taskId).reduce((x, s) => x + dur(s), 0);
+      share = total > 0 ? mine / total : (a.task_id === taskId ? 1 : 0);
+    }
+    if (share <= 0) continue;
+    const r = (n: number) => Math.round(n * share);
+    out.push({ row: a, share, hours: Math.round(Number(a.hours ?? 0) * share * 100) / 100,
+      amount: r(Number(a.amount)), commission: r(Number(a.commission_amount ?? 0)), callout: r(Number(a.callout_fee ?? 0)) });
+  }
+  return out.sort((x, y) => x.row.work_date.localeCompare(y.row.work_date));
 }
 
 /** Haszon = kiszámlázott + továbbszámlázott anyag − bér − anyag beszerzési ár */

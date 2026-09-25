@@ -22,7 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { downloadExport } from '../../lib/exportfile';
 import { ItemCode, itemCodeLabel, TaskEvent } from '../../lib/types';
 import {
-  TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, isOpenForWorker, wname,
+  TASK_STATUS_LABEL, taskTiming, taskWageCost, materialTotals, taskProfit, fmtHours, isActiveTask, isOpenForWorker, wname, taskWageShares,
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
@@ -147,8 +147,10 @@ Biztosan leveszed?`, 'Levétel', true);
   const timing = useMemo(() => (task ? taskTiming(task, sessions, now) : null), [task, sessions, now]);
   // bérköltség: a ténylegesen könyvelt bér-sorok (munkaidőből / elfogadott
   // ajánlatból, a szerver számolja) + a még futó munkamenetek előnézete
-  const wageRows = useTable<Attendance>('attendance').filter((a) => a.task_id === id);
-  const wageBooked = useMemo(() => wageRows.reduce((s, a) => s + Number(a.amount), 0), [wageRows]);
+  // a nap bér-sorának a feladatra eső része (párhuzamos feladatoknál időarányosan)
+  const allAttendance = useTable<Attendance>('attendance');
+  const wageShares = useMemo(() => taskWageShares(id, allAttendance, allSessions, allTasks), [id, allAttendance, allSessions, allTasks]);
+  const wageBooked = useMemo(() => wageShares.reduce((s, x) => s + x.amount, 0), [wageShares]);
   const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions.filter((s) => !s.ended_at), appSettings, now) : null), [task, assigneeWorkers, sessions, appSettings, now]);
   const wageTotal = task?.quote_accepted_at && task.quote_amount != null ? Number(task.quote_amount) : wageBooked + (wage?.total ?? 0);
   const mat = useMemo(() => materialTotals(materials, pricing), [materials, pricing]);
@@ -1084,16 +1086,16 @@ Biztosan leveszed?`, 'Levétel', true);
             <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wageTotal)} strong />
           ) : (
             <>
-              {wageRows.map((a) => {
+              {wageShares.map(({ row: a, share, hours: hrs, amount: total, commission: comm, callout: calloutAll }) => {
                 // a munkavállaló sora a NEKI járó (közvetítővel csökkentett) díjat mutatja, a közvetítő
-                // része külön sorban áll — a kettő együtt a teljes bérköltség
-                const total = Number(a.amount); const comm = Number(a.commission_amount ?? 0);
+                // része külön sorban áll — a kettő együtt a teljes bérköltség; párhuzamos feladatoknál
+                // a nap bérének csak az erre a feladatra eső (időarányos) része
                 const keep = total > 0 ? (total - comm) / total : 1;
-                const callout = Math.round(Number(a.callout_fee ?? 0) * keep);
+                const callout = Math.round(calloutAll * keep);
                 return (
                   <React.Fragment key={a.id}>
                     <KV
-                      k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(Math.round(Number(a.applied_rate) * keep))}` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${callout > 0 ? ` · 🚗 ${ft(callout)}` : ''}${a.paid_at ? ' ✓' : ''}`}
+                      k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${a.pay_basis === 'hourly' ? `${hrs} ó × ${ft(Math.round(Number(a.applied_rate) * keep))}` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét'}${share < 1 ? ` · a nap ${Math.round(share * 100)}%-a` : ''}${callout > 0 ? ` · 🚗 ${ft(callout)}` : ''}${a.paid_at ? ' ✓' : ''}`}
                       v={ft(total - comm)} />
                     {comm > 0 ? <KV k={`   ↳ közvetítő része${a.commission_paid_at ? ' ✓' : ''}`} v={ft(comm)} /> : null}
                   </React.Fragment>
@@ -1102,7 +1104,8 @@ Biztosan leveszed?`, 'Levétel', true);
               {wage.parts.filter((p) => p.amount > 0).map((p) => (
                 <KV key={`run-${p.worker.id}`} k={`${wname(p.worker)} · épp fut (${fmtHours(p.hours)}, előnézet)`} v={`~${ft(p.amount)}`} />
               ))}
-              {wageRows.length === 0 && wage.total === 0 ? <Sub>Még nincs könyvelt bér — a munkaidő lezárásakor képződik.</Sub> : null}
+              {wageShares.length === 0 && wage.total === 0 ? <Sub>Még nincs könyvelt bér — a munkaidő lezárásakor képződik.</Sub> : null}
+              {wageShares.some((x) => x.share < 1) ? <Sub>Aznap ugyanott több feladaton is dolgozott: a nap bére a feladatokra fordított idő arányában oszlik meg.</Sub> : null}
               <KV k="Bérköltség eddig" v={ft(wageTotal)} strong />
             </>
           )}

@@ -25,16 +25,17 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   else if (f.status === 'failed') tq = tq.eq('status', 'failed');
   else if (f.status === 'open') tq = tq.in('status', ['assigned', 'acknowledged']);
   const [{ data: tasks, error }, { data: sites }, { data: workers }, { data: assignees }, { data: sessions },
-    { data: attendance }, { data: materials }, { data: pricing }, { data: finance }] = await Promise.all([
+    { data: attendance }, { data: materials }, { data: pricing }, { data: finance }, { data: quotedTasks }] = await Promise.all([
     tq,
     supabase.from('sites').select('id, name, address'),
     supabase.from('workers').select('id, name'),
     supabase.from('task_assignees').select('task_id, worker_id').is('deleted_at', null),
-    supabase.from('work_sessions').select('task_id, worker_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).not('task_id', 'is', null),
-    supabase.from('attendance').select('task_id, worker_id, work_date, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null).not('task_id', 'is', null),
+    supabase.from('work_sessions').select('task_id, worker_id, site_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null),
+    supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null),
     supabase.from('task_materials').select('id, task_id, worker_id, amount, note, created_at').is('deleted_at', null),
     supabase.from('task_material_pricing').select('material_id, resale_net').is('deleted_at', null),
     supabase.from('task_finance').select('task_id, invoice_net').is('deleted_at', null),
+    supabase.from('worker_tasks').select('id, quote_accepted_at').not('quote_accepted_at', 'is', null),
   ]);
   if (error) throw error;
 
@@ -55,7 +56,39 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     for (const r of rows ?? []) if (ids.has(r.task_id)) m.set(r.task_id, [...(m.get(r.task_id) ?? []), r]);
     return m;
   };
-  const assBy = by<any>(assignees), sesBy = by<any>(sessions), attBy = by<any>(attendance), matBy = by<any>(materials);
+  const assBy = by<any>(assignees), matBy = by<any>(materials);
+
+  // A nap bér-sora (munkavállaló × helyszín × nap) egyben képződik; ha aznap ugyanott több feladaton is
+  // dolgozott (párhuzamos feladatok), a feladatokra fordított munkaidő arányában osztjuk el — ugyanúgy,
+  // mint az app feladat oldala (lib/tasks.ts taskWageShares). Az elfogadott ajánlatos feladat menetei
+  // nem számítanak; a kézi nap teljes egészében a megjelölt feladaté.
+  type Share = { row: any; share: number; hours: number; amount: number; commission: number; callout: number };
+  const quoted = new Set((quotedTasks ?? []).map((t: any) => t.id));
+  const dayKey = (w: string, site: string | null, day: string) => `${w}|${site ?? ''}|${day}`;
+  const dur = (x: any) => Math.max(0, new Date(x.ended_at).getTime() - new Date(x.started_at).getTime());
+  const sesByDay = new Map<string, any[]>();
+  for (const x of sessions ?? []) { const k = dayKey(x.worker_id, x.site_id, budDay(x.started_at)); sesByDay.set(k, [...(sesByDay.get(k) ?? []), x]); }
+  const taskShares = (taskId: string): Share[] => {
+    const days = new Set((sessions ?? []).filter((x: any) => x.task_id === taskId).map((x: any) => dayKey(x.worker_id, x.site_id, budDay(x.started_at))));
+    const out: Share[] = [];
+    for (const a of attendance ?? []) {
+      const k = dayKey(a.worker_id, a.site_id, a.work_date);
+      let share = 0;
+      if (a.source !== 'session') share = a.task_id === taskId ? 1 : 0;
+      else if (a.task_id === taskId || days.has(k)) {
+        const ds = (sesByDay.get(k) ?? []).filter((x: any) => !(x.task_id && quoted.has(x.task_id)));
+        const total = ds.reduce((s: number, x: any) => s + dur(x), 0);
+        const mine = ds.filter((x: any) => x.task_id === taskId).reduce((s: number, x: any) => s + dur(x), 0);
+        share = total > 0 ? mine / total : (a.task_id === taskId ? 1 : 0);
+      }
+      if (share <= 0) continue;
+      const r = (n: number) => Math.round(n * share);
+      out.push({ row: a, share, hours: Math.round(Number(a.hours ?? 0) * share * 100) / 100,
+        amount: r(Number(a.amount)), commission: r(Number(a.commission_amount ?? 0)), callout: r(Number(a.callout_fee ?? 0)) });
+    }
+    return out.sort((x, y) => x.row.work_date.localeCompare(y.row.work_date));
+  };
+  const sharesOf = new Map<string, Share[]>(list.map((t) => [t.id, taskShares(t.id)]));
 
   // egy sor = egy feladat egy munkavállalóval (a vállalkozó emberei külön sorban); a feladat-szintű
   // értékek (elfogadott ajánlat bére, továbbszámlázott anyag, kiszámlázott, haszon) az első soron állnak
@@ -66,8 +99,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   };
   const rows: Row[] = list.flatMap((t) => {
     const s = siteOf.get(t.site_id) ?? { name: '— helyszín nélkül —', address: '' };
-    const att = attBy.get(t.id) ?? [];
-    const ses = sesBy.get(t.id) ?? [];
+    const att = sharesOf.get(t.id) ?? [];
+    const ses = (sessions ?? []).filter((x: any) => x.task_id === t.id);
     const mats = matBy.get(t.id) ?? [];
     const matResale = mats.reduce((a, m) => a + (resaleOf.get(m.id) ?? 0), 0);
     const invoice = invoiceOf.get(t.id) ?? null;
@@ -75,7 +108,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     // kiosztottak + akinek munkaideje / anyagköltsége van a feladaton (a kiosztás sorrendjében)
     const wids: (string | null)[] = [...new Set<string | null>([
       ...(assBy.get(t.id) ?? []).map((a: any) => a.worker_id as string),
-      ...att.map((a: any) => a.worker_id as string),
+      ...att.map((a) => a.row.worker_id as string),
       ...mats.map((m: any) => m.worker_id as string | null).filter((x) => x),
     ])];
     if (wids.length === 0) wids.push(null);
@@ -86,12 +119,12 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     let taskCost = 0;
     const out: Row[] = wids.map((wid, i) => {
       const first = i === 0;
-      const myAtt = att.filter((a: any) => a.worker_id === wid);
-      const callout = myAtt.reduce((a, x) => a + Number(x.callout_fee ?? 0), 0);
-      // bér: elfogadott ajánlatnál az ajánlat összege (első sor), egyébként a könyvelt napok (a kiszállás külön oszlop)
-      const wage = quoteWage != null ? (first ? quoteWage : 0) : myAtt.reduce((a, x) => a + Number(x.amount), 0) - callout;
-      // munkaóra: az elszámolt (bérrel könyvelt) órák; ahol nincs ilyen (pl. elfogadott ajánlat), a tényleges munkaidő
-      const booked = myAtt.reduce((a, x) => a + Number(x.hours ?? 0), 0);
+      const myAtt = att.filter((a) => a.row.worker_id === wid);
+      const callout = myAtt.reduce((a, x) => a + x.callout, 0);
+      // bér: elfogadott ajánlatnál az ajánlat összege (első sor), egyébként a könyvelt napok feladatra eső része (a kiszállás külön oszlop)
+      const wage = quoteWage != null ? (first ? quoteWage : 0) : myAtt.reduce((a, x) => a + x.amount, 0) - callout;
+      // munkaóra: az elszámolt (bérrel könyvelt) órák feladatra eső része; ahol nincs ilyen (pl. elfogadott ajánlat), a tényleges munkaidő
+      const booked = myAtt.reduce((a, x) => a + x.hours, 0);
       const hours = booked > 0 ? r2(booked)
         : r2(ses.filter((x: any) => x.worker_id === wid).reduce((a, x) => a + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 3600000, 0));
       // anyag: a munkavállaló saját tételei; a vezető által (munkavállaló nélkül) rögzített tétel az első soron
@@ -134,14 +167,15 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   // munkaidő-napok feladatonként (a könyvelt bér-sorok)
   const codeOf = new Map(list.map((t) => [t.id, t.code || t.title]));
   const siteNameOf = new Map(list.map((t) => [t.id, siteOf.get(t.site_id)?.name ?? '']));
-  const daySheet = (attendance ?? []).filter((a: any) => ids.has(a.task_id))
-    .sort((a: any, b: any) => a.work_date.localeCompare(b.work_date))
-    .map((a: any) => ({
-      'Helyszín': siteNameOf.get(a.task_id) ?? '', 'Feladat kód': codeOf.get(a.task_id) ?? '', 'Munkavállaló': nameOf(a.worker_id), 'Dátum': hd(a.work_date),
-      'Elszámolás': a.pay_basis === 'hourly' ? `órabér (${a.hours} ó)` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét',
-      'Órák': Number(a.hours ?? 0), 'Munkabér (Ft)': Number(a.amount) - Number(a.callout_fee ?? 0), 'Kiszállás (Ft)': Number(a.callout_fee ?? 0),
-      'Ebből közvetítőé (Ft)': Number(a.commission_amount ?? 0), 'Kifizetve': a.paid_at ? 'igen' : 'nem',
-    }));
+  const daySheet = list.flatMap((t) => (sharesOf.get(t.id) ?? []).map((x) => ({ t, x })))
+    .sort((p, q) => p.x.row.work_date.localeCompare(q.x.row.work_date))
+    .map(({ t, x }) => { const a = x.row; return {
+      'Helyszín': siteNameOf.get(t.id) ?? '', 'Feladat kód': codeOf.get(t.id) ?? '', 'Munkavállaló': nameOf(a.worker_id), 'Dátum': hd(a.work_date),
+      'Elszámolás': (a.pay_basis === 'hourly' ? `órabér (${a.hours} ó)` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét')
+        + (x.share < 1 ? ` · a nap ${Math.round(x.share * 100)}%-a` : ''),
+      'Órák': x.hours, 'Munkabér (Ft)': x.amount - x.callout, 'Kiszállás (Ft)': x.callout,
+      'Ebből közvetítőé (Ft)': x.commission, 'Kifizetve': a.paid_at ? 'igen' : 'nem',
+    }; });
 
   const matSheet = (materials ?? []).filter((m: any) => ids.has(m.task_id))
     .sort((a: any, b: any) => a.created_at.localeCompare(b.created_at))
