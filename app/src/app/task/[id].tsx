@@ -408,6 +408,16 @@ Biztosan leveszed?`, 'Levétel', true);
       notify('Hiba', String(e?.message ?? e));
     }
   };
+  // kész (vagy visszavont) feladat visszaküldése a munkavállalóhoz: újra futó állapot, a munkavállaló
+  // megint látja és folytathatja; a már könyvelt bér és anyag megmarad
+  const reopenTask = async () => {
+    const names = assignees.map((x) => workerName(x.worker_id)).join(', ');
+    if (!await confirmDialog('Készre jelentés visszavonása', `A feladat visszakerül a munkavállalóhoz${names ? ` (${names})` : ''}: újra futó állapotba kerül, ő értesítést kap és folytathatja. A rögzített munkaidő és anyagköltség megmarad. Rendben?`, 'Visszavonom', true)) return;
+    const allAck = assignees.length > 0 && assignees.every((x) => x.acknowledged_at);
+    updateRow('worker_tasks', task.id, { status: allAck ? 'acknowledged' : 'assigned', done_at: null, closed_at: null });
+    notify('Újranyitva ↩', 'A feladat újra a munkavállalónál van.');
+  };
+
   const cancelTask = async () => {
     if (!await confirmDialog('Feladat visszavonása', 'A feladat lezárul „visszavont” állapottal.', 'Visszavonás', true)) return;
     updateRow('worker_tasks', task.id, { status: 'cancelled' });
@@ -843,6 +853,9 @@ Biztosan leveszed?`, 'Levétel', true);
           ) : null}
           {task.status === 'failed' && task.closed_at ? (
             <Btn title="↩ Újranyitás a munkavállalónak" kind="ghost" small onPress={() => { updateRow('worker_tasks', task.id, { closed_at: null }); notify('Újranyitva', 'A munkavállaló újra látja és folytathatja a feladatot.'); }} />
+          ) : null}
+          {task.status === 'done' ? (
+            <Btn title="↩ Készre jelentés visszavonása — vissza a munkavállalóhoz" kind="ghost" small onPress={() => void reopenTask()} />
           ) : null}
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <View style={{ flex: 1 }}><Btn title="⏱ Munkaidő" kind="secondary" small onPress={() => { setRetroOpen(true); setOpenSig((x) => ({ ...x, time: x.time + 1 })); }} /></View>
