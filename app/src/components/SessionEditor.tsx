@@ -7,10 +7,11 @@ import { View, Text } from 'react-native';
 import { Sub, Input, Btn } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { updateRow, softDeleteRow } from '../lib/repo';
-import { hdt } from '../lib/format';
+import { hdt, localDateISO } from '../lib/format';
+import { useTable } from '../lib/hooks';
 import { fmtHours, sessionHours } from '../lib/tasks';
 import { notify, confirmDialog } from '../lib/dialogs';
-import { WorkSession } from '../lib/types';
+import { WorkSession, Attendance } from '../lib/types';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** ISO → helyi „ÉÉÉÉ-HH-NN ÓÓ:PP” */
@@ -33,6 +34,11 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const running = !session.ended_at;
+  // a nap már ki van fizetve? — akkor a bér befagyott: a módosítás csak a kifizetés visszavonása után számolódik újra
+  const attendance = useTable<Attendance>('attendance');
+  const paidDay = attendance.find((a) => a.worker_id === session.worker_id && a.site_id === session.site_id
+    && a.work_date === localDateISO(session.started_at) && a.source === 'session' && !!a.paid_at);
+  const PAID_HINT = 'Ez a nap már ki van fizetve, ezért a bér NEM számolódik újra. Ha a bérnek is változnia kell, a Kifizetetlen bérek / munkavállaló adatlapján vond vissza a nap kifizetését — akkor újraszámolódik —, majd jelöld újra kifizetettnek.';
 
   const begin = () => { setStart(toLocalInput(session.started_at)); setEnd(toLocalInput(session.ended_at) || toLocalInput(new Date().toISOString())); setOpen(true); };
   const save = () => {
@@ -46,7 +52,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
     if (e && (new Date(e).getTime() - new Date(s).getTime()) > 16 * 3.6e6) { notify('Hiba', 'Egy munkamenet legfeljebb 16 óra lehet — bontsd kettőbe.'); return; }
     updateRow('work_sessions', session.id, { started_at: s, ended_at: e });
     setOpen(false);
-    notify('Mentve ✅', 'A munkaidő módosult, a bér újraszámolódik.');
+    notify('Mentve ✅', paidDay ? `A munkaidő módosult. ${PAID_HINT}` : 'A munkaidő módosult, a bér újraszámolódik.');
   };
   const closeNow = async () => {
     if (!await confirmDialog('Munkamenet lezárása', `${label ? `${label}: ` : ''}kezdés ${hdt(session.started_at)}. Lezárod most?`, 'Lezárás')) return;
@@ -60,7 +66,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
   // téves / duplán rögzített menet törlése — a bér a nap többi menetéből újraszámolódik
   const remove = async () => {
     const ok = await confirmDialog('Munkaidő törlése',
-      `${label ? `${label}: ` : ''}${hdt(session.started_at)} → ${session.ended_at ? hdt(session.ended_at) : 'fut'} · ${fmtHours(sessionHours(session))}\n\nA menet törlődik, a nap bére a megmaradt munkaidőből számolódik újra (kifizetett nap nem változik).`,
+      `${label ? `${label}: ` : ''}${hdt(session.started_at)} → ${session.ended_at ? hdt(session.ended_at) : 'fut'} · ${fmtHours(sessionHours(session))}\n\n${paidDay ? PAID_HINT : 'A menet törlődik, a nap bére a megmaradt munkaidőből számolódik újra.'}`,
       'Törlés', true);
     if (!ok) return;
     softDeleteRow('work_sessions', session.id);
@@ -88,6 +94,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
             <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setOpen(false)} /></View>
             <View style={{ flex: 2 }}><Btn title="Mentés" small onPress={save} /></View>
           </View>
+          {paidDay ? <Sub style={{ fontSize: 11, color: C.warning }}>⚠️ {PAID_HINT}</Sub> : null}
           <Sub style={{ fontSize: 11 }}>A munkavállaló a saját menetét csak lezárni tudja; az utólagos javítás a vezetők joga. Órabérnél minden megkezdett óra teljes óra.</Sub>
         </View>
       ) : null}
