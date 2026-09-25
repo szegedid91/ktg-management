@@ -8,7 +8,7 @@ import { Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { isActiveTask, wname, openQuotes, isOverdue } from '../lib/tasks';
-import { todayISO } from '../lib/format';
+import { todayISO, localDateISO, addDaysISO } from '../lib/format';
 import { TaskRow, STATUS_COLOR, UNASSIGNED_COLOR } from './TaskRow';
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskPhoto, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
@@ -25,7 +25,7 @@ function Chip({ label, count, color, on, onPress }: { label: string; count: numb
       backgroundColor: on ? C.primary : C.chipBg, borderWidth: color && !on ? 1 : 0, borderColor: color ?? 'transparent',
     }}>
       <Text style={{ fontSize: 12, fontWeight: '700', color: on ? '#fff' : C.text }}>{label}</Text>
-      <Text style={{ fontSize: 12, fontWeight: '800', color: on ? '#fff' : (color ?? C.sub) }}>{count}</Text>
+      {count >= 0 ? <Text style={{ fontSize: 12, fontWeight: '800', color: on ? '#fff' : (color ?? C.sub) }}>{count}</Text> : null}
     </Pressable>
   );
 }
@@ -46,6 +46,19 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const [siteId, setSiteId] = useState<string | null>(null);
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'site'>('list');
+  // időszak-szűrő: a kész / nem sikerült feladatnál a lezárás, egyébként a kiadás napja szerint (helyi nap)
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [dateOpen, setDateOpen] = useState(false);
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const dFrom = ISO.test(dateFrom.trim()) ? dateFrom.trim() : null;
+  const dTo = ISO.test(dateTo.trim()) ? dateTo.trim() : null;
+  const taskDay = (t: WorkerTask) => localDateISO((t.status === 'done' || t.status === 'failed') && t.done_at ? t.done_at : t.created_at);
+  const quick = (days: number | null) => {
+    if (days === null) { setDateFrom(''); setDateTo(''); }
+    else { setDateFrom(days === 0 ? todayISO() : addDaysISO(todayISO(), -days)); setDateTo(todayISO()); }
+    setLimit(PAGE);
+  };
   const [limit, setLimit] = useState(PAGE);
 
   const running = useMemo(() => new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string)), [sessions]);
@@ -91,6 +104,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
       })
       .filter((t) => !siteId || t.site_id === siteId)
       .filter((t) => !workerId || assigneesOf(t).some((a) => a.worker_id === workerId))
+      .filter((t) => { if (!dFrom && !dTo) return true; const d = taskDay(t); return (!dFrom || d >= dFrom) && (!dTo || d <= dTo); })
       .filter((t) => {
         if (!needle) return true;
         const names = assigneesOf(t).map((a) => wname(workers.find((w) => w.id === a.worker_id))).join(' ');
@@ -100,7 +114,7 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
       // rögzítés dátuma szerint, a legfrissebb elöl (az SOS csak kiemelést kap, nem sorrendet)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, filter, q, siteId, workerId, assignees, running, unpricedTaskIds, workers, sites, quotes]);
+  }, [tasks, filter, q, siteId, workerId, dFrom, dTo, assignees, running, unpricedTaskIds, workers, sites, quotes]);
 
   const row = (t: WorkerTask, showSite = true) => (
     <TaskRow key={t.id} task={t} assignees={assigneesOf(t)} materials={materials.filter((m) => m.task_id === t.id)}
@@ -150,6 +164,24 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
             getId={(w) => w.id} getLabel={(w) => wname(w)} onSelect={(id) => { setWorkerId(id); setLimit(PAGE); }}
             placeholder="Minden ember" allowNull nullLabel="Minden ember" />
         </View>
+      </View>
+
+      <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <Sub style={{ marginRight: 4 }}>📅 Időszak:</Sub>
+          <Chip label="Mind" count={-1} on={!dFrom && !dTo} onPress={() => quick(null)} />
+          <Chip label="Ma" count={-1} on={!!dFrom && dFrom === todayISO() && dTo === todayISO()} onPress={() => quick(0)} />
+          <Chip label="7 nap" count={-1} on={dFrom === addDaysISO(todayISO(), -7) && dTo === todayISO()} onPress={() => quick(7)} />
+          <Chip label="30 nap" count={-1} on={dFrom === addDaysISO(todayISO(), -30) && dTo === todayISO()} onPress={() => quick(30)} />
+          <Chip label={dateOpen ? 'Egyéni ▾' : 'Egyéni ▸'} count={-1} on={dateOpen} onPress={() => setDateOpen(!dateOpen)} />
+        </View>
+        {dateOpen ? (
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <View style={{ flex: 1 }}><Input label="Dátumtól (ÉÉÉÉ-HH-NN)" value={dateFrom} onChangeText={(v) => { setDateFrom(v); setLimit(PAGE); }} placeholder="2026-09-01" /></View>
+            <View style={{ flex: 1 }}><Input label="Dátumig" value={dateTo} onChangeText={(v) => { setDateTo(v); setLimit(PAGE); }} placeholder="2026-09-30" /></View>
+          </View>
+        ) : null}
+        {dFrom || dTo ? <Sub style={{ fontSize: 11 }}>Kész / nem sikerült feladatnál a lezárás napja, egyébként a kiadás napja szerint.</Sub> : null}
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
