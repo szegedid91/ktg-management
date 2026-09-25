@@ -22,7 +22,9 @@ function WorkerDetailInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const worker = useRow<Worker>('workers', id);
   const myTasks = useTable<TaskAssignee>('task_assignees').filter((a) => a.worker_id === id).map((a) => a.task_id);
-  const tasks = useTable<WorkerTask>('worker_tasks').filter((t) => myTasks.includes(t.id))
+  const allTasks = useTable<WorkerTask>('worker_tasks');
+  const taskLabel = (id: string | null | undefined) => { const t = id ? allTasks.find((x) => x.id === id) : null; return t ? `${t.code ? `${t.code} · ` : ''}${t.title}` : null; };
+  const tasks = allTasks.filter((t) => myTasks.includes(t.id))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === id)
     .sort((a, b) => b.started_at.localeCompare(a.started_at));
@@ -338,7 +340,9 @@ function WorkerDetailInner() {
             : payFilter === 'paid' ? 'Még nincs kifizetett tétel.' : 'Nincs kifizetetlen tétel. ✅'} />
         ) : null}
         {history.slice(0, showCount).map((a) => (
-          <View key={a.id} style={{ paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
+          <Pressable key={a.id} disabled={!a.task_id} onPress={() => a.task_id && router.push(`/task/${a.task_id}`)}
+            style={({ pressed }) => ({ paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border, opacity: pressed ? 0.7 : 1 })}>
+            {a.task_id && taskLabel(a.task_id) ? <Sub style={{ color: C.primary, fontWeight: '700' }}>🛠️ {taskLabel(a.task_id)} ›</Sub> : null}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
                 {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? ' · napi díj máshol elszámolva' : Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
@@ -361,7 +365,7 @@ function WorkerDetailInner() {
                 {a.paid_note ? ` — „${a.paid_note}”` : ''}
               </Sub>
             ) : null}
-          </View>
+          </Pressable>
         ))}
         {history.length > showCount ? (
           <Btn title={`Továbbiak (még ${history.length - showCount} nap)`} kind="ghost" small
@@ -379,13 +383,14 @@ function WorkerDetailInner() {
         </View>
         {tasks.length === 0 ? <Sub>Még nincs kiadott feladat.</Sub> : null}
         {tasks.slice(0, 15).map((t) => (
-          <View key={t.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+          <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)}
+            style={({ pressed }) => ({ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border, opacity: pressed ? 0.7 : 1 })}>
             <View style={{ flex: 1 }}>
               <Body style={{ fontWeight: '600' }}>{t.code ? `${t.code} · ` : ''}{t.title}</Body>
-              <Sub>{TASK_STATUS_LABEL[t.status]}</Sub>
+              <Sub>{TASK_STATUS_LABEL[t.status]}{t.done_at ? ` · ${hd(t.done_at)}` : ''}</Sub>
             </View>
-            <Btn title="Megnyit" kind="ghost" small onPress={() => router.push(`/task/${t.id}`)} />
-          </View>
+            <Text style={{ color: C.sub, fontSize: 16 }}>›</Text>
+          </Pressable>
         ))}
       </Card>
 
