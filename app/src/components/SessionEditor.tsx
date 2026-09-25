@@ -38,7 +38,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
   const attendance = useTable<Attendance>('attendance');
   const paidDay = attendance.find((a) => a.worker_id === session.worker_id && a.site_id === session.site_id
     && a.work_date === localDateISO(session.started_at) && a.source === 'session' && !!a.paid_at);
-  const PAID_HINT = 'Ez a nap már ki van fizetve, ezért a bér NEM számolódik újra. Ha a bérnek is változnia kell, a Kifizetetlen bérek / munkavállaló adatlapján vond vissza a nap kifizetését — akkor újraszámolódik —, majd jelöld újra kifizetettnek.';
+  const PAID_HINT = 'Ez a nap már ki van fizetve: a bér újraszámolódik az új munkaidőből, a kifizetett és az új összeg különbözete túlfizetésként / hiányként jelenik meg a munkavállaló adatlapján és a Kifizetetlen béreknél.';
 
   const begin = () => { setStart(toLocalInput(session.started_at)); setEnd(toLocalInput(session.ended_at) || toLocalInput(new Date().toISOString())); setOpen(true); };
   const save = () => {
@@ -52,7 +52,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
     if (e && (new Date(e).getTime() - new Date(s).getTime()) > 16 * 3.6e6) { notify('Hiba', 'Egy munkamenet legfeljebb 16 óra lehet — bontsd kettőbe.'); return; }
     updateRow('work_sessions', session.id, { started_at: s, ended_at: e });
     setOpen(false);
-    notify('Mentve ✅', paidDay ? `A munkaidő módosult. ${PAID_HINT}` : 'A munkaidő módosult, a bér újraszámolódik.');
+    notify('Mentve ✅', paidDay ? `A munkaidő módosult, a bér újraszámolódik. ${PAID_HINT}` : 'A munkaidő módosult, a bér újraszámolódik.');
   };
   const closeNow = async () => {
     if (!await confirmDialog('Munkamenet lezárása', `${label ? `${label}: ` : ''}kezdés ${hdt(session.started_at)}. Lezárod most?`, 'Lezárás')) return;
@@ -66,7 +66,7 @@ export function SessionEditor({ session, label, editable }: { session: WorkSessi
   // téves / duplán rögzített menet törlése — a bér a nap többi menetéből újraszámolódik
   const remove = async () => {
     const ok = await confirmDialog('Munkaidő törlése',
-      `${label ? `${label}: ` : ''}${hdt(session.started_at)} → ${session.ended_at ? hdt(session.ended_at) : 'fut'} · ${fmtHours(sessionHours(session))}\n\n${paidDay ? PAID_HINT : 'A menet törlődik, a nap bére a megmaradt munkaidőből számolódik újra.'}`,
+      `${label ? `${label}: ` : ''}${hdt(session.started_at)} → ${session.ended_at ? hdt(session.ended_at) : 'fut'} · ${fmtHours(sessionHours(session))}\n\nA menet törlődik, a nap bére a megmaradt munkaidőből számolódik újra.${paidDay ? ` ${PAID_HINT}` : ''}`,
       'Törlés', true);
     if (!ok) return;
     softDeleteRow('work_sessions', session.id);

@@ -42,6 +42,13 @@ export function unpaidWorkerPart(a: { pay_basis: string; paid_at: string | null;
   return part > 0 ? part : 0;
 }
 
+/** Kifizetett nap eltérése: a kifizetéskor rögzített összeg − a mostani (újraszámolt) járandóság.
+ *  Pozitív = túlfizetés (a következő kifizetésből levonandó), negatív = pótlandó hiány. */
+export function paidDiff(a: { paid_at: string | null; paid_amount?: number | null; amount: number | string; commission_amount: number | string }): number {
+  if (!a.paid_at || a.paid_amount == null) return 0;
+  return Math.round(Number(a.paid_amount) - (Number(a.amount) - Number(a.commission_amount)));
+}
+
 /** Lejárt határidő (aktív feladatnál) */
 export function isOverdue(t: WorkerTask, today: string): boolean {
   return isActiveTask(t) && !!t.due_date && t.due_date < today;

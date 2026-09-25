@@ -8,7 +8,7 @@ import { useRow, useTable, useIsWorker } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow, callRpc } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings, WorkerTask, TaskAssignee, WorkSession } from '../../lib/types';
-import { isActiveTask, TASK_STATUS_LABEL, fmtHours, sessionHours } from '../../lib/tasks';
+import { isActiveTask, TASK_STATUS_LABEL, fmtHours, sessionHours, paidDiff } from '../../lib/tasks';
 import { hdt } from '../../lib/format';
 import { Comments } from '../../components/Comments';
 import { CallButton, CopyButton } from '../workers/index';
@@ -74,7 +74,9 @@ function WorkerDetailInner() {
   const totals = useMemo(() => {
     const earned = attendance.reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
     const paid = attendance.filter((a) => a.paid_at).reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
-    return { earned, paid, unpaid: earned - paid };
+    // kifizetett, később újraszámolt napok különbözete (túlfizetés > 0, hiány < 0)
+    const diff = attendance.reduce((s, a) => s + paidDiff(a), 0);
+    return { earned, paid, unpaid: earned - paid, diff };
   }, [attendance]);
 
   if (!worker) return <Screen><Empty text="Munkavállaló nem található." /></Screen>;
@@ -321,6 +323,9 @@ function WorkerDetailInner() {
         <KV k="Összes megkeresett (nettó)" v={ft(totals.earned)} />
         <KV k="Ebből kifizetve" v={ft(totals.paid)} />
         {totals.unpaid > 0 ? <KV k="⚠️ Kifizetetlen" v={ft(totals.unpaid)} strong /> : null}
+        {totals.diff > 0 ? <KV k="⚠️ Túlfizetés (újraszámolt kifizetett napok) — a következő kifizetésből levonandó" v={ft(totals.diff)} strong /> : null}
+        {totals.diff < 0 ? <KV k="⚠️ Pótlandó hiány (újraszámolt kifizetett napok)" v={ft(-totals.diff)} strong /> : null}
+        {totals.unpaid > 0 || totals.diff !== 0 ? <KV k="Ténylegesen még fizetendő" v={ft(totals.unpaid - totals.diff)} strong /> : null}
         <Divider />
         <Segmented
           options={[
@@ -366,6 +371,11 @@ function WorkerDetailInner() {
               <Sub style={{ fontSize: 11 }}>
                 kifizetve: {hd(a.paid_at)} · {profiles.find((p) => p.id === a.paid_by)?.display_name ?? '?'}
                 {a.paid_note ? ` — „${a.paid_note}”` : ''}
+              </Sub>
+            ) : null}
+            {paidDiff(a) !== 0 ? (
+              <Sub style={{ fontSize: 11, color: C.warning }}>
+                kifizetve {ft(Number(a.paid_amount))} · azóta újraszámolva {ft(Number(a.amount) - Number(a.commission_amount))} → {paidDiff(a) > 0 ? `túlfizetés ${ft(paidDiff(a))}` : `hiány ${ft(-paidDiff(a))}`}
               </Sub>
             ) : null}
           </Pressable>

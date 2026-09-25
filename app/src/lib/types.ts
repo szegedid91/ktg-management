@@ -164,6 +164,8 @@ export interface Attendance extends BaseRow {
    *  task = fix áras (elfogadott ajánlatos) feladat készre jelentésekor */
   source: 'manual' | 'session' | 'task';
   task_id: UUID | null;
+  /** kifizetéskor a munkavállalónak kifizetett rész (pillanatkép) — a későbbi újraszámolás különbözete = túlfizetés / hiány */
+  paid_amount?: number | null;
 }
 
 export interface Comment {

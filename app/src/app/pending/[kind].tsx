@@ -1,7 +1,7 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
-import { unpaidWorkerPart } from '../../lib/tasks';
+import { unpaidWorkerPart, paidDiff } from '../../lib/tasks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -130,6 +130,20 @@ function PendingScreenInner() {
       })
       .sort((a, b) => b.total - a.total);
   }, [attendance, workers, sites, externals, isWages]);
+
+  // kifizetett, később újraszámolt napok különbözete személyenként (a vállalkozó emberéé a vállalkozóhoz)
+  const overpaid = useMemo(() => {
+    if (!isWages) return [] as { name: string; diff: number }[];
+    const m = new Map<string, { name: string; diff: number }>();
+    for (const a of attendance) {
+      const d = paidDiff(a); if (!d) continue;
+      const w = workers.find((x) => x.id === a.worker_id);
+      const c = w?.contractor_id ? workers.find((x) => x.id === w.contractor_id) : null;
+      const key = c ? c.id : a.worker_id; const name = c ? `${c.name} 👥` : (w?.name ?? '?');
+      const e = m.get(key) ?? { name, diff: 0 }; e.diff += d; m.set(key, e);
+    }
+    return [...m.values()].filter((x) => x.diff !== 0).sort((a, b) => b.diff - a.diff);
+  }, [attendance, workers, isWages]);
 
   // terület-szűrő: üres kiválasztás = minden építkezés látszik
   const [siteFilter, setSiteFilter] = useState<Set<string>>(new Set());
@@ -307,6 +321,16 @@ function PendingScreenInner() {
         />
         <Sub>A pipa kijelöli a tételeket — a kifizetést az alul megjelenő sáv gombja rögzíti.</Sub>
       </Card>
+
+      {overpaid.length > 0 ? (
+        <Card style={{ borderColor: C.warning }}>
+          <H2>⚠️ Túlfizetés / hiány — újraszámolt kifizetett napok</H2>
+          <Sub>Kifizetés után módosult munkaidő miatt a kifizetett összeg eltér a mostani járandóságtól. A túlfizetést a következő kifizetésből vond le; a hiányt pótold. A részletek a munkavállaló adatlapján, a Munkatörténetben látszanak.</Sub>
+          {overpaid.map((o) => (
+            <KV key={o.name} k={o.name} v={o.diff > 0 ? `túlfizetés ${ft(o.diff)} — levonandó` : `hiány ${ft(-o.diff)} — pótlandó`} strong />
+          ))}
+        </Card>
+      ) : null}
 
       {visibleGroups.length === 0 ? <Empty text="Nincs függő tétel. ✅" /> : null}
 
