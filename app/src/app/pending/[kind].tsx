@@ -86,8 +86,12 @@ function PendingScreenInner() {
         // a közvetítői részt arányosan vonjuk le az alapbérből és a kiszállásból
         const total = Number(a.amount);
         const keep = total > 0 ? workerPart / total : 1;
-        const netRate = Math.round(Number(a.applied_rate) * keep);
-        const netCallout = Math.round(Number(a.callout_fee ?? 0) * keep);
+        const calloutRaw = Number(a.callout_fee ?? 0);
+        // ha a közvetítő a kiszállásból nem részesül, a kiszállás teljes egészében a munkavállalóé, a levonás csak az alapbért terheli
+        const noCalloutComm = (contractor ?? w)?.callout_commission === false;
+        const netCallout = noCalloutComm ? calloutRaw : Math.round(calloutRaw * keep);
+        const base = total - calloutRaw;
+        const netRate = noCalloutComm ? (base > 0 ? Math.round(Number(a.applied_rate) * (workerPart - netCallout) / base) : Number(a.applied_rate)) : Math.round(Number(a.applied_rate) * keep);
         detail = (contractor ? `${w?.name ?? '?'} · ` : '') + (a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(netRate)}`
           : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj a nap első helyszínén' : Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
           : 'projektdíj');

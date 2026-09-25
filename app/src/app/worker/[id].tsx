@@ -284,8 +284,10 @@ function WorkerDetailInner() {
               const def = worker.worker_type === 'company' ? settings.company_callout_fee : settings.individual_callout_fee;
               // alapértelmezés nélkül a kiszállás = 1 óra bére
               const hourly = Number(worker.hourly_rate ?? (worker.worker_type === 'company' ? settings.company_hourly_rate : settings.individual_hourly_rate) ?? 0);
-              const text = worker.callout_fee != null ? (Number(worker.callout_fee) === 0 ? 'nincs' : netText(Number(worker.callout_fee), 'hour'))
-                : def != null ? `${netText(Number(def), 'hour')} (alapértelmezett)` : hourly ? `${netText(hourly, 'hour')} — 1 óra bére (alapértelmezett)` : '1 óra bére (alapértelmezett)';
+              // ha a közvetítő a kiszállásból nem részesül, a teljes díj a munkavállalóé
+              const calloutNet = (g: number) => (refSrc.callout_commission === false ? ft(g) : netText(g, 'hour'));
+              const text = worker.callout_fee != null ? (Number(worker.callout_fee) === 0 ? 'nincs' : calloutNet(Number(worker.callout_fee)))
+                : def != null ? `${calloutNet(Number(def))} (alapértelmezett)` : hourly ? `${calloutNet(hourly)} — 1 óra bére (alapértelmezett)` : '1 óra bére (alapértelmezett)';
               return <KV k="Kiszállási díj (helyszín / nap)" v={text} />;
             })()}
           </>
@@ -306,6 +308,7 @@ function WorkerDetailInner() {
                     ? `${refSrc.commission_value}% a díjból`
                     : `${ft(Number(refSrc.commission_value ?? 0))} / ${refSrc.commission_unit === 'hour' ? 'óra (a kiszállás 1 órának számít)' : refSrc.commission_unit === 'day' ? 'nap' : 'projekt'}`
                 } />
+                <KV k="Kiszállási díjból" v={refSrc.callout_commission === false ? 'nem részesül' : 'részesül (a kiszállás 1 órának számít)'} />
                 <Sub>A fenti díjak a munkavállalónak járó összegek — a teljes bérköltség ezek és a közvetítői díj együtt.</Sub>
               </>
             ) : null}
@@ -352,7 +355,7 @@ function WorkerDetailInner() {
                   const fee = Number(a.callout_fee ?? 0); const total = Number(a.amount);
                   if (fee <= 0) return '';
                   const keep = total > 0 ? (total - Number(a.commission_amount)) / total : 1;
-                  return ` · 🚗 kiszállás ${ft(Math.round(fee * keep))}`;
+                  return ` · 🚗 kiszállás ${ft(refSrc.callout_commission === false ? fee : Math.round(fee * keep))}`;
                 })()}
               </Sub>
               <Text style={{ fontSize: 13, fontWeight: '600', color: a.paid_at ? C.success : C.text }}>

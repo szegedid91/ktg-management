@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Card, Input, Btn, Segmented, Picker, Sub } from '../ui/kit';
+import { Card, Input, Btn, Segmented, Picker, Sub, Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { Worker, Profile, ExternalPerson, PayBasis, AppSettings } from '../lib/types';
@@ -40,6 +40,7 @@ export interface WorkerFormValues {
   commission_mode: 'percent' | 'fixed' | null;
   commission_value: string;
   commission_unit: 'hour' | 'day' | 'project' | null;
+  callout_commission: boolean;
 }
 
 export function emptyWorkerForm(): WorkerFormValues {
@@ -49,7 +50,7 @@ export function emptyWorkerForm(): WorkerFormValues {
     bank_account: '', note: '', worker_type: 'individual', is_vat_payer: false, vat_rate: '27',
     default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '', callout_fee: '',
     referrer_kind: 'none', referrer_user_id: null, referrer_external_id: null,
-    commission_mode: null, commission_value: '', commission_unit: null,
+    commission_mode: null, commission_value: '', commission_unit: null, callout_commission: true,
   };
 }
 
@@ -69,6 +70,7 @@ export function workerToForm(w: Worker): WorkerFormValues {
     referrer_user_id: w.referrer_user_id, referrer_external_id: w.referrer_external_id,
     commission_mode: w.commission_mode, commission_value: w.commission_value != null ? String(w.commission_value) : '',
     commission_unit: w.commission_unit,
+    callout_commission: w.callout_commission ?? true,
   };
 }
 
@@ -113,6 +115,7 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
     commission_mode: f.referrer_kind === 'none' ? null : f.commission_mode,
     commission_value: f.referrer_kind !== 'none' && f.commission_value ? parseAmount(f.commission_value) : null,
     commission_unit: f.referrer_kind !== 'none' && f.commission_mode === 'fixed' ? f.commission_unit : null,
+    callout_commission: f.callout_commission,
   };
 }
 
@@ -350,6 +353,11 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
               />
             ) : null}
           </>
+        ) : null}
+        {value.referrer_kind !== 'none' ? (
+          <Check checked={value.callout_commission} onToggle={() => set({ callout_commission: !value.callout_commission })}
+            label="A közvetítő a kiszállási díjból is részesül"
+            sub={value.callout_commission ? 'A kiszállás 1 órának számít: százaléknál a kiszállási díj után is jár a jutalék, óránkénti fix díjnál +1 óra.' : 'A jutalék csak a munkadíj után jár; a kiszállási díj teljes egészében a munkavállalóé.'} />
         ) : null}
       </FormSection>
 

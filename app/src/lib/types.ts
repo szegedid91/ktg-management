@@ -107,6 +107,8 @@ export interface Worker extends BaseRow {
   commission_mode: 'percent' | 'fixed' | null;
   commission_value: number | null;
   commission_unit: 'hour' | 'day' | 'project' | null;
+  /** a közvetítő a kiszállási díjból is részesül-e (alap: igen — a kiszállás 1 órának számít) */
+  callout_commission?: boolean;
   /** meghívóval regisztrált munkavállaló: amíg üres, egy vezető
    *  jóváhagyására vár (nem tud belépni) */
   approved_at: string | null;
