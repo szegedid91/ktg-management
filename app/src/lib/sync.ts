@@ -179,9 +179,16 @@ async function reconcileAll(): Promise<void> {
   }
 }
 
+// egyszeri teljes újratöltés egy táblára (a jel változásakor): pl. a worker_tasks_v mostantól
+// „törölve” jelzést ad a törölt / levett feladathoz — a régen szinkronizált, elavult példányokat
+// csak a kurzor visszaállításával lehet lecserélni a készüléken
+const RESYNC_MARKS: Partial<Record<SyncTable, string>> = { worker_tasks: 'tombstones-2026-09-25' };
+
 async function pullTable(table: SyncTable): Promise<void> {
   const gen = store.generation; // kijelentkezés/fiókváltás közben megszakad
-  const cursor = store.getCursor(table);
+  const mark = RESYNC_MARKS[table];
+  const needFull = !!mark && store.getCursor(`${table}:mark`) !== mark;
+  const cursor = needFull ? '1970-01-01T00:00:00Z' : store.getCursor(table);
   const page = 1000;
   let from = 0;
   let maxTs = cursor;
@@ -204,7 +211,9 @@ async function pullTable(table: SyncTable): Promise<void> {
     if (data.length < page) break;
     from += page;
   }
-  if (maxTs !== cursor && store.generation === gen) store.setCursor(table, maxTs);
+  if (store.generation !== gen) return;
+  if (maxTs !== cursor) store.setCursor(table, maxTs);
+  if (needFull && mark) store.setCursor(`${table}:mark`, mark);
 }
 
 let current: Promise<void> | null = null;
