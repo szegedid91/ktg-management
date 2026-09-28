@@ -101,9 +101,10 @@ function WorkerDetailInner() {
     const c = refSrc.commission_mode === 'percent' ? Math.round(gross * v) / 100 : refSrc.commission_unit === unit ? v : 0;
     return Math.max(0, Math.min(c, gross));
   };
+  // „14 000 Ft (+ 2 000 Ft a közvetítőé)” — a munkavállalóé és a közvetítőé egymás mellett
   const netText = (gross: number, unit: 'hour' | 'day' | 'project') => {
     const c = cut(gross, unit);
-    return ft(gross - c);
+    return c > 0 ? `${ft(gross - c)} (+ ${ft(c)} a közvetítőé)` : ft(gross - c);
   };
   const rateLine = (label: string, own: number | null, globalCompany: number, globalIndividual: number, unit: 'hour' | 'day' | 'project') => {
     const global = worker.worker_type === 'company' ? globalCompany : globalIndividual;
