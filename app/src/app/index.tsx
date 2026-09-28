@@ -77,7 +77,7 @@ function DashboardInner() {
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
   const [siteQ, setSiteQ] = useState('');
-  const [staleOpen, setStaleOpen] = useState(false); // a sürgős kártya alapból összezárva, koppintásra nyílik
+  const [staleOpen, setStaleOpen] = useState<{ sos: boolean; plain: boolean }>({ sos: false, plain: false }); // a kártyák alapból összezárva, koppintásra nyílnak
 
 
   // ABC-sorrend: a lista minden renderkor a tükörből épül, így új/módosított
@@ -95,7 +95,9 @@ function DashboardInner() {
   // 3+ napja kiosztott, de el nem fogadott feladatok (a kiosztás idejétől számítva)
   const staleCutoff = new Date(Date.now() - 3 * 864e5).toISOString();
   const staleTasks = pendingTasks.filter((t) => assignees.some((a) => a.task_id === t.id && !a.acknowledged_at && a.created_at < staleCutoff));
-  const staleSos = staleTasks.some((t) => t.priority > 0);
+  // külön kártya a SOS és a sima el nem fogadott feladatoknak (a sima ne kerüljön a SÜRGŐS alá)
+  const staleSosTasks = staleTasks.filter((t) => t.priority > 0);
+  const stalePlainTasks = staleTasks.filter((t) => !(t.priority > 0));
   const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
   const submittedQuotes = quotes.filter((q) => q.status === 'submitted' && activeTasks.some((t) => t.id === q.task_id));
   const quoteTasks = activeTasks.filter((t) => submittedQuotes.some((q) => q.task_id === t.id));
@@ -157,31 +159,31 @@ function DashboardInner() {
       <PushPrompt />
 
 
-      {staleTasks.length ? (
-        <Card style={{ borderColor: C.danger, borderWidth: staleSos ? 3 : 1, backgroundColor: staleSos ? C.dangerBg : C.card }}>
-          <Pressable onPress={() => setStaleOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-            <Text style={{ flex: 1, fontWeight: '900', fontSize: staleSos ? 18 : 15, color: C.danger }}>
-              {staleSos ? '🆘 SÜRGŐS — 3 napja nem fogadták el' : '⚠️ 3 napja nem fogadták el'} ({staleTasks.length})
+      {([['sos', staleSosTasks], ['plain', stalePlainTasks]] as const).map(([kind, list]) => list.length ? (
+        <Card key={kind} style={{ borderColor: kind === 'sos' ? C.danger : C.warning, borderWidth: kind === 'sos' ? 3 : 1, backgroundColor: kind === 'sos' ? C.dangerBg : C.card }}>
+          <Pressable onPress={() => setStaleOpen((v) => ({ ...v, [kind]: !v[kind] }))} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+            <Text style={{ flex: 1, fontWeight: '900', fontSize: kind === 'sos' ? 18 : 15, color: kind === 'sos' ? C.danger : C.warning }}>
+              {kind === 'sos' ? '🆘 SÜRGŐS — 3 napja nem fogadták el' : '⚠️ 3 napja nem fogadták el'} ({list.length})
             </Text>
-            <Text style={{ color: C.danger, fontSize: 18, fontWeight: '900' }}>{staleOpen ? '▾' : '▸'}</Text>
+            <Text style={{ color: kind === 'sos' ? C.danger : C.warning, fontSize: 18, fontWeight: '900' }}>{staleOpen[kind] ? '▾' : '▸'}</Text>
           </Pressable>
-          {!staleOpen ? (
-            <Sub>{staleTasks.slice(0, 3).map((t) => t.code || t.title).join(', ')}{staleTasks.length > 3 ? ` +${staleTasks.length - 3}` : ''} · koppints a részletekért</Sub>
+          {!staleOpen[kind] ? (
+            <Sub>{list.slice(0, 3).map((t) => t.code || t.title).join(', ')}{list.length > 3 ? ` +${list.length - 3}` : ''} · koppints a részletekért</Sub>
           ) : null}
-          {staleOpen ? <Sub>Kiosztott feladat, amit a munkavállaló 3 napja nem fogadott el — szólj rá, vagy oszd ki másnak (feladat oldal · Kiosztva · Módosít).</Sub> : null}
-          {staleOpen ? staleTasks.map((t) => {
+          {staleOpen[kind] ? <Sub>Kiosztott feladat, amit a munkavállaló 3 napja nem fogadott el — szólj rá, vagy oszd ki másnak (feladat oldal · Kiosztva · Módosít).</Sub> : null}
+          {staleOpen[kind] ? list.map((t) => {
             const asg = assignees.filter((a) => a.task_id === t.id && !a.acknowledged_at);
             const since = asg.map((a) => a.created_at).sort()[0];
             return (
               <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)}
-                style={{ backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1, borderColor: t.priority ? C.danger : C.border, borderLeftWidth: 4, borderLeftColor: C.danger, padding: S.sm, gap: 2 }}>
-                <Text style={{ fontWeight: '800', color: t.priority ? C.danger : C.text }} numberOfLines={1}>{t.priority ? '🆘 ' : ''}{t.code ? `${t.code} · ` : ''}{t.title}</Text>
+                style={{ backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1, borderColor: kind === 'sos' ? C.danger : C.border, borderLeftWidth: 4, borderLeftColor: kind === 'sos' ? C.danger : C.warning, padding: S.sm, gap: 2 }}>
+                <Text style={{ fontWeight: '800', color: kind === 'sos' ? C.danger : C.text }} numberOfLines={1}>{kind === 'sos' ? '🆘 ' : ''}{t.code ? `${t.code} · ` : ''}{t.title}</Text>
                 <Sub>👷 {asg.map((a) => wname(workers.find((w) => w.id === a.worker_id))).join(', ')} · kiosztva {hd(since)} · {Math.floor((Date.now() - new Date(since).getTime()) / 864e5)} napja</Sub>
               </Pressable>
             );
           }) : null}
         </Card>
-      ) : null}
+      ) : null)}
 
       <View style={{ gap: S.sm }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
