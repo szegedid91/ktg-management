@@ -223,13 +223,14 @@ export function materialTotals(materials: TaskMaterial[], pricing: TaskMaterialP
 
 /** A nap bér-sorának (munkavállaló × helyszín × nap) a feladatra eső része. A bér napra és
  *  helyszínre egyben képződik; ha aznap ugyanott több feladaton is dolgozott (párhuzamos
- *  feladatok), a sort a feladatokra fordított munkaidő arányában osztjuk el. Az elfogadott
+ *  feladatok), órabérnél a feladat bére = a rajta töltött megkezdett órák × óradíj (a feladatok
+ *  összege így meghaladhatja a nap tényleges bérét), napi/projektdíjnál időarányos rész. Az elfogadott
  *  ajánlatos feladat menetei nem számítanak (azt az ajánlat fizeti). A kézzel rögzített nap
  *  teljes egészében a rajta megjelölt feladaté. A kiszállási díj (helyszínenként naponta egyszer)
  *  nem oszlik meg: teljes egészében az aznap ott elsőként kezdett feladaté. */
 export type TaskWageShare = {
   row: Attendance; share: number;
-  /** az elszámolt (könyvelt) órák feladatra eső része */ hours: number;
+  /** a feladat elszámolt órái (több feladatnál: a rajta töltött megkezdett órák) */ hours: number;
   /** a feladaton aznap ott ténylegesen töltött idő (óra) */ actual: number;
   /** a nap elszámolt órái */ dayHours: number;
   /** ez volt-e aznap ott az első feladat (a kiszállási díjat ez viseli) */ first: boolean;
@@ -259,10 +260,20 @@ export function taskWageShares(taskId: string, attendance: Attendance[], session
       first = earliest ? earliest.task_id === taskId : a.task_id === taskId;
     }
     if (share <= 0) continue;
-    const r = (n: number) => Math.round(n * share);
     const calloutFee = Number(a.callout_fee ?? 0);
     const callout = share >= 1 || first ? calloutFee : 0;
-    out.push({ row: a, share, hours: Math.round(Number(a.hours ?? 0) * share * 100) / 100, actual, dayHours: Number(a.hours ?? 0), first,
+    const dayHours = Number(a.hours ?? 0);
+    if (share < 1 && a.pay_basis === 'hourly' && dayHours > 0) {
+      // órabéres, több feladat aznap ugyanott: a feladat bére = a rajta töltött MEGKEZDETT órák × óradíj
+      // (Daniel szabálya: minden megkezdett óra egy óra), a közvetítő része ugyanilyen arányban
+      const taskHours = Math.max(1, Math.ceil(Math.round(actual * 10000) / 10000));
+      const rate = a.applied_rate != null ? Number(a.applied_rate) : (Number(a.amount) - calloutFee) / dayHours;
+      out.push({ row: a, share, hours: taskHours, actual, dayHours, first,
+        amount: Math.round(taskHours * rate) + callout, commission: Math.round(Number(a.commission_amount ?? 0) * taskHours / dayHours), callout });
+      continue;
+    }
+    const r = (n: number) => Math.round(n * share);
+    out.push({ row: a, share, hours: Math.round(dayHours * share * 100) / 100, actual, dayHours, first,
       amount: r(Number(a.amount) - calloutFee) + callout, commission: r(Number(a.commission_amount ?? 0)), callout });
   }
   return out.sort((x, y) => x.row.work_date.localeCompare(y.row.work_date));

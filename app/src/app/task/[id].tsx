@@ -1099,12 +1099,12 @@ Biztosan leveszed?`, 'Levétel', true);
             <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wageTotal)} strong />
           ) : (
             <>
-              {wageShares.map(({ row: a, share, hours: hrs, actual, dayHours, amount: total, commission: comm, callout }) => {
+              {wageShares.map(({ row: a, share, hours: hrs, actual, amount: total, commission: comm, callout }) => {
                 // a munkavállaló sora a NEKI járó (közvetítővel csökkentett) díjat mutatja, a közvetítő
                 // része külön sorban áll — a kettő együtt a teljes bérköltség; párhuzamos feladatoknál
                 // a nap bérének csak az erre a feladatra eső (időarányos) része, a kiszállás egyben a nap első feladatán
                 const basis = a.pay_basis === 'hourly'
-                  ? (share < 1 ? `${fmtHours(actual)} (a nap ${dayHours} órájának ${Math.round(share * 100)}%-a) · ${ft(Number(a.applied_rate))}/ó` : `${hrs} ó × ${ft(Number(a.applied_rate))}`)
+                  ? (share < 1 ? `${fmtHours(actual)} → ${hrs} ó × ${ft(Number(a.applied_rate))}` : `${hrs} ó × ${ft(Number(a.applied_rate))}`)
                   : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') + (share < 1 ? ` · a nap ${Math.round(share * 100)}%-a` : '')
                   : (a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét') + (share < 1 ? ` · a nap ${Math.round(share * 100)}%-a` : '');
                 return (
@@ -1120,7 +1120,7 @@ Biztosan leveszed?`, 'Levétel', true);
                 <KV key={`run-${p.worker.id}`} k={`${wname(p.worker)} · épp fut (${fmtHours(p.hours)}, előnézet)`} v={`~${ft(p.amount)}`} />
               ))}
               {wageShares.length === 0 && wage.total === 0 ? <Sub>Még nincs könyvelt bér — a munkaidő lezárásakor képződik.</Sub> : null}
-              {wageShares.some((x) => x.share < 1) ? <Sub>Aznap ugyanott több feladaton is dolgozott: a nap bére a feladatokra fordított idő arányában oszlik meg, a kiszállási díj egyben a nap első feladatán van.</Sub> : null}
+              {wageShares.some((x) => x.share < 1) ? <Sub>Aznap ugyanott több feladaton is dolgozott: a feladat bére a rajta töltött megkezdett órák × óradíj, a kiszállási díj a nap első feladatán van.</Sub> : null}
               <KV k="Bérköltség eddig" v={ft(wageTotal)} strong />
             </>
           )}
