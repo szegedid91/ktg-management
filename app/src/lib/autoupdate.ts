@@ -22,6 +22,17 @@ async function check(): Promise<void> {
     // beviteli mezőben állva nem töltünk újra (ne vesszen el a félig beírt szöveg)
     const el = document.activeElement as HTMLElement | null;
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) { lastCheck = 0; return; }
+    // újratöltési hurok ellen: ugyanarra a célverzióra 10 percen belül csak egyszer töltünk újra
+    // (kiadás után a CDN pár percig még a régi bundle-t adhatja)
+    try {
+      const key = 'ktg:autoupdate-target';
+      const prev = sessionStorage.getItem(key);
+      if (prev) {
+        const [v, t] = prev.split('|');
+        if (v === version && Date.now() - Number(t) < 10 * 60_000) return;
+      }
+      sessionStorage.setItem(key, `${version}|${Date.now()}`);
+    } catch { /* nincs sessionStorage */ }
     location.reload();
   } catch { /* offline — majd legközelebb */ }
 }

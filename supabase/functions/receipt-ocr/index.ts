@@ -73,8 +73,18 @@ Ha valamit nem tudsz kiolvasni, az legyen null.`,
     for (const block of response.content) {
       if (block.type === 'text') text += block.text;
     }
+    // a modell válasza a képen lévő szövegtől is függ (prompt-injekció): csak a három mezőt, ellenőrzött
+    // típussal és mérettel adjuk vissza
     const match = text.match(/\{[\s\S]*\}/);
-    const parsed = match ? JSON.parse(match[0]) : { gross_amount: null, date: null, merchant: null };
+    let raw: any = {};
+    try { raw = match ? JSON.parse(match[0]) : {}; } catch { raw = {}; }
+    const amt = Number(raw?.gross_amount);
+    const dateStr = typeof raw?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : null;
+    const parsed = {
+      gross_amount: Number.isFinite(amt) && amt > 0 && amt < 1e9 ? Math.round(amt) : null,
+      date: dateStr,
+      merchant: typeof raw?.merchant === 'string' ? raw.merchant.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 80) || null : null,
+    };
 
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

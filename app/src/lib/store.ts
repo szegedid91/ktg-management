@@ -20,6 +20,8 @@ export interface OutboxOp {
   args?: Record<string, any>;
   queuedAt: string;
   lastError?: string;
+  /** átmeneti (nem hálózati) szerverhibás próbálkozások száma */
+  attempts?: number;
   /** rpc: az optimistán módosított sorok — elutasításnál mindet visszatöltjük */
   touched?: { table: SyncTable; id: string }[];
 }
@@ -215,6 +217,16 @@ class Store {
     this.emit();
   }
 
+  /** átmeneti szerverhiba: számláló léptetése; a visszaadott érték az eddigi próbák száma */
+  bumpOpAttempt(opId: string, error: string): number {
+    const op = this.outbox.find((o) => o.opId === opId);
+    if (!op) return 0;
+    op.attempts = (op.attempts ?? 0) + 1;
+    op.lastError = error;
+    this.schedulePersist(PREFIX + 'outbox', () => this.outbox);
+    return op.attempts;
+  }
+
   markOpError(opId: string, error: string) {
     const op = this.outbox.find((o) => o.opId === opId);
     if (op) op.lastError = error;
@@ -264,12 +276,13 @@ class Store {
 
   setCursor(table: string, cursor: string) {
     this.cursors[table] = cursor;
-    // ha a tábla lemezre írása nem sikerült (pl. betelt a tároló), a kurzor
-    // visszaáll, hogy a következő lehúzás újra behozza a sorokat
+    // ha a tábla lemezre írása nem sikerült (pl. betelt a tároló), a kurzort NEM írjuk lemezre:
+    // a memóriában az adat és a kurzor együtt friss, újraindítás után a lemezen maradt régi kurzor
+    // hozza be újra a sorokat. (A memóriabeli kurzor visszaállítása 30 mp-enként teljes
+    // újratöltést okozott volna, ami ugyanúgy elbukik — végtelen ciklus.)
     const w = this.tableWrites.get(table) ?? Promise.resolve(true);
     void w.then((ok) => {
-      if (!ok) { this.cursors[table] = '1970-01-01T00:00:00Z'; }
-      void this.schedulePersist(PREFIX + 'cursors', () => this.cursors);
+      if (ok) void this.schedulePersist(PREFIX + 'cursors', () => this.cursors);
     });
   }
 

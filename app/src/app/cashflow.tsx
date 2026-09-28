@@ -105,6 +105,10 @@ export default function Cashflow() {
       const w = workers.find((x) => x.id === wid);
       put(weeks[0], { kind: 'wage', label: `${wname(w)} — esedékes bér`, amount: sum });
     }
+    // külsős közvetítő ki nem fizetett díja: ezt is a cég fizeti ki (a partner-közvetítőé belső elszámolás)
+    const extComm = attendance.filter((a) => !a.deleted_at && !!a.referrer_external_id && !a.commission_paid_at && Number(a.commission_amount) > 0)
+      .reduce((s, a) => s + Number(a.commission_amount), 0);
+    if (extComm > 0) put(weeks[0], { kind: 'wage', label: 'Külsős közvetítői díj — esedékes', amount: Math.round(extComm) });
 
     // ---- kiadás: futó (elfogadott) feladatok becsült bére ----
     const now = Date.now();

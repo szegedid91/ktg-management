@@ -7,14 +7,14 @@ import { View, Text, Pressable } from 'react-native';
 import { Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
-import { isActiveTask, wname, openQuotes, isOverdue } from '../lib/tasks';
+import { isActiveTask, isFailedOpen, wname, openQuotes, isOverdue } from '../lib/tasks';
 import { todayISO, localDateISO, addDaysISO } from '../lib/format';
 import { TaskRow, STATUS_COLOR, UNASSIGNED_COLOR } from './TaskRow';
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskPhoto, TaskMaterialPricing, TaskQuote, WorkSession, Worker, Site,
 } from '../lib/types';
 
-export type BoardFilter = 'active' | 'unassigned' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'all';
+export type BoardFilter = 'active' | 'unassigned' | 'assigned' | 'acknowledged' | 'running' | 'unpriced' | 'priority' | 'quote' | 'overdue' | 'done' | 'failed' | 'failed_closed' | 'all';
 type Filter = BoardFilter;
 const PAGE = 25;
 
@@ -53,7 +53,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const ISO = /^\d{4}-\d{2}-\d{2}$/;
   const dFrom = ISO.test(dateFrom.trim()) ? dateFrom.trim() : null;
   const dTo = ISO.test(dateTo.trim()) ? dateTo.trim() : null;
-  const taskDay = (t: WorkerTask) => localDateISO((t.status === 'done' || t.status === 'failed') && t.done_at ? t.done_at : t.created_at);
+  // kész: a készre jelentés napja; nem sikerült: a vezetői lezárás napja (ha van), különben a jelentésé
+  const taskDay = (t: WorkerTask) => localDateISO(t.status === 'done' && t.done_at ? t.done_at : t.status === 'failed' && (t.closed_at ?? t.done_at) ? (t.closed_at ?? t.done_at)! : t.created_at);
   const quick = (days: number | null) => {
     if (days === null) { setDateFrom(''); setDateTo(''); }
     else { setDateFrom(days === 0 ? todayISO() : addDaysISO(todayISO(), -days)); setDateTo(todayISO()); }
@@ -77,7 +78,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
     quote: active.filter(hasOpenQuote).length,
     overdue: active.filter((t) => isOverdue(t, todayISO())).length,
     done: tasks.filter((t) => t.status === 'done').length,
-    failed: tasks.filter((t) => t.status === 'failed').length,
+    failed: tasks.filter(isFailedOpen).length,
+    failed_closed: tasks.filter((t) => t.status === 'failed' && !!t.closed_at).length,
     all: tasks.length,
   };
 
@@ -98,7 +100,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
           case 'quote': return isActiveTask(t) && hasOpenQuote(t);
           case 'overdue': return isOverdue(t, todayISO());
           case 'done': return t.status === 'done';
-          case 'failed': return t.status === 'failed';
+          case 'failed': return isFailedOpen(t);
+          case 'failed_closed': return t.status === 'failed' && !!t.closed_at;
           default: return true;
         }
       })
@@ -145,7 +148,8 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
         {includeClosed ? (
           <>
             <Chip label="Kész" count={counts.done} color={STATUS_COLOR.done} on={filter === 'done'} onPress={() => { setFilter('done'); setLimit(PAGE); }} />
-            <Chip label="Nem sikerült" count={counts.failed} color={STATUS_COLOR.failed} on={filter === 'failed'} onPress={() => { setFilter('failed'); setLimit(PAGE); }} />
+            <Chip label="Nem sikerült · nyitva" count={counts.failed} color={STATUS_COLOR.failed} on={filter === 'failed'} onPress={() => { setFilter('failed'); setLimit(PAGE); }} />
+            {counts.failed_closed > 0 ? <Chip label="Nem sikerült · lezárva" count={counts.failed_closed} color={STATUS_COLOR.failed} on={filter === 'failed_closed'} onPress={() => { setFilter('failed_closed'); setLimit(PAGE); }} /> : null}
             <Chip label="Mind" count={counts.all} on={filter === 'all'} onPress={() => { setFilter('all'); setLimit(PAGE); }} />
           </>
         ) : null}

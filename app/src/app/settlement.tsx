@@ -5,6 +5,7 @@ import { C, S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
 import { insertRow, getCurrentUserId, softDeleteRow } from '../lib/repo';
 import { ft, hd, todayISO, parseAmount } from '../lib/format';
+import { notify } from '../lib/dialogs';
 import { Settlement, Profile, Expense, Attendance, Site, Invoice, ProfitShareHistory } from '../lib/types';
 import { computeBalances, suggestTransfers } from '../lib/balances';
 
@@ -116,8 +117,9 @@ function SettlementScreenInner() {
 
       const wageItems = attendance
         .filter((a) => a.paid_by === p.id && !!a.paid_at && inPeriod(a.work_date) && siteOk(a.site_id));
-      const wage = wageItems.reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
-      wageItems.forEach((a) => items.push({ amount: Number(a.amount) - Number(a.commission_amount), date: a.work_date }));
+      const paidOf = (a: Attendance) => (a.paid_amount != null ? Number(a.paid_amount) : Number(a.amount) - Number(a.commission_amount));
+      const wage = wageItems.reduce((s, a) => s + paidOf(a), 0);
+      wageItems.forEach((a) => items.push({ amount: paidOf(a), date: a.work_date }));
 
       const commItems = attendance
         .filter((a) => a.commission_paid_by === p.id && !!a.commission_paid_at
@@ -163,6 +165,7 @@ function SettlementScreenInner() {
 
   const saveSettlement = () => {
     if (!toUser || !amount) return;
+    if (!(parseAmount(amount) > 0)) { notify('Hiba', 'Adj meg nullánál nagyobb összeget.'); return; }
     insertRow('settlements', {
       from_user: me,
       to_user: toUser,

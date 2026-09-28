@@ -37,15 +37,25 @@ function goToPasswordPage() {
 /** Fiókváltás-őr: ha nem ugyanaz a felhasználó lép be, mint akié a helyi
  *  tükör/küldősor, mindent törlünk — a másik fiók nevében sorban álló
  *  műveleteket az RLS úgyis elutasítaná. */
-async function guardUserSwitch(uid: string) {
+async function guardUserSwitch(uid: string, email?: string | null): Promise<boolean> {
   try {
+    await store.whenLoaded();
     const last = (await AsyncStorage.getItem(LAST_USER_KEY)) ?? (await AsyncStorage.getItem(LEGACY_LAST_USER_KEY));
+    if (last && last !== uid && store.hasAnyRows()) {
+      // Másik fiók lépett be egy olyan készüléken, ahol az előző fiók adatai vannak. Ez lehet szándékos
+      // (közös eszköz), de lehet becsempészett belépő link is (implicit auth: a linkben lévő tokennel
+      // más fiókjába kerülnénk) — rákérdezünk, mielőtt a helyi adatot törölnénk és átváltanánk.
+      const { confirmDialog } = await import('./dialogs');
+      const ok = await confirmDialog('Másik fiók', `Most ${email ? `„${email}”` : 'egy másik fiók'} lépett be, de a készüléken az előző fiók adatai vannak.\n\nFolytatod ezzel a fiókkal? (Az előző fiók helyi adatai törlődnek.)`, 'Folytatom', true, 'Mégse');
+      if (!ok) return false;
+    }
     // ismeretlen előző fiók + nem üres tár: biztonságból törlünk (ne lásson más adatot)
     if ((last && last !== uid) || (!last && store.hasAnyRows())) await store.clearAll();
     await AsyncStorage.setItem(LAST_USER_KEY, uid);
   } catch {
     // tárolóhiba esetén nem blokkoljuk a belépést
   }
+  return true;
 }
 
 interface AuthCtx {
@@ -81,10 +91,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCurrentUserId(s?.user.id ?? null);
       if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && urlLooksLikeRecovery())) goToPasswordPage();
       if (s) {
-        void guardUserSwitch(s.user.id).then(() => { startSyncLoop(); startRealtime(); });
-        import('./push').then((m) => m.registerPushToken()).catch(() => {});
-        // weben: a meglévő Web Push feliratkozás frissítése (engedélyt nem kér)
-        import('./webpush').then((m) => m.refreshWebPush()).catch(() => {});
+        // weben a belépő link tokenje az URL-előzményben maradna („Vissza”): letakarítjuk
+        if (event === 'SIGNED_IN' && typeof window !== 'undefined' && typeof history !== 'undefined') {
+          try { history.replaceState(null, '', `${location.pathname}${location.search}`); } catch { /* nincs history */ }
+        }
+        void guardUserSwitch(s.user.id, s.user.email).then((ok) => {
+          if (!ok) { void supabase.auth.signOut({ scope: 'local' }); return; }
+          startSyncLoop(); startRealtime();
+          // push-regisztráció csak belépéskor / induláskor (óránkénti token-frissítésnél felesleges)
+          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+            import('./push').then((m) => m.registerPushToken()).catch(() => {});
+            // weben: a meglévő Web Push feliratkozás frissítése (engedélyt nem kér)
+            import('./webpush').then((m) => m.refreshWebPush()).catch(() => {});
+          }
+        });
       } else {
         stopSyncLoop();
         stopRealtime();
@@ -139,6 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await withTimeout(Promise.all([
       me ? supabase.from('profiles').update({ push_token: null }).eq('id', me) : Promise.resolve(),
       import('./webpush').then((m) => m.unsubscribeWebPush()),
+      // háttér-geofence leállítása: az előző fiók munkaterületei ne maradjanak a készüléken
+      import('./geofence').then((m) => m.stopGeofences()),
     ]), 3000);
     // a szerver-oldali kiléptetés (token visszavonás) se tarthat sokáig;
     // a helyi munkamenet mindenképp törlődik

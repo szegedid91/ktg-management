@@ -266,7 +266,7 @@ function StatsInner() {
   const byWorker = useMemo(() => workers.map((w) => {
     const rows = attendance.filter((a) => a.worker_id === w.id);
     const total = rows.reduce((s, a) => s + Number(a.amount), 0);
-    const days = rows.length;
+    const days = new Set(rows.filter((a) => a.pay_basis !== 'presence' && Number(a.amount) > 0).map((a) => a.work_date)).size;
     return { w, total, days };
   }).filter((x) => x.total > 0).sort((a, b) => b.total - a.total), [workers, attendance]);
 
@@ -303,7 +303,7 @@ function StatsInner() {
   const workerPerf = useMemo(() => {
     const today = todayISO();
     const start = wpPeriod === 'all' ? '0000-01-01' : addDaysISO(today, -Number(wpPeriod));
-    const inP = (iso: string | null | undefined) => !!iso && iso.slice(0, 10) >= start;
+    const inP = (iso: string | null | undefined) => !!iso && (iso.length === 10 ? iso : localDateISO(iso)) >= start;
     const now = Date.now();
     // feladatonként az összes munkaóra (minden munkavállalóé együtt) — az átlag óra/kész feladathoz
     const taskHours = new Map<string, number>();

@@ -151,7 +151,20 @@ Biztosan leveszed?`, 'Levétel', true);
   const allAttendance = useTable<Attendance>('attendance');
   const wageShares = useMemo(() => taskWageShares(id, allAttendance, allSessions, allTasks), [id, allAttendance, allSessions, allTasks]);
   const wageBooked = useMemo(() => wageShares.reduce((s, x) => s + x.amount, 0), [wageShares]);
-  const wage = useMemo(() => (task ? taskWageCost(task, assigneeWorkers, sessions.filter((s) => !s.ended_at), appSettings, now) : null), [task, assigneeWorkers, sessions, appSettings, now]);
+  // a futó menet előnézete = költség(minden menet) − költség(lezárt menetek): így a napi díj nem duplázódik,
+  // és a futó órák a nap már könyvelt óráival együtt kerekednek
+  const wage = useMemo(() => {
+    if (!task) return null;
+    const open = sessions.filter((s) => !s.ended_at);
+    if (open.length === 0) return { total: 0, parts: [] as { worker: Worker; basis: string; amount: number; hours: number }[] };
+    const all = taskWageCost(task, assigneeWorkers, sessions, appSettings, now);
+    const closed = taskWageCost(task, assigneeWorkers, sessions.filter((s) => !!s.ended_at), appSettings, now);
+    const parts = all.parts.map((p) => {
+      const c = closed.parts.find((x) => x.worker.id === p.worker.id);
+      return { ...p, amount: Math.max(0, p.amount - (c?.amount ?? 0)), hours: Math.max(0, p.hours - (c?.hours ?? 0)) };
+    }).filter((p) => open.some((s) => s.worker_id === p.worker.id));
+    return { total: parts.reduce((s, p) => s + p.amount, 0), parts };
+  }, [task, assigneeWorkers, sessions, appSettings, now]);
   const wageTotal = task?.quote_accepted_at && task.quote_amount != null ? Number(task.quote_amount) : wageBooked + (wage?.total ?? 0);
   const mat = useMemo(() => materialTotals(materials, pricing), [materials, pricing]);
   const profit = task && wage ? taskProfit(finance?.invoice_net, wageTotal, materials, pricing) : null;
@@ -180,7 +193,7 @@ Biztosan leveszed?`, 'Levétel', true);
   const [busy, setBusy] = useState(false);
   const [xlsBusy, setXlsBusy] = useState(false);
 
-  if (!task) return <Screen><Empty text="Feladat nem található (szinkronizálás folyamatban?)" /></Screen>;
+  if (!task) return <Screen><Empty text={isWorker ? 'Ez a feladat már nem elérhető (törölték, lezárták vagy levettek róla).' : 'Feladat nem található (szinkronizálás folyamatban?)'} /></Screen>;
 
   const site = sites.find((s) => s.id === task.site_id);
   const creator = profiles.find((p) => p.id === task.created_by)?.display_name ?? '?';
@@ -200,7 +213,7 @@ Biztosan leveszed?`, 'Levétel', true);
   // a munkavállaló csak visszaigazolás után indíthat munkát / rögzíthet anyagot
   const acked = !!myAssignment?.acknowledged_at && !quoteOpenForMe;
   // késznek csak akkor jelölhető, ha a munkavállaló el is kezdte (van munkaideje rajta)
-  const startedByMe = sessions.some((s) => s.worker_id === myWorkerId);
+  // (a vállalkozó emberei is számítanak — lásd lentebb a crew után)
   const nowISO = () => new Date().toISOString();
 
   const openPhoto = async (path: string) => {
@@ -242,6 +255,8 @@ Biztosan leveszed?`, 'Levétel', true);
   // vállalkozó: az embereit is elindíthatja / leállíthatja ezen a feladaton
   const crew = workers.filter((w) => w.contractor_id === myWorkerId);
   const crewOpenSessions = sessions.filter((s) => !s.ended_at && crew.some((c) => c.id === s.worker_id));
+  // késznek csak akkor jelölhető, ha el is kezdték: a saját vagy (vállalkozónál) az emberei munkaideje
+  const startedByMe = sessions.some((s) => s.worker_id === myWorkerId || crew.some((c) => c.id === s.worker_id));
   // szétosztás: kik vannak most ráosztva az embereim közül, és a mentés
   const crewAssigned = new Set(assignees.filter((a) => crew.some((c) => c.id === a.worker_id)).map((a) => a.worker_id));
   const distSel = distWho ?? crewAssigned;
@@ -281,8 +296,9 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   const markDone = async () => {
+    if (busy) return;
     if (!await confirmDialog('Feladat kész', 'Késznek jelölöd a feladatot?', 'Kész ✔')) return;
-    if (openSession) stopWork();
+    if (openSession || crewOpenSessions.length) stopWork();
     queueRpc('worker_task_action', { p_id: task.id, p_action: 'done' }, [
       { table: 'worker_tasks', id: task.id, patch: { status: 'done', done_at: nowISO() } },
     ]);
@@ -298,11 +314,13 @@ Biztosan leveszed?`, 'Levétel', true);
     }
     if (fails) notify('Fotó', `${fails} fotót nem sikerült feltölteni (internet?) — az indoklás nélkülük megy.`);
     setBusy(false);
-    if (openSession) stopWork();
+    if (openSession || crewOpenSessions.length) stopWork();
+    const prevPaths = task.fail_photo_paths?.length ? task.fail_photo_paths : task.fail_photo_path ? [task.fail_photo_path] : [];
     queueRpc('worker_task_action', { p_id: task.id, p_action: 'fail', p_reason: failReason.trim(), p_photo_paths: paths }, [
-      { table: 'worker_tasks', id: task.id, patch: { status: 'failed', done_at: nowISO(), fail_reason: failReason.trim(), fail_photo_path: paths[0] ?? null, fail_photo_paths: paths } },
+      { table: 'worker_tasks', id: task.id, patch: { status: 'failed', done_at: nowISO(), fail_reason: failReason.trim(), fail_photo_path: paths[0] ?? task.fail_photo_path ?? null, fail_photo_paths: [...prevPaths, ...paths] } },
     ]);
-    setFailOpen(false);
+    // az űrlap ürül: ismételt jelentésnél ne menjenek fel újra ugyanazok a fotók
+    setFailOpen(false); setFailReason(''); setFailPhotos([]);
   };
 
   const submitMaterial = async () => {
@@ -419,7 +437,8 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   const cancelTask = async () => {
-    if (!await confirmDialog('Feladat visszavonása', 'A feladat lezárul „visszavont” állapottal.', 'Visszavonás', true)) return;
+    if (!await confirmDialog('Feladat visszavonása', 'A feladat lezárul „visszavont” állapottal. A rajta futó munkaidő lezárul.', 'Visszavonás', true)) return;
+    sessions.filter((x) => !x.ended_at).forEach((x) => updateRow('work_sessions', x.id, { ended_at: nowISO() }));
     updateRow('worker_tasks', task.id, { status: 'cancelled' });
   };
 
@@ -502,7 +521,10 @@ Biztosan leveszed?`, 'Levétel', true);
       ...workPhotos.map((p) => p.path),
     ];
     void removeStoragePaths('tasks', paths);
+    // a futó munkaidő lezárul (a munkavállaló a törölt feladatot már nem éri el, nem tudná leállítani)
+    sessions.filter((x) => !x.ended_at).forEach((x) => updateRow('work_sessions', x.id, { ended_at: nowISO() }));
     materials.forEach((m) => softDeleteRow('task_materials', m.id));
+    workPhotos.forEach((ph) => softDeleteRow('task_photos', ph.id));
     softDeleteRow('worker_tasks', task.id);
     smartBack();
   };
@@ -854,8 +876,8 @@ Biztosan leveszed?`, 'Levétel', true);
           {task.status === 'failed' && task.closed_at ? (
             <Btn title="↩ Újranyitás a munkavállalónak" kind="ghost" small onPress={() => { updateRow('worker_tasks', task.id, { closed_at: null }); notify('Újranyitva', 'A munkavállaló újra látja és folytathatja a feladatot.'); }} />
           ) : null}
-          {task.status === 'done' ? (
-            <Btn title="↩ Készre jelentés visszavonása — vissza a munkavállalóhoz" kind="ghost" small onPress={() => void reopenTask()} />
+          {task.status === 'done' || task.status === 'cancelled' ? (
+            <Btn title={task.status === 'cancelled' ? '↩ Újranyitás — vissza a munkavállalóhoz' : '↩ Készre jelentés visszavonása — vissza a munkavállalóhoz'} kind="ghost" small onPress={() => void reopenTask()} />
           ) : null}
           <View style={{ flexDirection: 'row', gap: S.sm }}>
             <View style={{ flex: 1 }}><Btn title="⏱ Munkaidő" kind="secondary" small onPress={() => { setRetroOpen(true); setOpenSig((x) => ({ ...x, time: x.time + 1 })); }} /></View>

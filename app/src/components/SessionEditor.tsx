@@ -25,8 +25,12 @@ export function toLocalInput(iso: string | null | undefined): string {
 export function fromLocalInput(text: string): string | null {
   const m = text.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/);
   if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
-  return isNaN(d.getTime()) ? null : d.toISOString();
+  const [y, mo, da, h, mi] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])];
+  if (h > 23 || mi > 59) return null;
+  const d = new Date(y, mo - 1, da, h, mi);
+  // ne „guruljon át” a hibás dátum (pl. 02-31 → 03-03)
+  if (isNaN(d.getTime()) || d.getFullYear() !== y || d.getMonth() + 1 !== mo || d.getDate() !== da) return null;
+  return d.toISOString();
 }
 
 export function SessionEditor({ session, label, editable }: { session: WorkSession; label?: string; editable: boolean }) {

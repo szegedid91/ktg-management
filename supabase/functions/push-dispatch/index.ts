@@ -149,7 +149,16 @@ Deno.serve(async (req) => {
       .limit(100);
     if (onlyRecipient) q = q.eq('recipient', onlyRecipient);
     const { data: queue } = await q;
-    const rows = queue ?? [];
+    // lefoglalás (compare-and-set az attempts mezőn): a DB-trigger, a pg_cron és az app drain-je egyszerre is
+    // futhat — egy sort csak az küld ki, aki elsőként lépteti a számlálót, így nincs dupla push
+    const rows: any[] = [];
+    for (const n of queue ?? []) {
+      const { data: won } = await supabase.from('notification_queue')
+        .update({ attempts: Number(n.attempts ?? 0) + 1 })
+        .eq('id', n.id).eq('attempts', Number(n.attempts ?? 0)).is('sent_at', null)
+        .select('id');
+      if (won && won.length) rows.push({ ...n, attempts: Number(n.attempts ?? 0) + 1 });
+    }
 
     // Web Push: VAPID kulcsok + a címzettek élő böngésző-feliratkozásai.
     // Kulcs nélkül (még nincs beszúrva) a web ág egyszerűen kimarad.
@@ -222,14 +231,13 @@ Deno.serve(async (req) => {
       await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() })
         .in('id', [...new Set(doneIds)]);
     }
-    // sikertelen sorok: próbálkozás-számláló; 5 után lezárjuk (az app-beli értesítés megvan)
+    // sikertelen sorok: a számláló a lefoglaláskor már nőtt; 5 után lezárjuk (az app-beli értesítés megvan)
     const done = new Set(doneIds);
     for (const n of rows) {
       if (done.has(n.id)) continue;
-      const attempts = Number(n.attempts ?? 0) + 1;
-      await supabase.from('notification_queue')
-        .update(attempts >= 5 ? { attempts, sent_at: new Date().toISOString() } : { attempts })
-        .eq('id', n.id);
+      if (Number(n.attempts ?? 0) >= 5) {
+        await supabase.from('notification_queue').update({ sent_at: new Date().toISOString() }).eq('id', n.id);
+      }
     }
   }
 

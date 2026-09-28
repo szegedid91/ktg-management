@@ -103,7 +103,7 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
     note: f.note.trim() || null,
     worker_type: f.worker_type,
     is_vat_payer: f.worker_type === 'company' ? f.is_vat_payer : false,
-    vat_rate: parseAmount(f.vat_rate) || 27,
+    vat_rate: f.vat_rate.trim() === '' ? 27 : parseAmount(f.vat_rate),
     default_pay_basis: f.default_pay_basis,
     hourly_rate: f.hourly_rate ? parseAmount(f.hourly_rate) : null,
     daily_rate: f.daily_rate ? parseAmount(f.daily_rate) : null,

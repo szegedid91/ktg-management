@@ -15,42 +15,82 @@ export interface TaskFilter { taskId: string | null; siteId: string | null; from
 /** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
 const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
 
-export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknown, s?: number) => Response) {
-  let tq = supabase.from('worker_tasks')
-    .select('id, code, title, status, site_id, created_at, done_at, closed_at, quote_amount, quote_accepted_at, item_code_id, item_codes(code, name)')
-    .is('deleted_at', null).order('created_at');
-  if (f.taskId) tq = tq.eq('id', f.taskId);
-  if (f.siteId) tq = tq.eq('site_id', f.siteId);
-  if (f.status === 'done') tq = tq.eq('status', 'done');
-  else if (f.status === 'failed') tq = tq.eq('status', 'failed');
-  else if (f.status === 'open') tq = tq.in('status', ['assigned', 'acknowledged']);
-  const [{ data: tasks, error }, { data: sites }, { data: workers }, { data: assignees }, { data: sessions },
-    { data: attendance }, { data: materials }, { data: pricing }, { data: finance }, { data: quotedTasks }] = await Promise.all([
-    tq,
-    supabase.from('sites').select('id, name, address'),
-    supabase.from('workers').select('id, name'),
-    supabase.from('task_assignees').select('task_id, worker_id').is('deleted_at', null),
-    supabase.from('work_sessions').select('task_id, worker_id, site_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null),
-    supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null),
-    supabase.from('task_materials').select('id, task_id, worker_id, amount, note, created_at').is('deleted_at', null),
-    supabase.from('task_material_pricing').select('material_id, resale_net').is('deleted_at', null),
-    supabase.from('task_finance').select('task_id, invoice_net').is('deleted_at', null),
-    supabase.from('worker_tasks').select('id, quote_accepted_at').not('quote_accepted_at', 'is', null),
-  ]);
-  if (error) throw error;
+/** Teljes lekérés lapozva: a PostgREST alapból 1000 sornál csendben csonkol. */
+export async function fetchAll(build: () => any, page = 1000): Promise<any[]> {
+  const out: any[] = [];
+  for (let from = 0; ; from += page) {
+    const { data, error } = await build().order('id').range(from, from + page - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < page) break;
+  }
+  return out;
+}
 
-  const siteOf = new Map<string, { name: string; address: string }>((sites ?? []).map((s: any) => [s.id, { name: s.name, address: s.address ?? '' }]));
-  const nameOf = (id: string | null) => (id ? ((workers ?? []).find((w: any) => w.id === id)?.name ?? '?') : '');
-  const resaleOf = new Map<string, number>((pricing ?? []).map((p: any) => [p.material_id, Number(p.resale_net)]));
-  const invoiceOf = new Map<string, number | null>((finance ?? []).map((x: any) => [x.task_id, x.invoice_net == null ? null : Number(x.invoice_net)]));
+export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknown, s?: number) => Response) {
+  const taskQuery = () => {
+    let tq = supabase.from('worker_tasks')
+      .select('id, code, title, status, site_id, created_at, done_at, closed_at, quote_amount, quote_accepted_at, item_code_id, item_codes(code, name)')
+      .is('deleted_at', null);
+    if (f.taskId) tq = tq.eq('id', f.taskId);
+    if (f.siteId) tq = tq.eq('site_id', f.siteId);
+    if (f.status === 'done') tq = tq.eq('status', 'done');
+    else if (f.status === 'failed') tq = tq.eq('status', 'failed');
+    // „folyamatban”: a kiadott / elfogadott, és a nyitva hagyott „nem sikerült” (a munkavállalónál még él)
+    else if (f.status === 'open') tq = tq.or('status.in.(assigned,acknowledged),and(status.eq.failed,closed_at.is.null)');
+    return tq;
+  };
+  const tasksAll = (await fetchAll(taskQuery)).sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
   // időszak-szűrés magyar naptári nap szerint (lezárás vagy kiadás dátuma)
   const byDone = f.status === 'done' || f.status === 'failed';
-  const list = ((tasks ?? []) as any[]).filter((t) => {
+  const list = (tasksAll as any[]).filter((t) => {
     if (f.taskId) return true;
-    const d = budDay((byDone && t.done_at) || t.created_at);
+    const d = budDay((byDone && (t.closed_at ?? t.done_at)) || t.created_at);
     return d >= f.from && d <= f.to;
   });
   const ids = new Set(list.map((t) => t.id));
+  const idList = [...ids];
+  const inChunks = async (build: (chunk: string[]) => any) => {
+    const out: any[] = [];
+    for (let i = 0; i < idList.length; i += 200) out.push(...await fetchAll(() => build(idList.slice(i, i + 200))));
+    return out;
+  };
+  // a feladatok munkamenetei → az érintett munkavállaló×nap párok bér-sorai (a párhuzamos feladatok miatt a nap
+  // összes menete kell, nem csak a listázott feladatoké)
+  const ownSessions = idList.length ? await inChunks((c) => supabase.from('work_sessions').select('task_id, worker_id, site_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).in('task_id', c)) : [];
+  const workerIds = [...new Set(ownSessions.map((x: any) => x.worker_id as string))];
+  const dayMin = ownSessions.reduce((m: string | null, x: any) => (m == null || x.started_at < m ? x.started_at : m), null as string | null);
+  const dayMax = ownSessions.reduce((m: string | null, x: any) => (m == null || x.started_at > m ? x.started_at : m), null as string | null);
+  const fromTs = dayMin ? new Date(new Date(dayMin).getTime() - 2 * 86400000).toISOString() : null;
+  const toTs = dayMax ? new Date(new Date(dayMax).getTime() + 2 * 86400000).toISOString() : null;
+  const [sites, workers, assignees, sessions, attendance, materials, pricing, finance, quotedTasks] = await Promise.all([
+    fetchAll(() => supabase.from('sites').select('id, name, address')),
+    fetchAll(() => supabase.from('workers').select('id, name')),
+    idList.length ? inChunks((c) => supabase.from('task_assignees').select('id, task_id, worker_id').is('deleted_at', null).in('task_id', c)) : [],
+    workerIds.length && fromTs && toTs
+      ? fetchAll(() => supabase.from('work_sessions').select('id, task_id, worker_id, site_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).in('worker_id', workerIds).gte('started_at', fromTs).lte('started_at', toTs))
+      : [],
+    idList.length
+      ? (async () => {
+          const byTask = await inChunks((c) => supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null).in('task_id', c));
+          const byDays = workerIds.length && fromTs && toTs
+            ? await fetchAll(() => supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null).eq('source', 'session').in('worker_id', workerIds).gte('work_date', fromTs.slice(0, 10)).lte('work_date', toTs.slice(0, 10)))
+            : [];
+          const seen = new Set<string>();
+          return [...byTask, ...byDays].filter((a: any) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
+        })()
+      : [],
+    idList.length ? inChunks((c) => supabase.from('task_materials').select('id, task_id, worker_id, amount, note, created_at').is('deleted_at', null).in('task_id', c)) : [],
+    fetchAll(() => supabase.from('task_material_pricing').select('id, material_id, resale_net').is('deleted_at', null)),
+    idList.length ? inChunks((c) => supabase.from('task_finance').select('id, task_id, invoice_net').is('deleted_at', null).in('task_id', c)) : [],
+    fetchAll(() => supabase.from('worker_tasks').select('id, quote_accepted_at').not('quote_accepted_at', 'is', null)),
+  ]);
+
+  const siteOf = new Map<string, { name: string; address: string }>((sites ?? []).map((s: any) => [s.id, { name: s.name, address: s.address ?? '' }]));
+  const workerName = new Map<string, string>((workers ?? []).map((w: any) => [w.id, w.name]));
+  const nameOf = (id: string | null) => (id ? (workerName.get(id) ?? '?') : '');
+  const resaleOf = new Map<string, number>((pricing ?? []).map((p: any) => [p.material_id, Number(p.resale_net)]));
+  const invoiceOf = new Map<string, number | null>((finance ?? []).map((x: any) => [x.task_id, x.invoice_net == null ? null : Number(x.invoice_net)]));
   const by = <T extends { task_id: string }>(rows: T[] | null) => {
     const m = new Map<string, T[]>();
     for (const r of rows ?? []) if (ids.has(r.task_id)) m.set(r.task_id, [...(m.get(r.task_id) ?? []), r]);

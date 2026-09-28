@@ -89,7 +89,7 @@ function opSummary(op: OutboxOp): Record<string, any> {
     if (!o || typeof o !== 'object') return o;
     const out: Record<string, any> = {};
     for (const [k, v] of Object.entries(o)) {
-      if (/bank|password|token|secret/i.test(k)) continue;
+      if (/bank|password|token|secret|email|phone|name|note|body|address|iban|tax/i.test(k)) continue;
       out[k] = typeof v === 'string' && v.length > 200 ? `${v.slice(0, 200)}…` : v;
     }
     return out;
@@ -118,7 +118,13 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
       return 'rejected';
     }
     // hálózati vagy átmeneti szerverhiba → az op a sorban marad, retry később
-    if (!isNetworkError(err)) logError('sync-retry', `${what}: ${String(err?.message ?? err)}`, { ...errInfo(err), op: opSummary(op) });
+    if (!isNetworkError(err)) {
+      // szerver-oldali (nem hálózati) átmeneti hiba: számoljuk; sok egymás utáni után a művelet a
+      // „sikertelen” listába kerül, hogy ne tartsa fel örökre a mögötte állókat (a UI bannert mutat)
+      const n = store.bumpOpAttempt(op.opId, String(err?.message ?? err));
+      logError('sync-retry', `${what}: ${String(err?.message ?? err)}`, { ...errInfo(err), attempt: n, op: opSummary(op) });
+      if (n >= 30) return 'rejected';
+    }
     return 'offline';
   }
 }
@@ -126,7 +132,11 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
 async function pushOutbox(): Promise<boolean> {
   for (const op of store.peekOutbox()) {
     const result = await pushOp(op);
-    if (result === 'offline') return false;
+    if (result === 'offline') {
+      // a sor eleje elakadt: a lehúzás ettől függetlenül megy (a függő sorokat a tükör védi)
+      status.lastError = op.attempts && op.attempts >= 3 ? `Egy művelet nem megy fel (${op.attempts}. próba): ${op.lastError ?? ''}`.trim() : status.lastError;
+      return false;
+    }
     if (result === 'done') store.removeOp(op.opId);
     if (result === 'rejected') {
       // a szerver végleg elutasította: sikertelen listába kerül (a UI bannert
@@ -189,27 +199,29 @@ async function pullTable(table: SyncTable): Promise<void> {
   const mark = RESYNC_MARKS[table];
   const needFull = !!mark && store.getCursor(`${table}:mark`) !== mark;
   const cursor = needFull ? '1970-01-01T00:00:00Z' : store.getCursor(table);
+  // 60 mp átfedés: az updated_at a tranzakció KEZDETE, a commit később jöhet — egy hosszabb művelet
+  // sora különben kimaradhatna, ha a kurzor már túlszaladt rajta (az újratöltés idempotens upsert)
+  const since = new Date(Math.max(0, new Date(cursor).getTime() - 60_000)).toISOString();
   const page = 1000;
-  let from = 0;
   let maxTs = cursor;
+  let lastTs: string | null = null;
+  let lastId: string | null = null;
   for (;;) {
-    // gte + (updated_at, id) rendezés: az azonos időbélyegű sorok sem
-    // maradhatnak ki (pl. tömeges kifizetés-pipa egy tranzakcióban);
-    // a határ-sorok újratöltése ártalmatlan (idempotens upsert a tükörbe)
-    const { data, error } = await supabase
-      .from(sourceOf(table))
-      .select('*')
-      .gte('updated_at', cursor)
-      .order('updated_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + page - 1);
+    // (updated_at, id) szerinti keyset-lapozás: offset helyett az utolsó sor után folytatjuk, így a
+    // lapozás közben módosuló sorok sem tolnak el semmit
+    let q = supabase.from(sourceOf(table)).select('*');
+    q = lastTs && lastId
+      ? q.or(`updated_at.gt.${lastTs},and(updated_at.eq.${lastTs},id.gt.${lastId})`)
+      : q.gte('updated_at', since);
+    const { data, error } = await q.order('updated_at', { ascending: true }).order('id', { ascending: true }).range(0, page - 1);
     if (error) throw error;
     if (store.generation !== gen) return; // közben törölték a tárat: nem írunk vissza
     if (!data || data.length === 0) break;
     store.putManyLocal(table, data as any[], true);
-    maxTs = (data[data.length - 1] as any).updated_at;
+    const last = data[data.length - 1] as any;
+    lastTs = String(last.updated_at); lastId = String(last.id);
+    if (lastTs > maxTs) maxTs = lastTs;
     if (data.length < page) break;
-    from += page;
   }
   if (store.generation !== gen) return;
   if (maxTs !== cursor) store.setCursor(table, maxTs);
@@ -253,7 +265,9 @@ async function runSync(): Promise<void> {
   notifyStatus();
   try {
     const pushed = await pushOutbox();
-    if (pushed) {
+    // a lehúzás akkor is fut, ha egy művelet elakadt (átmeneti szerverhiba): a többi adat frissüljön;
+    // a függő sorokat a tükör nem írja felül. Ha tényleg offline vagyunk, a lehúzás hálózati hibával áll meg.
+    {
       for (const table of SYNC_TABLES) {
         await pullTable(table);
         if (table === 'profiles') await reconcileProfiles();
@@ -261,9 +275,9 @@ async function runSync(): Promise<void> {
       if (store.generation !== gen) return;
       await reconcileAll();
       status.lastSyncAt = new Date().toISOString();
-      status.lastError = null;
-      // a naplózó a felhasználó nevével jelent; a helyben várakozó hibák is most mennek fel
-      setErrlogUser((store.getAll('profiles') as any[]).find((p) => p.id === sess.session.user.id)?.display_name ?? sess.session.user.email ?? null);
+      if (pushed) status.lastError = null;
+      // a naplózó a felhasználó nevével jelent (e-mail nélkül); a helyben várakozó hibák is most mennek fel
+      setErrlogUser((store.getAll('profiles') as any[]).find((p) => p.id === sess.session.user.id)?.display_name ?? null);
       void flushErrlog();
       // régi, olvasott értesítések ne duzzasszák a lokális tárat
       const cutoff = new Date(Date.now() - 30 * 864e5).toISOString();

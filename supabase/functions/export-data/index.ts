@@ -9,7 +9,7 @@ import { PDFDocument, rgb, StandardFonts } from 'npm:pdf-lib@1.17.1';
 import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
 import { identifyCaller } from './caller.ts';
 import { exportWages } from './wages.ts';
-import { exportTasks } from './tasks.ts';
+import { exportTasks, fetchAll } from './tasks.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -69,22 +69,29 @@ Deno.serve(async (req) => {
       attQ = attQ.eq('site_id', site_id);
       invQ = invQ.eq('site_id', site_id);
     }
-    const [{ data: expenses }, { data: attendance }, { data: invoices }] = await Promise.all([expQ, attQ, invQ]);
+    // lapozva (a PostgREST 1000 sornál csendben csonkolna) és hibaellenőrzéssel — hiba esetén nem
+    // készül csonka, „sikeres” fájl
+    const [expenses, attendance, invoices] = await Promise.all([fetchAll(() => expQ), fetchAll(() => attQ), fetchAll(() => invQ)]);
     // csak az exportált költségek fotói kapnak (7 napos) linket
     const expenseIds = (expenses ?? []).map((e: any) => e.id);
-    const { data: photos } = expenseIds.length
-      ? await supabase.from('expense_photos').select('*').is('deleted_at', null).in('expense_id', expenseIds)
-      : { data: [] as any[] };
+    const photos: any[] = [];
+    for (let i = 0; i < expenseIds.length; i += 200) {
+      const chunk = expenseIds.slice(i, i + 200);
+      photos.push(...await fetchAll(() => supabase.from('expense_photos').select('*').is('deleted_at', null).in('expense_id', chunk)));
+    }
 
-    // számlafotó signed URL-ek (7 nap)
+    // számlafotó signed URL-ek (7 nap) — egy körben
     const photoUrls = new Map<string, string[]>();
-    for (const p of photos ?? []) {
-      const { data } = await supabase.storage.from('receipts').createSignedUrl(p.storage_path, 7 * 86400);
-      if (data?.signedUrl) {
-        const arr = photoUrls.get(p.expense_id) ?? [];
-        arr.push(data.signedUrl);
-        photoUrls.set(p.expense_id, arr);
-      }
+    if (photos.length) {
+      const { data: signed, error: sErr } = await supabase.storage.from('receipts').createSignedUrls(photos.map((p: any) => p.storage_path), 7 * 86400);
+      if (sErr) throw sErr;
+      (signed ?? []).forEach((x: any, i: number) => {
+        if (x?.signedUrl) {
+          const arr = photoUrls.get(photos[i].expense_id) ?? [];
+          arr.push(x.signedUrl);
+          photoUrls.set(photos[i].expense_id, arr);
+        }
+      });
     }
 
     const expRows = (expenses ?? []).map((e: any) => ({
@@ -159,7 +166,7 @@ Deno.serve(async (req) => {
     // betűtípussal készül a PDF (ékezet nélkül), nem 500-as hibával.
     let font;
     try {
-      const res = await fetch(FONT_URL);
+      const res = await fetch(FONT_URL, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) throw new Error('font http ' + res.status);
       const bytes = await res.arrayBuffer();
       const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((x) => x.toString(16).padStart(2, '0')).join('');

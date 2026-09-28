@@ -56,9 +56,11 @@ export function computeBalances(
     const spentExpenses = expenses
       .filter((e) => e.paid_by === p.id)
       .reduce((s, e) => s + Number(e.net_amount), 0);
+    // a kifizetett napnál a ténylegesen kifizetett összeg számít (paid_amount), akkor is, ha a nap bére
+    // a kifizetés után módosult (a szerver v_user_balances ugyanígy)
     const spentWages = attendance
       .filter((a) => a.paid_by === p.id && !!a.paid_at)
-      .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
+      .reduce((s, a) => s + (a.paid_amount != null ? Number(a.paid_amount) : Number(a.amount) - Number(a.commission_amount)), 0);
     const spentCommissions = attendance
       .filter((a) => a.commission_paid_by === p.id && !!a.referrer_external_id && !!a.commission_paid_at)
       .reduce((s, a) => s + Number(a.commission_amount), 0);

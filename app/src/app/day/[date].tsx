@@ -71,11 +71,17 @@ function DayViewInner() {
   const addEntry = () => {
     if (!site || !workerId || alreadyAdded(workerId)) return;
     const w = workers.find((x) => x.id === workerId)!;
-    const mult = half ? 0.5 : 1;
+    // napi díj naponta egyszer: ha aznap másik helyszínen már van napi díja, itt 0 szorzó (csak jelenlét)
+    const dailyElsewhere = basis === 'daily' && attendance.some((a) => a.worker_id === workerId && a.work_date === date && a.site_id !== site
+      && !a.deleted_at && a.pay_basis === 'daily' && Number(a.day_multiplier) > 0);
+    const mult = dailyElsewhere ? 0 : half ? 0.5 : 1;
+    if (dailyElsewhere) notify('Napi díj', `${w.name} napi díja ma már egy másik helyszínen el van számolva — itt 0 szorzóval, díj nélkül kerül be.`);
+    // minden megkezdett óra egy óra (a szerver a munkaidőből így számol; kézi sornál is ez a szabály)
+    const manualHours = basis === 'hourly' ? Math.ceil(Math.round(parseAmount(hours) * 1e4) / 1e4) : null;
     const rate = rateOverride ? parseAmount(rateOverride) : resolveRate(w, basis);
-    const amt = attendanceAmount(basis as any, rate, basis === 'hourly' ? parseAmount(hours) : null, mult);
+    const amt = attendanceAmount(basis as any, rate, manualHours, mult);
     const comm = (w.referrer_user_id || w.referrer_external_id)
-      ? commissionAmount(amt, w.commission_mode, w.commission_value != null ? Number(w.commission_value) : null, w.commission_unit, basis as any, basis === 'hourly' ? parseAmount(hours) : null, mult)
+      ? commissionAmount(amt, w.commission_mode, w.commission_value != null ? Number(w.commission_value) : null, w.commission_unit, basis as any, manualHours, mult)
       : 0;
     insertRow('attendance', {
       source: 'manual',
@@ -83,7 +89,7 @@ function DayViewInner() {
       site_id: site,
       worker_id: workerId,
       pay_basis: basis,
-      hours: basis === 'hourly' ? parseAmount(hours) : null,
+      hours: manualHours,
       day_multiplier: mult,
       applied_rate: rate,
       amount: amt,
@@ -109,7 +115,7 @@ function DayViewInner() {
     }
     const existing = new Set(dayRowsForSite.map((a) => a.worker_id));
     let n = 0;
-    for (const a of attendance.filter((x) => x.site_id === site && x.work_date === prev)) {
+    for (const a of attendance.filter((x) => x.site_id === site && x.work_date === prev && (x.source ?? 'manual') === 'manual')) {
       if (existing.has(a.worker_id) || alreadyAdded(a.worker_id)) continue;
       const isProject = a.pay_basis === 'project';
       const w = workers.find((x) => x.id === a.worker_id);

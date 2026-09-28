@@ -14,7 +14,7 @@ const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : 
  *  értékhez hasonlítjuk. Hiba esetén beépített betűtípus (ékezet nélkül), nem 500-as hiba. */
 async function loadFont(pdf: PDFDocument) {
   try {
-    const res = await fetch(FONT_URL);
+    const res = await fetch(FONT_URL, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) throw new Error('font http ' + res.status);
     const bytes = await res.arrayBuffer();
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -41,9 +41,15 @@ export async function exportWages(supabase: any, month: string, workerId: string
     .select('work_date, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at, note, worker_id, sites(name), workers(name, nickname, contractor_id, worker_type, company_name)')
     .gte('work_date', from).lte('work_date', to).is('deleted_at', null).order('work_date');
   if (workerId) q = q.eq('worker_id', workerId);
-  const { data: rows, error } = await q;
-  if (error) throw error;
-  const { data: allWorkers } = await supabase.from('workers').select('id, name');
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await q.range(from, from + 999);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  const { data: allWorkers, error: wErr } = await supabase.from('workers').select('id, name');
+  if (wErr) throw wErr;
   const nameOf = new Map<string, string>((allWorkers ?? []).map((w: any) => [w.id, w.name]));
 
   type Day = { date: string; site: string; basis: string; hours: number; wage: number; callout: number; total: number; paid: boolean; note: string };

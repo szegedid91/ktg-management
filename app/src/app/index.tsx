@@ -93,7 +93,7 @@ function DashboardInner() {
   const pendingTasks = activeTasks.filter((t) => t.status === 'assigned' && assignees.some((a) => a.task_id === t.id));
   // 3+ napja kiosztott, de el nem fogadott feladatok (a kiosztás idejétől számítva)
   const staleCutoff = new Date(Date.now() - 3 * 864e5).toISOString();
-  const staleTasks = pendingTasks.filter((t) => assignees.some((a) => a.task_id === t.id && !a.acknowledged_at && a.updated_at < staleCutoff));
+  const staleTasks = pendingTasks.filter((t) => assignees.some((a) => a.task_id === t.id && !a.acknowledged_at && a.created_at < staleCutoff));
   const staleSos = staleTasks.some((t) => t.priority > 0);
   const pendingPrio = pendingTasks.filter((t) => t.priority > 0).length;
   const submittedQuotes = quotes.filter((q) => q.status === 'submitted' && activeTasks.some((t) => t.id === q.task_id));
@@ -169,7 +169,7 @@ function DashboardInner() {
               <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)}
                 style={{ backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1, borderColor: t.priority ? C.danger : C.border, borderLeftWidth: 4, borderLeftColor: C.danger, padding: S.sm, gap: 2 }}>
                 <Text style={{ fontWeight: '800', color: t.priority ? C.danger : C.text }} numberOfLines={1}>{t.priority ? '🆘 ' : ''}{t.code ? `${t.code} · ` : ''}{t.title}</Text>
-                <Sub>👷 {asg.map((a) => wname(workers.find((w) => w.id === a.worker_id))).join(', ')} · kiosztva {hd(since?.slice(0, 10))} · {Math.floor((Date.now() - new Date(since).getTime()) / 864e5)} napja</Sub>
+                <Sub>👷 {asg.map((a) => wname(workers.find((w) => w.id === a.worker_id))).join(', ')} · kiosztva {hd(since)} · {Math.floor((Date.now() - new Date(since).getTime()) / 864e5)} napja</Sub>
               </Pressable>
             );
           })}
