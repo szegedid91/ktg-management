@@ -77,6 +77,7 @@ function DashboardInner() {
   const me = session?.user.id;
   const myProfile = profiles.find((p) => p.id === me);
   const [siteQ, setSiteQ] = useState('');
+  const [staleOpen, setStaleOpen] = useState(false); // a sürgős kártya alapból összezárva, koppintásra nyílik
 
 
   // ABC-sorrend: a lista minden renderkor a tükörből épül, így új/módosított
@@ -158,11 +159,17 @@ function DashboardInner() {
 
       {staleTasks.length ? (
         <Card style={{ borderColor: C.danger, borderWidth: staleSos ? 3 : 1, backgroundColor: staleSos ? C.dangerBg : C.card }}>
-          <Text style={{ fontWeight: '900', fontSize: staleSos ? 18 : 15, color: C.danger }}>
-            {staleSos ? '🆘 SÜRGŐS — 3 napja nem fogadták el' : '⚠️ 3 napja nem fogadták el'} ({staleTasks.length})
-          </Text>
-          <Sub>Kiosztott feladat, amit a munkavállaló 3 napja nem fogadott el — szólj rá, vagy oszd ki másnak (feladat oldal · Kiosztva · Módosít).</Sub>
-          {staleTasks.map((t) => {
+          <Pressable onPress={() => setStaleOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+            <Text style={{ flex: 1, fontWeight: '900', fontSize: staleSos ? 18 : 15, color: C.danger }}>
+              {staleSos ? '🆘 SÜRGŐS — 3 napja nem fogadták el' : '⚠️ 3 napja nem fogadták el'} ({staleTasks.length})
+            </Text>
+            <Text style={{ color: C.danger, fontSize: 18, fontWeight: '900' }}>{staleOpen ? '▾' : '▸'}</Text>
+          </Pressable>
+          {!staleOpen ? (
+            <Sub>{staleTasks.slice(0, 3).map((t) => t.code || t.title).join(', ')}{staleTasks.length > 3 ? ` +${staleTasks.length - 3}` : ''} · koppints a részletekért</Sub>
+          ) : null}
+          {staleOpen ? <Sub>Kiosztott feladat, amit a munkavállaló 3 napja nem fogadott el — szólj rá, vagy oszd ki másnak (feladat oldal · Kiosztva · Módosít).</Sub> : null}
+          {staleOpen ? staleTasks.map((t) => {
             const asg = assignees.filter((a) => a.task_id === t.id && !a.acknowledged_at);
             const since = asg.map((a) => a.created_at).sort()[0];
             return (
@@ -172,7 +179,7 @@ function DashboardInner() {
                 <Sub>👷 {asg.map((a) => wname(workers.find((w) => w.id === a.worker_id))).join(', ')} · kiosztva {hd(since)} · {Math.floor((Date.now() - new Date(since).getTime()) / 864e5)} napja</Sub>
               </Pressable>
             );
-          })}
+          }) : null}
         </Card>
       ) : null}
 
