@@ -1103,8 +1103,10 @@ Biztosan leveszed?`, 'Levétel', true);
                 // a munkavállaló sora a NEKI járó (közvetítővel csökkentett) díjat mutatja, a közvetítő
                 // része külön sorban áll — a kettő együtt a teljes bérköltség; párhuzamos feladatoknál
                 // a nap bérének csak az erre a feladatra eső (időarányos) része, a kiszállás egyben a nap első feladatán
+                // a sor a munkavállalónak járó összeg, ezért az óradíj is a neki járó (közvetítővel csökkentett) díj
+                const netRate = hrs > 0 ? Math.max(0, Math.round(Number(a.applied_rate) - comm / hrs)) : Number(a.applied_rate);
                 const basis = a.pay_basis === 'hourly'
-                  ? (share < 1 ? `${fmtHours(actual)} → ${hrs} ó × ${ft(Number(a.applied_rate))}` : `${hrs} ó × ${ft(Number(a.applied_rate))}`)
+                  ? (share < 1 ? `${fmtHours(actual)} → ${hrs} ó × ${ft(netRate)}` : `${hrs} ó × ${ft(netRate)}`)
                   : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') + (share < 1 ? ` · a nap ${Math.round(share * 100)}%-a` : '')
                   : (a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét') + (share < 1 ? ` · a nap ${Math.round(share * 100)}%-a` : '');
                 return (
