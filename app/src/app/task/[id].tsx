@@ -1114,7 +1114,6 @@ Biztosan leveszed?`, 'Levétel', true);
                     <KV
                       k={`${workerName(a.worker_id)} · ${hd(a.work_date)} · ${basis}${callout > 0 ? ` · 🚗 ${ft(callout)}` : ''}${a.paid_at ? ' ✓' : ''}`}
                       v={ft(total - comm)} />
-                    {comm > 0 ? <KV k={`   ↳ közvetítő része${a.commission_paid_at ? ' ✓' : ''}`} v={ft(comm)} /> : null}
                   </React.Fragment>
                 );
               })}
