@@ -61,7 +61,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   // A nap bér-sora (munkavállaló × helyszín × nap) egyben képződik; ha aznap ugyanott több feladaton is
   // dolgozott (párhuzamos feladatok), a feladatokra fordított munkaidő arányában osztjuk el — ugyanúgy,
   // mint az app feladat oldala (lib/tasks.ts taskWageShares). Az elfogadott ajánlatos feladat menetei
-  // nem számítanak; a kézi nap teljes egészében a megjelölt feladaté.
+  // nem számítanak; a kézi nap teljes egészében a megjelölt feladaté. A kiszállási díj nem oszlik
+  // meg: az aznap ott elsőként kezdett feladaté.
   type Share = { row: any; share: number; hours: number; amount: number; commission: number; callout: number };
   const quoted = new Set((quotedTasks ?? []).map((t: any) => t.id));
   const dayKey = (w: string, site: string | null, day: string) => `${w}|${site ?? ''}|${day}`;
@@ -73,18 +74,23 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     const out: Share[] = [];
     for (const a of attendance ?? []) {
       const k = dayKey(a.worker_id, a.site_id, a.work_date);
-      let share = 0;
+      let share = 0, first = a.task_id === taskId;
       if (a.source !== 'session') share = a.task_id === taskId ? 1 : 0;
       else if (a.task_id === taskId || days.has(k)) {
         const ds = (sesByDay.get(k) ?? []).filter((x: any) => !(x.task_id && quoted.has(x.task_id)));
         const total = ds.reduce((s: number, x: any) => s + dur(x), 0);
         const mine = ds.filter((x: any) => x.task_id === taskId).reduce((s: number, x: any) => s + dur(x), 0);
         share = total > 0 ? mine / total : (a.task_id === taskId ? 1 : 0);
+        // a kiszállási díj a napra egyszer jár: az aznap ott elsőként kezdett feladat viseli
+        const earliest = ds.slice().sort((x: any, y: any) => String(x.started_at).localeCompare(String(y.started_at)))[0];
+        first = earliest ? earliest.task_id === taskId : a.task_id === taskId;
       }
       if (share <= 0) continue;
       const r = (n: number) => Math.round(n * share);
+      const calloutFee = Number(a.callout_fee ?? 0);
+      const callout = share >= 1 || first ? calloutFee : 0;
       out.push({ row: a, share, hours: Math.round(Number(a.hours ?? 0) * share * 100) / 100,
-        amount: r(Number(a.amount)), commission: r(Number(a.commission_amount ?? 0)), callout: r(Number(a.callout_fee ?? 0)) });
+        amount: r(Number(a.amount) - calloutFee) + callout, commission: r(Number(a.commission_amount ?? 0)), callout });
     }
     return out.sort((x, y) => x.row.work_date.localeCompare(y.row.work_date));
   };
@@ -172,7 +178,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     .map(({ t, x }) => { const a = x.row; return {
       'Helyszín': siteNameOf.get(t.id) ?? '', 'Feladat kód': codeOf.get(t.id) ?? '', 'Munkavállaló': nameOf(a.worker_id), 'Dátum': hd(a.work_date),
       'Elszámolás': (a.pay_basis === 'hourly' ? `órabér (${a.hours} ó)` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét')
-        + (x.share < 1 ? ` · a nap ${Math.round(x.share * 100)}%-a` : ''),
+        + (x.share < 1 ? ` · a nap ${Math.round(x.share * 100)}%-a` : '') + (x.share < 1 && x.callout > 0 ? ' · kiszállás a nap első feladatán' : ''),
       'Órák': x.hours, 'Munkabér (Ft)': x.amount - x.callout, 'Kiszállás (Ft)': x.callout,
       'Ebből közvetítőé (Ft)': x.commission, 'Kifizetve': a.paid_at ? 'igen' : 'nem',
     }; });
