@@ -20,7 +20,8 @@ export default function Tasks() {
   const myWorkerId = profiles.find((p) => p.id === me)?.worker_id ?? null;
 
   if (myWorkerId) {
-    const mine = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === myWorkerId));
+    // a saját részét már készre jelentette → nála a feladat lezárult (a többiek még dolgozhatnak rajta)
+    const mine = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === myWorkerId && !a.done_at));
     return (
       <Screen>
         <Sub>A folyamatban lévő feladataid — az elfogadásra várók a kezdőlapon.</Sub>

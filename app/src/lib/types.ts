@@ -433,6 +433,8 @@ export interface TaskAssignee {
   task_id: string;
   worker_id: string;
   acknowledged_at: string | null;
+  /** a munkavállaló a SAJÁT részét készre jelentette (több emberes feladatnál a feladat csak akkor kész, ha mindenki) */
+  done_at?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

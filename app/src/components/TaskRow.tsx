@@ -24,7 +24,9 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
   /** munkafotók (előtte/utána) — csak a vezetői listák adják át */
   photos?: TaskPhoto[];
 }) {
-  const names = assignees.map((a) => wname(workers.find((w) => w.id === a.worker_id)));
+  // több emberes futó feladatnál jelöljük, ki jelentette már készre a saját részét
+  const showPart = assignees.length > 1 && (task.status === 'assigned' || task.status === 'acknowledged');
+  const names = assignees.map((a) => wname(workers.find((w) => w.id === a.worker_id)) + (showPart && a.done_at ? ' ✔' : ''));
   const acked = assignees.filter((a) => a.acknowledged_at).length;
   const site = sites.find((s) => s.id === task.site_id);
   const matCost = materials.reduce((s, m) => s + Number(m.amount), 0);

@@ -66,7 +66,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const [startSite, setStartSite] = useState<string | null>(null);
   const activeSites = sites.filter((s) => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'hu'));
 
-  const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid).map((a) => a.task_id));
+  // akinek a saját része kész, annál a feladat már nem szerepel (a többiek még dolgozhatnak rajta)
+  const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid && !a.done_at).map((a) => a.task_id));
   const myTasks = tasks.filter((t) => myTaskIds.has(t.id));
   const active = myTasks.filter(isOpenForWorker);
   const qOf = (t: WorkerTask) => myQuote(t.id, wid, quotes);

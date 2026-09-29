@@ -201,7 +201,10 @@ Biztosan leveszed?`, 'Levétel', true);
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
   const openSession = sessions.find((s) => !s.ended_at && s.worker_id === myWorkerId);
   // a munkavállalónak a „nem sikerült” feladat is nyitott: folytathatja és készre jelentheti
-  const active = isWorker ? isOpenForWorker(task) : isActiveTask(task);
+  const active = isWorker ? isOpenForWorker(task) && !myAssignment?.done_at : isActiveTask(task);
+  // több emberes feladat: ki jelentette már készre a saját részét
+  const doneCount = assignees.filter((a) => a.done_at).length;
+  const partlyDone = isActiveTask(task) && assignees.length > 1 && doneCount > 0 && doneCount < assignees.length;
   // a vezető lezárt (kész / nem sikerült) feladathoz is rögzíthet utólag anyagköltséget, munkaidőt és fotót
   const partnerEdit = !isWorker && task.status !== 'cancelled';
   // ajánlatok: a napló sorai; munkavállalónál a saját legutóbbi sora számít
@@ -297,11 +300,20 @@ Biztosan leveszed?`, 'Levétel', true);
 
   const markDone = async () => {
     if (busy) return;
-    if (!await confirmDialog('Feladat kész', 'Késznek jelölöd a feladatot?', 'Kész ✔')) return;
+    // több emberes feladat: csak a saját (vállalkozónál az emberei) része lesz kész; a feladat akkor, ha mindenki kész
+    const mineIds = new Set<string>([myWorkerId!, ...crew.map((c) => c.id)]);
+    const others = assignees.filter((a) => !mineIds.has(a.worker_id) && !a.done_at);
+    const msg = others.length
+      ? `Készre jelented a saját részedet? A feladat akkor lesz kész, ha ${others.map((a) => workerName(a.worker_id)).join(', ')} is készre jelentette.`
+      : 'Késznek jelölöd a feladatot?';
+    if (!await confirmDialog(others.length ? 'A te részed kész' : 'Feladat kész', msg, 'Kész ✔')) return;
     if (openSession || crewOpenSessions.length) stopWork();
+    const t = nowISO();
     queueRpc('worker_task_action', { p_id: task.id, p_action: 'done' }, [
-      { table: 'worker_tasks', id: task.id, patch: { status: 'done', done_at: nowISO() } },
+      ...assignees.filter((a) => mineIds.has(a.worker_id) && !a.done_at).map((a) => ({ table: 'task_assignees' as const, id: a.id, patch: { done_at: t } })),
+      ...(others.length ? [] : [{ table: 'worker_tasks' as const, id: task.id, patch: { status: 'done', done_at: t } }]),
     ]);
+    if (others.length) { notify('A te részed kész ✔', 'A feladat akkor zárul le, ha mindenki készre jelentette.'); smartBack(); }
   };
 
   const submitFail = async () => {
@@ -433,6 +445,8 @@ Biztosan leveszed?`, 'Levétel', true);
     if (!await confirmDialog('Készre jelentés visszavonása', `A feladat visszakerül a munkavállalóhoz${names ? ` (${names})` : ''}: újra futó állapotba kerül, ő értesítést kap és folytathatja. A rögzített munkaidő és anyagköltség megmarad. Rendben?`, 'Visszavonom', true)) return;
     const allAck = assignees.length > 0 && assignees.every((x) => x.acknowledged_at);
     updateRow('worker_tasks', task.id, { status: allAck ? 'acknowledged' : 'assigned', done_at: null, closed_at: null });
+    // mindenkinél újra nyitva (a szerver is így állítja)
+    assignees.filter((x) => x.done_at).forEach((x) => updateRow('task_assignees', x.id, { done_at: null }));
     notify('Újranyitva ↩', 'A feladat újra a munkavállalónál van.');
   };
 
@@ -749,7 +763,7 @@ Biztosan leveszed?`, 'Levétel', true);
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           {active && assignees.length === 0
             ? <Badge text="📋 Kiosztatlan — még senkinek sem szól" color="#6B46C1" />
-            : <Badge text={TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />}
+            : <Badge text={partlyDone ? `Részben kész (${doneCount}/${assignees.length})` : TASK_STATUS_LABEL[task.status]} color={STATUS_COLOR[task.status]} />}
           {task.priority ? <Badge text="🆘 SOS" color={C.danger} /> : null}
           {isQuoteTask && !task.quote_accepted_at ? <Badge text="ajánlatkérés" color={C.primary} /> : null}
           {/* az elfogadott ajánlat összege csak vezetőnek látszik (a szerver sem adja ki másnak); a munkavállaló a sajátját az ajánlat-részben látja */}
@@ -816,7 +830,7 @@ Biztosan leveszed?`, 'Levétel', true);
             </View>
             {task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? <Sub>🏷️ {itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!)}</Sub> : null}
             {assignees.length > 1 ? (
-              <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
+              <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.done_at ? '✔ kész' : x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
             ) : null}
             {task.status === 'failed' ? (
               <View style={{ borderWidth: 1, borderColor: C.warning, borderRadius: S.radiusSm, padding: S.sm, gap: 2 }}>
@@ -832,7 +846,8 @@ Biztosan leveszed?`, 'Levétel', true);
           {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
         </View>
         <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
-        <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
+        <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.done_at && isActiveTask(task) ? '✔ kész' : a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
+        {partlyDone ? <Sub>✔ kész = a saját részét készre jelentette — a feladat akkor lesz kész, ha mindenki készre jelentette (vagy te lezárod).</Sub> : null}
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {active ? <KV k="Határidő" v={task.due_date ? hd(task.due_date) : 'nincs'} /> : null}
         <KV k="Kiadta" v={`${creator} · ${hdt(task.created_at)}`} />
@@ -901,6 +916,7 @@ Biztosan leveszed?`, 'Levétel', true);
             case 'unassigned': items.push({ at: e.at, text: `👤 Levéve a feladatról: ${who(e)}` }); break;
             case 'accepted': items.push({ at: e.at, text: `✅ ${who(e)} elfogadta` }); break;
             case 'failed': items.push({ at: e.at, text: `⚠️ Nem sikerült${suffix(e)}`, note: e.note, photos: e.photo_paths, warn: true }); break;
+            case 'part_done': items.push({ at: e.at, text: `✔ ${who(e)} készre jelentette a saját részét` }); break;
             case 'done': items.push({ at: e.at, text: `✔ Készre jelentve${suffix(e)}` }); break;
             case 'closed': items.push({ at: e.at, text: `⛔ Lezárva — nem tudták megoldani${suffix(e)}`, warn: true }); break;
             case 'reopened': items.push({ at: e.at, text: `↩ Újranyitva${suffix(e)}` }); break;
