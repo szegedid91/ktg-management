@@ -192,7 +192,7 @@ function DashboardInner() {
         </View>
         {todos.length === 0 ? <Sub>Nincs teendő — minden rendben. ✅</Sub> : null}
         {todos.map((t) => <Todo key={t.key} icon={t.icon} title={t.title} count={t.count} detail={t.detail} color={t.color} href={t.href} />)}
-        <Pressable onPress={() => router.navigate('/tasks')} style={{ alignSelf: 'flex-end' }}>
+        <Pressable onPress={() => router.push('/tasks')} style={{ alignSelf: 'flex-end' }}>
           <Text style={{ color: C.primary, fontWeight: '700' }}>Minden feladat ({activeTasks.length} aktív) ›</Text>
         </Pressable>
       </View>

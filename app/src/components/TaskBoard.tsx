@@ -2,7 +2,7 @@
 // helyszín/munkavállaló szűrő, lista vagy helyszín szerinti csoportosítás,
 // lapozás — telefonon is átlátható 100+ nyitott feladatnál.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
@@ -41,8 +41,13 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const photos = useTable<TaskPhoto>('task_photos');
   const hasOpenQuote = (t: WorkerTask) => openQuotes(t.id, quotes).length > 0;
 
-  const [filter, setFilter] = useState<Filter>(initialFilter);
+  const [filter, setFilterRaw] = useState<Filter>(initialFilter);
   const [q, setQ] = useState('');
+  // ha ugyanarra a (már megnyitott) képernyőre más szűrővel érkezünk (pl. kezdőlapi csempe), a szűrő kövesse
+  useEffect(() => { setFilterRaw(initialFilter); setLimit(PAGE); }, [initialFilter]);
+  // állapot-szűrő választásakor a keresőszöveg törlődik: kereséskor minden állapotban keresünk, ezért
+  // bent felejtett keresőszöveg mellett a szűrőgombok hatástalannak tűntek
+  const setFilter = (f: Filter) => { setFilterRaw(f); setQ(''); };
   const [siteId, setSiteId] = useState<string | null>(null);
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'site'>('list');
@@ -187,6 +192,15 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
         ) : null}
         {dFrom || dTo ? <Sub style={{ fontSize: 11 }}>Kész / nem sikerült feladatnál a lezárás napja, egyébként a kiadás napja szerint.</Sub> : null}
       </View>
+
+      {q.trim() || siteId || workerId || dFrom || dTo ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, backgroundColor: C.chipBg, borderRadius: S.radiusSm, padding: 8 }}>
+          <Text style={{ flex: 1, fontSize: 12, color: C.text }}>
+            Szűkítve: {[q.trim() ? `keresés „${q.trim()}”` : '', siteId ? siteName(siteId) : '', workerId ? wname(workers.find((w) => w.id === workerId)) : '', dFrom || dTo ? `időszak ${dFrom ?? '…'} – ${dTo ?? '…'}` : ''].filter(Boolean).join(' · ')}
+          </Text>
+          <Btn title="✕ Szűkítés törlése" kind="ghost" small onPress={() => { setQ(''); setSiteId(null); setWorkerId(null); setDateFrom(''); setDateTo(''); setLimit(PAGE); }} />
+        </View>
+      ) : null}
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Sub>{filtered.length} feladat{q.trim() ? ' · keresés minden állapotban' : ''}{filtered.length > shown.length ? ` (${shown.length} látszik)` : ''}</Sub>

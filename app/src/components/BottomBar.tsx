@@ -10,12 +10,20 @@ import { useTable } from '../lib/hooks';
 import { C, S } from '../ui/theme';
 import { Profile } from '../lib/types';
 
+/** Fül-váltás: a navigációs verem kiürül, és a választott oldal lesz az egyetlen képernyő. Korábban minden
+ *  koppintás ÚJ képernyőt tett a verem tetejére — a régiek a háttérben tovább éltek (és minden adatváltozásra
+ *  újraszámoltak), egy hosszú munkamenet végére az app belassult, a gombok nem reagáltak. */
+function goTab(path: '/' | '/finance' | '/tasks' | '/more') {
+  try { if (router.canDismiss()) router.dismissAll(); } catch { /* nincs mit bezárni */ }
+  router.replace(path);
+}
+
 const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: string }[] = [
-  { icon: '🏠', label: 'Kezdőlap', action: () => router.navigate('/'), activePrefix: '/' },
+  { icon: '🏠', label: 'Kezdőlap', action: () => goTab('/'), activePrefix: '/' },
   { icon: '💸', label: '+ Költség', action: () => router.push('/expense/new') },
-  { icon: '💰', label: 'Pénzügy', action: () => router.navigate('/finance'), activePrefix: '/finance' },
-  { icon: '🛠️', label: 'Feladatok', action: () => router.navigate('/tasks'), activePrefix: '/tasks' },
-  { icon: '☰', label: 'Több', action: () => router.navigate('/more'), activePrefix: '/more' },
+  { icon: '💰', label: 'Pénzügy', action: () => goTab('/finance'), activePrefix: '/finance' },
+  { icon: '🛠️', label: 'Feladatok', action: () => goTab('/tasks'), activePrefix: '/tasks' },
+  { icon: '☰', label: 'Több', action: () => goTab('/more'), activePrefix: '/more' },
 ];
 
 export function BottomBar() {
