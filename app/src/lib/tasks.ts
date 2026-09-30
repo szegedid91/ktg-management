@@ -233,6 +233,7 @@ export type TaskWageShare = {
   /** a feladat elszámolt órái (több feladatnál: a rajta töltött megkezdett órák) */ hours: number;
   /** a feladaton aznap ott ténylegesen töltött idő (óra) */ actual: number;
   /** a nap elszámolt órái */ dayHours: number;
+  /** aznap ott a feladatokon töltött összes tényleges idő (óra) — a napi/projektdíj ennek arányában oszlik */ dayActual: number;
   /** ez volt-e aznap ott az első feladat (a kiszállási díjat ez viseli) */ first: boolean;
   amount: number; commission: number; callout: number;
 };
@@ -240,21 +241,25 @@ export function taskWageShares(taskId: string, attendance: Attendance[], session
   const quoted = new Set(tasks.filter((t) => t.quote_accepted_at).map((t) => t.id));
   const closed = sessions.filter((s) => s.ended_at && !s.deleted_at);
   const key = (w: string, site: string | null, day: string) => `${w}|${site ?? ''}|${day}`;
-  const dur = (s: WorkSession) => Math.max(0, new Date(s.ended_at!).getTime() - new Date(s.started_at).getTime());
   // a feladat menetei által érintett napok
   const days = new Set(closed.filter((s) => s.task_id === taskId).map((s) => key(s.worker_id, s.site_id, localDateISO(s.started_at))));
   const out: TaskWageShare[] = [];
   for (const a of attendance) {
     if (a.deleted_at) continue;
     const k = key(a.worker_id, a.site_id, a.work_date);
-    let share = 0, actual = 0, first = a.task_id === taskId;
+    let share = 0, actual = 0, dayActual = 0, first = a.task_id === taskId;
     if (a.source !== 'session') share = a.task_id === taskId ? 1 : 0;
     else if (a.task_id === taskId || days.has(k)) {
       const ds = closed.filter((s) => key(s.worker_id, s.site_id, localDateISO(s.started_at)) === k && !(s.task_id && quoted.has(s.task_id)));
-      const total = ds.reduce((x, s) => x + dur(s), 0);
-      const mine = ds.filter((s) => s.task_id === taskId).reduce((x, s) => x + dur(s), 0);
+      // feladatonként az átfedő meneteket egyesítjük (egy véletlenül kétszer rögzített időszak ne számítson duplán);
+      // a nap összes ideje = a feladatok idejének összege (párhuzamos feladatoknál mindegyik a saját idejével)
+      const byTask = new Map<string, WorkSession[]>();
+      for (const x of ds) { const g = x.task_id ?? `none:${x.id}`; byTask.set(g, [...(byTask.get(g) ?? []), x]); }
+      const total = [...byTask.values()].reduce((x, list) => x + unionHours(list) * 3600000, 0);
+      const mine = unionHours(byTask.get(taskId) ?? []) * 3600000;
       share = total > 0 ? mine / total : (a.task_id === taskId ? 1 : 0);
       actual = mine / 3600000;
+      dayActual = total / 3600000;
       // a kiszállási díj a napra egyszer jár: az aznap ott elsőként kezdett feladat viseli
       const earliest = ds.slice().sort((x, y) => x.started_at.localeCompare(y.started_at))[0];
       first = earliest ? earliest.task_id === taskId : a.task_id === taskId;
@@ -268,12 +273,12 @@ export function taskWageShares(taskId: string, attendance: Attendance[], session
       // (Daniel szabálya: minden megkezdett óra egy óra), a közvetítő része ugyanilyen arányban
       const taskHours = Math.max(1, Math.ceil(Math.round(actual * 10000) / 10000));
       const rate = a.applied_rate != null ? Number(a.applied_rate) : (Number(a.amount) - calloutFee) / dayHours;
-      out.push({ row: a, share, hours: taskHours, actual, dayHours, first,
+      out.push({ row: a, share, hours: taskHours, actual, dayHours, dayActual, first,
         amount: Math.round(taskHours * rate) + callout, commission: Math.round(Number(a.commission_amount ?? 0) * taskHours / dayHours), callout });
       continue;
     }
     const r = (n: number) => Math.round(n * share);
-    out.push({ row: a, share, hours: Math.round(dayHours * share * 100) / 100, actual, dayHours, first,
+    out.push({ row: a, share, hours: Math.round(dayHours * share * 100) / 100, actual, dayHours, dayActual, first,
       amount: r(Number(a.amount) - calloutFee) + callout, commission: r(Number(a.commission_amount ?? 0)), callout });
   }
   return out.sort((x, y) => x.row.work_date.localeCompare(y.row.work_date));

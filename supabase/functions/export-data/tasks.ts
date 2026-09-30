@@ -106,7 +106,17 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   type Share = { row: any; share: number; hours: number; amount: number; commission: number; callout: number };
   const quoted = new Set((quotedTasks ?? []).map((t: any) => t.id));
   const dayKey = (w: string, site: string | null, day: string) => `${w}|${site ?? ''}|${day}`;
-  const dur = (x: any) => Math.max(0, new Date(x.ended_at).getTime() - new Date(x.started_at).getTime());
+  /** átfedő menetek egyesített hossza (ms) */
+  const unionMs = (list: any[]): number => {
+    const iv = list.map((x) => [new Date(x.started_at).getTime(), new Date(x.ended_at).getTime()] as [number, number])
+      .filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+    let total = 0, curS = -1, curE = -1;
+    for (const [a, b] of iv) {
+      if (curE < 0 || a > curE) { if (curE >= 0) total += curE - curS; curS = a; curE = b; }
+      else if (b > curE) curE = b;
+    }
+    return curE >= 0 ? total + (curE - curS) : total;
+  };
   const sesByDay = new Map<string, any[]>();
   for (const x of sessions ?? []) { const k = dayKey(x.worker_id, x.site_id, budDay(x.started_at)); sesByDay.set(k, [...(sesByDay.get(k) ?? []), x]); }
   const taskShares = (taskId: string): Share[] => {
@@ -118,8 +128,11 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       if (a.source !== 'session') share = a.task_id === taskId ? 1 : 0;
       else if (a.task_id === taskId || days.has(k)) {
         const ds = (sesByDay.get(k) ?? []).filter((x: any) => !(x.task_id && quoted.has(x.task_id)));
-        const total = ds.reduce((s: number, x: any) => s + dur(x), 0);
-        mine = ds.filter((x: any) => x.task_id === taskId).reduce((s: number, x: any) => s + dur(x), 0);
+        // feladatonként az átfedő meneteket egyesítjük (kétszer rögzített időszak ne számítson duplán)
+        const byTask = new Map<string, any[]>();
+        ds.forEach((x: any, i: number) => { const g = x.task_id ?? `none:${i}`; byTask.set(g, [...(byTask.get(g) ?? []), x]); });
+        const total = [...byTask.values()].reduce((s: number, list) => s + unionMs(list), 0);
+        mine = unionMs(byTask.get(taskId) ?? []);
         share = total > 0 ? mine / total : (a.task_id === taskId ? 1 : 0);
         // a kiszállási díj a napra egyszer jár: az aznap ott elsőként kezdett feladat viseli
         const earliest = ds.slice().sort((x: any, y: any) => String(x.started_at).localeCompare(String(y.started_at)))[0];
