@@ -103,7 +103,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   // napi/projektdíjnál időarányos rész — ugyanúgy, mint az app feladat oldala (lib/tasks.ts taskWageShares). Az elfogadott ajánlatos feladat menetei
   // nem számítanak; a kézi nap teljes egészében a megjelölt feladaté. A kiszállási díj nem oszlik
   // meg: az aznap ott elsőként kezdett feladaté.
-  type Share = { row: any; share: number; hours: number; amount: number; commission: number; callout: number };
+  type Share = { row: any; share: number; hours: number; amount: number; commission: number; callout: number; mineMs: number; totalMs: number };
+  /** ms → „1 ó 5 p” */
+  const hm = (ms: number) => { const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} ó ${m % 60} p` : `${m} p`; };
   const quoted = new Set((quotedTasks ?? []).map((t: any) => t.id));
   const dayKey = (w: string, site: string | null, day: string) => `${w}|${site ?? ''}|${day}`;
   /** átfedő menetek egyesített hossza (ms) */
@@ -124,7 +126,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     const out: Share[] = [];
     for (const a of attendance ?? []) {
       const k = dayKey(a.worker_id, a.site_id, a.work_date);
-      let share = 0, first = a.task_id === taskId, mine = 0;
+      let share = 0, first = a.task_id === taskId, mine = 0, totalMs = 0;
       if (a.source !== 'session') share = a.task_id === taskId ? 1 : 0;
       else if (a.task_id === taskId || days.has(k)) {
         const ds = (sesByDay.get(k) ?? []).filter((x: any) => !(x.task_id && quoted.has(x.task_id)));
@@ -133,6 +135,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
         ds.forEach((x: any, i: number) => { const g = x.task_id ?? `none:${i}`; byTask.set(g, [...(byTask.get(g) ?? []), x]); });
         const total = [...byTask.values()].reduce((s: number, list) => s + unionMs(list), 0);
         mine = unionMs(byTask.get(taskId) ?? []);
+        totalMs = total;
         share = total > 0 ? mine / total : (a.task_id === taskId ? 1 : 0);
         // a kiszállási díj a napra egyszer jár: az aznap ott elsőként kezdett feladat viseli
         const earliest = ds.slice().sort((x: any, y: any) => String(x.started_at).localeCompare(String(y.started_at)))[0];
@@ -147,12 +150,12 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
         const taskHours = Math.max(1, Math.ceil(Math.round(mine / 3600000 * 10000) / 10000));
         const rate = a.applied_rate != null ? Number(a.applied_rate) : (Number(a.amount) - calloutFee) / dayHours;
         out.push({ row: a, share, hours: taskHours, amount: Math.round(taskHours * rate) + callout,
-          commission: Math.round(Number(a.commission_amount ?? 0) * taskHours / dayHours), callout });
+          commission: Math.round(Number(a.commission_amount ?? 0) * taskHours / dayHours), callout, mineMs: mine, totalMs });
         continue;
       }
       const r = (n: number) => Math.round(n * share);
       out.push({ row: a, share, hours: Math.round(dayHours * share * 100) / 100,
-        amount: r(Number(a.amount) - calloutFee) + callout, commission: r(Number(a.commission_amount ?? 0)), callout });
+        amount: r(Number(a.amount) - calloutFee) + callout, commission: r(Number(a.commission_amount ?? 0)), callout, mineMs: mine, totalMs });
     }
     return out.sort((x, y) => x.row.work_date.localeCompare(y.row.work_date));
   };
@@ -240,7 +243,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     .map(({ t, x }) => { const a = x.row; return {
       'Helyszín': siteNameOf.get(t.id) ?? '', 'Feladat kód': codeOf.get(t.id) ?? '', 'Munkavállaló': nameOf(a.worker_id), 'Dátum': hd(a.work_date),
       'Elszámolás': (a.pay_basis === 'hourly' ? `órabér (${a.hours} ó)` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét')
-        + (x.share < 1 ? (a.pay_basis === 'hourly' ? ` · ezen a feladaton ${x.hours} megkezdett óra` : ` · a nap ${Math.round(x.share * 100)}%-a`) : '') + (x.share < 1 && x.callout > 0 ? ' · kiszállás a nap első feladatán' : ''),
+        + (x.share < 1 ? (a.pay_basis === 'hourly' ? ` · ezen a feladaton ${x.hours} megkezdett óra` : ` · ezen a feladaton ${hm(x.mineMs)} a nap ${hm(x.totalMs)} munkaidejéből`) : '') + (x.share < 1 && x.callout > 0 ? ' · kiszállás a nap első feladatán' : ''),
       'Órák': x.hours, 'Munkabér (Ft)': x.amount - x.callout, 'Kiszállás (Ft)': x.callout,
       'Ebből közvetítőé (Ft)': x.commission, 'Kifizetve': a.paid_at ? 'igen' : 'nem',
     }; });
