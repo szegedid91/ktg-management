@@ -37,8 +37,10 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
   const quote = quoteLabel(task, quotes, myWorkerId);
   const overdue = isOverdue(task, todayISO());
   const unassigned = assignees.length === 0 && (task.status === 'assigned' || task.status === 'acknowledged');
-  const color = unassigned ? UNASSIGNED_COLOR : (STATUS_COLOR[task.status] ?? C.sub);
-  const status = quote ?? (unassigned ? 'kiosztatlan' : `${STATUS_SHORT[task.status]}${task.status === 'assigned' && assignees.length > 1 ? ` ${acked}/${assignees.length}` : ''}`);
+  // munkavállalói „Kész” lista: a saját részem kész, de a feladaton a többiek még dolgoznak
+  const myPart = myWorkerId && task.status !== 'done' ? assignees.find((a) => a.worker_id === myWorkerId && a.done_at) : undefined;
+  const color = myPart ? STATUS_COLOR.done : unassigned ? UNASSIGNED_COLOR : (STATUS_COLOR[task.status] ?? C.sub);
+  const status = myPart ? 'a te részed kész' : quote ?? (unassigned ? 'kiosztatlan' : `${STATUS_SHORT[task.status]}${task.status === 'assigned' && assignees.length > 1 ? ` ${acked}/${assignees.length}` : ''}`);
   return (
     <Pressable
       onPress={() => router.push(`/task/${task.id}`)}
@@ -68,10 +70,10 @@ export function TaskRow({ task, assignees, materials, pricing = [], workers, sit
             {overdue ? '⏰ késik' : `📅 ${task.due_date.slice(5).replace('-', '.')}`}
           </Text>
         ) : null}
-        <Text style={{ fontSize: 11, color: quote ? C.primary : color, fontWeight: '700' }} numberOfLines={1}>{status}</Text>
+        <Text style={{ fontSize: 11, color: quote && !myPart ? C.primary : color, fontWeight: '700' }} numberOfLines={1}>{status}</Text>
       </View>
       <Text style={{ fontSize: 12, color: C.sub }} numberOfLines={1}>
-        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')} · {hd(task.created_at)}{task.done_at ? ` · ${task.status === 'failed' ? (task.closed_at ? '⛔ nem sikerült · lezárva' : '⚠️ nem sikerült · nyitva') : '✔ kész'} ${hd(task.done_at)}` : ''}
+        {showSite && site ? `📍 ${site.name} · ` : ''}👷 {names.join(', ') || (unassigned ? 'még nincs kiosztva' : '—')} · {hd(task.created_at)}{task.done_at ? ` · ${task.status === 'failed' ? (task.closed_at ? '⛔ nem sikerült · lezárva' : '⚠️ nem sikerült · nyitva') : '✔ kész'} ${hd(task.done_at)}` : myPart?.done_at ? ` · ✔ kész ${hd(myPart.done_at)}` : ''}
         {matCost > 0 ? ` · 📦 ${ft(matCost)}${unpriced ? ` (${unpriced} beárazandó)` : ''}` : ''}
       </Text>
     </Pressable>

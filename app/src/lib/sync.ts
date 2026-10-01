@@ -228,6 +228,36 @@ async function pullTable(table: SyncTable): Promise<void> {
   if (needFull && mark) store.setCursor(`${table}:mark`, mark);
 }
 
+// A munkavállaló kész feladatainak időablaka (vezetői beállítás, alap 35 nap). Ha a vezető átállítja
+// (vagy a készülék még nem ismeri), a feladatokhoz kötött táblákat egyszer teljesen újratöltjük: a
+// korábban eltűnt, most újra látható feladatok és a lépéseik / megjegyzéseik régi időbélyegűek, a
+// növekményes lehúzás nem hozná le őket.
+const DONE_WINDOW_TABLES: SyncTable[] = ['worker_tasks', 'task_assignees', 'task_subtasks', 'task_notes'];
+const DONE_WINDOW_EVERY_MS = 2 * 60_000;
+let doneWindowChecked = { at: 0, gen: -1 };
+
+/** Hány napig látja a munkavállaló a kész feladatait (a legutóbbi szinkron szerint). */
+export function workerDoneDays(): number {
+  const n = Number(store.getCursor('done_window:days'));
+  return Number.isFinite(n) ? n : 35;
+}
+
+async function checkDoneWindow(userId: string): Promise<void> {
+  if (doneWindowChecked.gen === store.generation && Date.now() - doneWindowChecked.at < DONE_WINDOW_EVERY_MS) return;
+  const gen = store.generation;
+  const { data, error } = await Promise.resolve(supabase.rpc('fn_worker_done_window')).catch((e: any) => ({ data: null, error: e }));
+  if (error || !data || store.generation !== gen) return; // offline / régi szerver: marad minden, ahogy volt
+  doneWindowChecked = { at: Date.now(), gen };
+  const mark = String((data as any).changed_at ?? '');
+  const days = String(Number((data as any).days ?? 35));
+  if (store.getCursor('done_window:days') !== days) store.setCursor('done_window:days', days);
+  if (store.getCursor('done_window:mark') === mark) return;
+  // vezetőnél nincs időablak (mindent lát): nála csak a jelet jegyezzük fel
+  const isWorker = !!(store.getAll('profiles') as any[]).find((p) => p.id === userId)?.worker_id;
+  if (isWorker) for (const t of DONE_WINDOW_TABLES) store.setCursor(t, '1970-01-01T00:00:00Z');
+  store.setCursor('done_window:mark', mark);
+}
+
 let current: Promise<void> | null = null;
 
 /** A folyamatban lévő szinkron vége (kijelentkezésnél megvárjuk). */
@@ -268,6 +298,7 @@ async function runSync(): Promise<void> {
     // a lehúzás akkor is fut, ha egy művelet elakadt (átmeneti szerverhiba): a többi adat frissüljön;
     // a függő sorokat a tükör nem írja felül. Ha tényleg offline vagyunk, a lehúzás hálózati hibával áll meg.
     {
+      await checkDoneWindow(sess.session.user.id);
       for (const table of SYNC_TABLES) {
         await pullTable(table);
         if (table === 'profiles') await reconcileProfiles();

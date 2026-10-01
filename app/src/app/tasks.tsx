@@ -20,12 +20,12 @@ export default function Tasks() {
   const myWorkerId = profiles.find((p) => p.id === me)?.worker_id ?? null;
 
   if (myWorkerId) {
-    // a saját részét már készre jelentette → nála a feladat lezárult (a többiek még dolgozhatnak rajta)
-    const mine = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === myWorkerId && !a.done_at));
+    // a saját részét már készre jelentette → nála a feladat a „Kész” fülre kerül (a többiek még dolgozhatnak rajta)
+    const mine = tasks.filter((t) => assignees.some((a) => a.task_id === t.id && a.worker_id === myWorkerId));
     return (
       <Screen>
-        <Sub>A folyamatban lévő feladataid — az elfogadásra várók a kezdőlapon.</Sub>
-        <WorkerTaskList tasks={mine} showClosed initialFilter="acknowledged" />
+        <Sub>A folyamatban lévő feladataid — az elfogadásra várók a kezdőlapon. A nemrég elkészültek a „✔ Kész” fülön.</Sub>
+        <WorkerTaskList tasks={mine} showClosed initialFilter={filter === 'closed' ? 'closed' : 'acknowledged'} />
       </Screen>
     );
   }

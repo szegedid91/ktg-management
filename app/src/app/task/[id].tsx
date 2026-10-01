@@ -659,12 +659,13 @@ Biztosan leveszed?`, 'Levétel', true);
           ) : null}
         </Section>
       ) : null;
-  const notesBlock = isWorker && !acked ? null : (
+  // kész (csak olvasható) feladatnál a munkavállalónak az üres részek nem jelennek meg
+  const notesBlock = isWorker && (!acked || (!active && noteCount === 0)) ? null : (
       <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={isWorker || noteCount > 0} plain={isWorker}>
         <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : true} />
       </Section>
       );
-  const materialsBlock = isWorker && !acked ? null : (
+  const materialsBlock = isWorker && (!acked || (!active && materials.length === 0 && workPhotos.length === 0)) ? null : (
       <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker} plain={isWorker} openSignal={openSig.mat}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
@@ -837,7 +838,8 @@ Biztosan leveszed?`, 'Levétel', true);
                 <Body style={{ fontWeight: '800' }}>⚠️ Nem sikerültre jelentve: {hdt(task.done_at)}</Body>
                 <Sub>A feladat nyitva marad: folytathatod, és ha elkészült, jelöld készre.</Sub>
               </View>
-            ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub> : null}
+            ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub>
+              : myAssignment?.done_at ? <Sub>✔ A te részed kész: {hdt(myAssignment.done_at)} — a többiek még dolgoznak rajta.</Sub> : null}
           </>
         ) : (
           <>
@@ -1087,7 +1089,7 @@ Biztosan leveszed?`, 'Levétel', true);
       ) : null}
 
       {/* ---------- ajánlat: munkavállaló ---------- */}
-      {isWorker && mine ? (
+      {isWorker && mine && active ? (
         <Card style={{ borderColor: C.primary }}>
           <H2>💬 Ajánlat</H2>
           {mine.status === 'requested' ? (

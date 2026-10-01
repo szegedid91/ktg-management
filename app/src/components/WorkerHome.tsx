@@ -69,6 +69,9 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   // akinek a saját része kész, annál a feladat már nem szerepel (a többiek még dolgozhatnak rajta)
   const myTaskIds = new Set(assignees.filter((a) => a.worker_id === wid && !a.done_at).map((a) => a.task_id));
   const myTasks = tasks.filter((t) => myTaskIds.has(t.id));
+  // a saját részem kész (vagy a vezető lezárta): a szerver a beállított ideig adja ki, utána eltűnik
+  const myDoneIds = new Set(assignees.filter((a) => a.worker_id === wid && a.done_at).map((a) => a.task_id));
+  const doneCount = tasks.filter((t) => myDoneIds.has(t.id) && (t.status === 'done' || isOpenForWorker(t))).length;
   const active = myTasks.filter(isOpenForWorker);
   const qOf = (t: WorkerTask) => myQuote(t.id, wid, quotes);
   // ajánlatkérések: ajánlatot adok vagy nem vállalom (nincs „elfogadás”);
@@ -317,7 +320,14 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         </Pressable>
       </View>
 
-      {/* a munkavállaló a lezárt feladatait már nem látja — nincs „Lezárt feladatok” rész */}
+      {/* a nemrég elkészült feladatok (a vezetők által beállított ideig, alap: 35 nap) a Feladatok „✔ Kész” fülén */}
+      {doneCount > 0 ? (
+        <Pressable onPress={() => router.navigate('/tasks?filter=closed')}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.card, borderRadius: S.radiusSm, borderWidth: 1, borderColor: C.border, padding: S.md }}>
+          <Text style={{ fontWeight: '700', color: C.text, flex: 1 }}>✔ Kész feladataim ({doneCount})</Text>
+          <Text style={{ color: C.sub }}>Megnézem ›</Text>
+        </Pressable>
+      ) : null}
 
       {periods.length > 0 ? (
         <Card style={{ paddingVertical: S.sm, gap: 6 }}>

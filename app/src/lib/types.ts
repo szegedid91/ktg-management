@@ -47,6 +47,8 @@ export interface AppSettings {
   default_vat_rate: number;
   /** alapértelmezett fizetési határidő: napok száma a számlázástól */
   default_payment_days: number;
+  /** a munkavállaló ennyi napig látja a kész feladatait (0 = a kész feladat azonnal eltűnik nála) */
+  worker_done_visible_days?: number;
   updated_by: UUID | null;
   updated_at: string;
 }

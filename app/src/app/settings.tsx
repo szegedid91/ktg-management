@@ -135,6 +135,19 @@ function SettingsInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles.length, myProfile?.id]);
 
+  // a munkavállaló ennyi napig látja a kész feladatait (alap: 35)
+  const [doneDays, setDoneDays] = useState<string | null>(null);
+  const doneDaysNow = Number(settings?.worker_done_visible_days ?? 35);
+  const saveDoneDays = () => {
+    if (!settings) return;
+    const raw = String(doneDays ?? '').trim();
+    const n = Number(raw);
+    if (raw === '' || !Number.isInteger(n) || n < 0 || n > 3650) { notify('Hibás érték', 'Egész számot adj meg 0 és 3650 között (0 = a kész feladat azonnal eltűnik a munkavállalónál).'); return; }
+    updateRow('app_settings', '1' as any, { worker_done_visible_days: n });
+    setDoneDays(null);
+    notify('Mentve', n === 0 ? 'A munkavállalók a kész feladataikat nem látják.' : `A munkavállalók ${n} napig látják a kész feladataikat.`);
+  };
+
   const saveRates = () => {
     if (!settings) return;
     updateRow('app_settings', '1' as any, Object.fromEntries(
@@ -299,6 +312,15 @@ function SettingsInner() {
             />
           </>
         )}
+      </Section>
+
+      <Section icon="👷" title="Munkavállalók" summary={doneDaysNow === 0 ? 'kész feladatot nem látnak' : `kész feladat ${doneDaysNow} napig látszik`} open={open === 'workers'} onToggle={() => tog('workers')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Kész feladat ennyi napig látszik (nap)</Text>
+          <Cell value={doneDays ?? String(doneDaysNow)} onChange={setDoneDays} />
+          <Btn title="Mentés" kind="ghost" small onPress={saveDoneDays} />
+        </View>
+        <Sub>A munkavállaló a készre jelentéstől számítva ennyi napig látja a kész feladatait (csak megnézni tudja, módosítani nem). Utána eltűnnek nála — a vezetőknél minden megmarad. 0 = a kész feladat azonnal eltűnik.</Sub>
       </Section>
 
       <Section icon="🔔" title="Értesítések" summary={`${notifOn} bekapcsolva`} open={open === 'notif'} onToggle={() => tog('notif')}>
