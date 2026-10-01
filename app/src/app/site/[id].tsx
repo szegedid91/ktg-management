@@ -11,6 +11,7 @@ import { ft, hd, todayISO } from '../../lib/format';
 import { Site, Expense, Attendance, Invoice, Worker, ExpenseCategory, SiteTotals, WorkerTask , Profile} from '../../lib/types';
 import { TaskGroups } from '../../components/TaskGroups';
 import { openDirections } from '../../lib/maps';
+import { SiteContactsCard } from '../../components/SiteContacts';
 import { SiteGeofenceCard } from '../../components/SiteGeofenceCard';
 import { isActiveTask } from '../../lib/tasks';
 import { Comments } from '../../components/Comments';
@@ -111,6 +112,7 @@ export default function SiteDetail() {
           </View>
         </Card>
       ) : null}
+      <SiteContactsCard siteId={site.id} editable={!closed} />
       <SiteGeofenceCard site={site} />
 
       <View style={{ flexDirection: 'row', gap: S.sm }}>

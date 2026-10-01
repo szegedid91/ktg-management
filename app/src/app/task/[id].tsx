@@ -26,9 +26,10 @@ import {
   quotesOf, myQuote, openQuotes, QUOTE_STATUS_LABEL, QUOTE_STATUS_COLOR,
 } from '../../lib/tasks';
 import {
-  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings, TaskPhoto,
+  WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings, TaskPhoto, SiteContact,
 } from '../../lib/types';
 import { isOverdue, sessionHours } from '../../lib/tasks';
+import { ContactLine } from '../../components/SiteContacts';
 import { todayISO } from '../../lib/format';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
@@ -77,6 +78,7 @@ export default function TaskDetail() {
   const assignees = assigneesAll.filter((a) => !a.deleted_at);
   const workers = useTable<Worker>('workers');
   const workPhotos = useTable<TaskPhoto>('task_photos').filter((p) => p.task_id === id);
+  const allSiteContacts = useTable<SiteContact>('site_contacts');
   const sites = useTable<Site>('sites');
   const profiles = useTable<Profile>('profiles');
   const allSessions = useTable<WorkSession>('work_sessions');
@@ -196,6 +198,9 @@ Biztosan leveszed?`, 'Levétel', true);
   if (!task) return <Screen><Empty text={isWorker ? 'Ez a feladat már nem elérhető (törölték, lezárták vagy levettek róla).' : 'Feladat nem található (szinkronizálás folyamatban?)'} /></Screen>;
 
   const site = sites.find((s) => s.id === task.site_id);
+  // a helyszín elérhetőségei (a munkavállalóhoz csak a neki szántak jutnak el)
+  const siteContacts = allSiteContacts.filter((c) => c.site_id === task.site_id)
+    .sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at));
   const creator = profiles.find((p) => p.id === task.created_by)?.display_name ?? '?';
   const workerName = (wid: string) => wname(workers.find((w) => w.id === wid));
   const myAssignment = assignees.find((a) => a.worker_id === myWorkerId);
@@ -829,6 +834,7 @@ Biztosan leveszed?`, 'Levétel', true);
               <Sub style={{ flex: 1 }}>📍 {site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : 'nincs helyszín'}</Sub>
               {site?.address ? <Btn title="🚗 Útvonal" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
             </View>
+            {siteContacts.map((c) => <ContactLine key={c.id} c={c} big />)}
             {task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? <Sub>🏷️ {itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!)}</Sub> : null}
             {assignees.length > 1 ? (
               <Sub>Veled együtt: {assignees.filter((x) => x.worker_id !== myWorkerId).map((x) => `${workerName(x.worker_id)} ${x.done_at ? '✔ kész' : x.acknowledged_at ? '✓' : '⏳'}`).join(', ')}</Sub>
@@ -847,6 +853,7 @@ Biztosan leveszed?`, 'Levétel', true);
           <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
           {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
         </View>
+        {siteContacts.map((c) => <ContactLine key={c.id} c={c} showVisibility />)}
         <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
         <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.done_at && isActiveTask(task) ? '✔ kész' : a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
         {partlyDone ? <Sub>✔ kész = a saját részét készre jelentette — a feladat akkor lesz kész, ha mindenki készre jelentette (vagy te lezárod).</Sub> : null}

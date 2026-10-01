@@ -73,6 +73,18 @@ export interface Site extends BaseRow {
   closed_by: UUID | null;
 }
 
+/** Az építkezés elérhetősége (kapcsolattartó): több is lehet; a vezetők írják */
+export interface SiteContact extends BaseRow {
+  site_id: UUID;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+  /** a munkavállaló is látja (pl. helyszíni kapcsolattartó) — különben csak a vezetők */
+  visible_to_workers: boolean;
+  position: number;
+}
+
 export interface ExternalPerson extends BaseRow {
   name: string;
   phone: string | null;
@@ -543,7 +555,7 @@ export const SYNC_TABLES = [
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
-  'item_codes', 'task_events',
+  'item_codes', 'task_events', 'site_contacts',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

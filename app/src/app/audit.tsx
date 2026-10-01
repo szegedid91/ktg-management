@@ -20,6 +20,7 @@ const TABLE_LABELS: Record<string, string> = {
   equipment: 'Eszköz', equipment_moves: 'Eszközmozgatás', profiles: 'Profil',
   app_settings: 'Beállítások', expense_categories: 'Kategória',
   worker_tasks: 'Feladat', task_materials: 'Anyagköltség', work_sessions: 'Munkaidő', task_photos: 'Munkafotó',
+  site_contacts: 'Építkezés elérhetősége',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -29,6 +30,7 @@ const FIELD_LABELS: Record<string, string> = {
   vat_rate: 'ÁFA kulcs (%)', amount: 'Összeg', commission_amount: 'Közvetítői díj',
   expense_date: 'Dátum', work_date: 'Dátum', invoice_date: 'Számla kelte', settle_date: 'Dátum',
   due_date: 'Fizetési határidő', default_payment_days: 'Fizetési határidő (nap)',
+  visible_to_workers: 'Munkavállaló is látja', worker_done_visible_days: 'Kész feladat láthatósága (nap)',
   site_id: 'Építkezés', worker_id: 'Munkavállaló', category_id: 'Kategória',
   equipment_id: 'Eszköz', expense_id: 'Költség', paid_by: 'Fizette',
   pay_basis: 'Elszámolás', hours: 'Óraszám', day_multiplier: 'Nap szorzó', applied_rate: 'Alkalmazott díj',
@@ -210,6 +212,7 @@ function AuditInner() {
     const d = (r.new_data ?? r.old_data ?? {}) as Record<string, unknown>;
     switch (r.table_name) {
       case 'sites': return String(d.name ?? '');
+      case 'site_contacts': return [d.name, d.phone, d.email].filter(Boolean).join(' · ');
       case 'workers': return `${d.name}${d.trade ? ` (${d.trade})` : ''}`;
       case 'external_people': return String(d.name ?? '');
       case 'equipment': return String(d.name ?? '');
@@ -309,6 +312,7 @@ function AuditInner() {
     const d = (r.new_data ?? r.old_data ?? {}) as any;
     switch (r.table_name) {
       case 'sites': return `/site/${r.record_id}`;
+      case 'site_contacts': return d.site_id ? `/site/${d.site_id}` : null;
       case 'expenses': return `/expense/${r.record_id}`;
       case 'invoices': return `/invoice/${r.record_id}`;
       case 'workers': return `/worker/${r.record_id}`;
