@@ -192,9 +192,29 @@ async function reconcileAll(): Promise<void> {
 // egyszeri teljes újratöltés egy táblára (a jel változásakor): pl. a worker_tasks_v mostantól
 // „törölve” jelzést ad a törölt / levett feladathoz — a régen szinkronizált, elavult példányokat
 // csak a kurzor visszaállításával lehet lecserélni a készüléken
-const RESYNC_MARKS: Partial<Record<SyncTable, string>> = { worker_tasks: 'tombstones-2026-09-25' };
+// 2026-10-05: az utólag (régebbi feladatra) kiosztott feladat sora nem jött le a munkavállalóhoz — a szerver
+// javítása mellé egyszeri teljes újratöltés kell, hogy a már kimaradt feladatok is megérkezzenek
+const RESYNC_MARKS: Partial<Record<SyncTable, string>> = {
+  worker_tasks: 'assign-2026-10-05', task_assignees: 'assign-2026-10-05', task_subtasks: 'assign-2026-10-05', task_notes: 'assign-2026-10-05',
+};
 
-async function pullTable(table: SyncTable): Promise<void> {
+/** Munkavállalónál újonnan láthatóvá vált feladatok (most osztották rá / visszarakták): a hozzájuk tartozó
+ *  régebbi sorok (a többi kiosztott, a lépések, a megjegyzések) időbélyege nem változott, a növekményes
+ *  lehúzás nem hozná le őket — ezeket feladat szerint, célzottan kérjük le. */
+const TASK_DEP_TABLES: SyncTable[] = ['task_assignees', 'task_subtasks', 'task_notes'];
+async function pullTaskDeps(taskIds: string[], gen: number): Promise<void> {
+  for (let i = 0; i < taskIds.length; i += 100) {
+    const chunk = taskIds.slice(i, i + 100);
+    for (const table of TASK_DEP_TABLES) {
+      const { data, error } = await supabase.from(sourceOf(table)).select('*').in('task_id', chunk).range(0, 4999);
+      if (error) throw error;
+      if (store.generation !== gen) return;
+      if (data?.length) store.putManyLocal(table, data as any[], true);
+    }
+  }
+}
+
+async function pullTable(table: SyncTable, userId?: string): Promise<void> {
   const gen = store.generation; // kijelentkezés/fiókváltás közben megszakad
   const mark = RESYNC_MARKS[table];
   const needFull = !!mark && store.getCursor(`${table}:mark`) !== mark;
@@ -206,6 +226,10 @@ async function pullTable(table: SyncTable): Promise<void> {
   let maxTs = cursor;
   let lastTs: string | null = null;
   let lastId: string | null = null;
+  // munkavállalónál: mely feladatok jelentek meg most (eddig nem voltak meg helyben, vagy töröltként álltak)
+  const appeared: string[] = [];
+  const trackAppeared = table === 'worker_tasks' && !!userId && cursor !== '1970-01-01T00:00:00Z'
+    && !!(store.getAll('profiles') as any[]).find((p) => p.id === userId)?.worker_id;
   for (;;) {
     // (updated_at, id) szerinti keyset-lapozás: offset helyett az utolsó sor után folytatjuk, így a
     // lapozás közben módosuló sorok sem tolnak el semmit
@@ -217,12 +241,22 @@ async function pullTable(table: SyncTable): Promise<void> {
     if (error) throw error;
     if (store.generation !== gen) return; // közben törölték a tárat: nem írunk vissza
     if (!data || data.length === 0) break;
+    if (trackAppeared) {
+      for (const r of data as any[]) {
+        if (r.deleted_at) continue;
+        const local = store.get(table, String(r.id)) as any;
+        if (!local || local.deleted_at) appeared.push(String(r.id));
+      }
+    }
     store.putManyLocal(table, data as any[], true);
     const last = data[data.length - 1] as any;
     lastTs = String(last.updated_at); lastId = String(last.id);
     if (lastTs > maxTs) maxTs = lastTs;
     if (data.length < page) break;
   }
+  if (store.generation !== gen) return;
+  // előbb a függő sorok: ha ez megszakad (hálózat), a kurzor nem lép, és a következő körben újra megpróbáljuk
+  if (appeared.length) await pullTaskDeps([...new Set(appeared)], gen);
   if (store.generation !== gen) return;
   if (maxTs !== cursor) store.setCursor(table, maxTs);
   if (needFull && mark) store.setCursor(`${table}:mark`, mark);
@@ -300,7 +334,7 @@ async function runSync(): Promise<void> {
     {
       await checkDoneWindow(sess.session.user.id);
       for (const table of SYNC_TABLES) {
-        await pullTable(table);
+        await pullTable(table, sess.session.user.id);
         if (table === 'profiles') await reconcileProfiles();
       }
       if (store.generation !== gen) return;

@@ -305,14 +305,17 @@ Biztosan leveszed?`, 'Levétel', true);
 
   const markDone = async () => {
     if (busy) return;
-    // több emberes feladat: csak a saját (vállalkozónál az emberei) része lesz kész; a feladat akkor, ha mindenki kész
-    const mineIds = new Set<string>([myWorkerId!, ...crew.map((c) => c.id)]);
+    // több emberes feladat: csak a saját részem lesz kész; a feladat akkor, ha mindenki kész. Vállalkozónál
+    // a fiók nélküli embereié is (ők maguk nem tudják jelenteni) — akinek van saját fiókja, az maga jelenti
+    const mineIds = new Set<string>([myWorkerId!, ...crew.filter((c) => !profiles.some((p) => p.worker_id === c.id)).map((c) => c.id)]);
     const others = assignees.filter((a) => !mineIds.has(a.worker_id) && !a.done_at);
     const msg = others.length
       ? `Készre jelented a saját részedet? A feladat akkor lesz kész, ha ${others.map((a) => workerName(a.worker_id)).join(', ')} is készre jelentette.`
       : 'Késznek jelölöd a feladatot?';
     if (!await confirmDialog(others.length ? 'A te részed kész' : 'Feladat kész', msg, 'Kész ✔')) return;
-    if (openSession || crewOpenSessions.length) stopWork();
+    // csak azok munkaideje áll le, akiknek a része most kész lesz (a fiókkal rendelkező embereim dolgozhatnak tovább)
+    if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
+    for (const s of crewOpenSessions) if (mineIds.has(s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
     const t = nowISO();
     queueRpc('worker_task_action', { p_id: task.id, p_action: 'done' }, [
       ...assignees.filter((a) => mineIds.has(a.worker_id) && !a.done_at).map((a) => ({ table: 'task_assignees' as const, id: a.id, patch: { done_at: t } })),
