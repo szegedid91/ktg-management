@@ -24,6 +24,7 @@ type WebSub = { id: string; user_id: string; endpoint: string; p256dh: string; a
 function targetUrl(kind: string, payload: any): string {
   const p = payload ?? {};
   if (kind === 'worker_approved' || kind === 'worker_rejected') return '/';
+  if (kind === 'chat' || p.chat) return '/chat';
   if (kind === 'timesheet') return p.timesheet_id ? '/timesheets' : '/';
   if (p.task_id) return `/task/${p.task_id}`;
   if (p.site_id) return `/site/${p.site_id}`;

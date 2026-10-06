@@ -13,6 +13,7 @@ import { AppNotification } from '../lib/types';
 function targetOf(n: AppNotification): string | null {
   const p = n.payload ?? {};
   if (n.kind === 'worker_approved' || n.kind === 'worker_rejected') return '/';
+  if (n.kind === 'chat' || p.chat) return '/chat';
   if (n.kind === 'timesheet') return p.timesheet_id ? '/timesheets' : '/';
   if (n.kind === 'schedule') return '/';
   if (n.kind === 'reminder' && !p.task_id) return '/';

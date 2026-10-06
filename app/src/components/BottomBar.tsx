@@ -8,12 +8,13 @@ import { router, usePathname } from 'expo-router';
 import { useAuth } from '../lib/auth';
 import { useTable } from '../lib/hooks';
 import { C, S } from '../ui/theme';
-import { Profile } from '../lib/types';
+import { Profile, ChatMessage } from '../lib/types';
+import { useChatSeen } from '../lib/chatSeen';
 
 /** Fül-váltás: a navigációs verem kiürül, és a választott oldal lesz az egyetlen képernyő. Korábban minden
  *  koppintás ÚJ képernyőt tett a verem tetejére — a régiek a háttérben tovább éltek (és minden adatváltozásra
  *  újraszámoltak), egy hosszú munkamenet végére az app belassult, a gombok nem reagáltak. */
-function goTab(path: '/' | '/finance' | '/tasks' | '/more') {
+function goTab(path: '/' | '/finance' | '/tasks' | '/chat' | '/more') {
   try { if (router.canDismiss()) router.dismissAll(); } catch { /* nincs mit bezárni */ }
   router.replace(path);
 }
@@ -23,6 +24,7 @@ const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: s
   { icon: '💸', label: '+ Költség', action: () => router.push('/expense/new') },
   { icon: '💰', label: 'Pénzügy', action: () => goTab('/finance'), activePrefix: '/finance' },
   { icon: '🛠️', label: 'Feladatok', action: () => goTab('/tasks'), activePrefix: '/tasks' },
+  { icon: '💬', label: 'Chat', action: () => goTab('/chat'), activePrefix: '/chat' },
   { icon: '☰', label: 'Több', action: () => goTab('/more'), activePrefix: '/more' },
 ];
 
@@ -30,10 +32,14 @@ export function BottomBar() {
   const { session } = useAuth();
   const pathname = usePathname();
   const profiles = useTable<Profile>('profiles');
+  const chat = useTable<ChatMessage>('chat_messages');
+  const seen = useChatSeen();
   if (!session) return null;
-  // munkavállalói fiók: kezdőlap + feladatok + Több (kijelentkezés)
+  // munkavállalói fiók: kezdőlap + feladatok + chat + Több (kijelentkezés)
   const isWorker = !!profiles.find((p) => p.id === session.user.id)?.worker_id;
-  const items = isWorker ? ITEMS.filter((i) => ['Kezdőlap', 'Feladatok', 'Több'].includes(i.label)) : ITEMS;
+  const items = isWorker ? ITEMS.filter((i) => ['Kezdőlap', 'Feladatok', 'Chat', 'Több'].includes(i.label)) : ITEMS;
+  // olvasatlan chat-üzenetek: a chat utolsó megnyitása óta mások által írtak
+  const unreadChat = chat.filter((m) => m.created_by !== session.user.id && m.created_at > seen).length;
 
   return (
     <View
@@ -61,7 +67,15 @@ export function BottomBar() {
               flex: 1, alignItems: 'center', gap: 1, opacity: pressed ? 0.6 : 1,
             })}
           >
-            <Text style={{ fontSize: 19, opacity: active ? 1 : 0.45 }}>{item.icon}</Text>
+            <View>
+              <Text style={{ fontSize: 19, opacity: active ? 1 : 0.45 }}>{item.icon}</Text>
+              {item.label === 'Chat' && unreadChat > 0 ? (
+                <View style={{ position: 'absolute', top: -4, right: -12, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#C0392B',
+                  alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>{unreadChat > 99 ? '99+' : unreadChat}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={{ fontSize: 10, fontWeight: active ? '700' : '500', color: active ? C.primary : C.sub }}>
               {item.label}
             </Text>

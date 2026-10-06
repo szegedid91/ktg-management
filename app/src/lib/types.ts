@@ -73,6 +73,17 @@ export interface Site extends BaseRow {
   closed_by: UUID | null;
 }
 
+/** Közös chat üzenet: mindenki látja; @említések (profil-azonosítók), hozzátűzött feladat, vezetői kitűzés */
+export interface ChatMessage extends BaseRow {
+  body: string;
+  mentions: UUID[];
+  task_id: UUID | null;
+  /** a feladat kódja · címe pillanatképként (annak is érthető, aki a feladatot nem látja) */
+  task_label: string | null;
+  pinned_at: string | null;
+  pinned_by: UUID | null;
+}
+
 /** Az építkezés elérhetősége (kapcsolattartó): több is lehet; a vezetők írják */
 export interface SiteContact extends BaseRow {
   site_id: UUID;
@@ -555,7 +566,7 @@ export const SYNC_TABLES = [
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
-  'item_codes', 'task_events', 'site_contacts',
+  'item_codes', 'task_events', 'site_contacts', 'chat_messages',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];
