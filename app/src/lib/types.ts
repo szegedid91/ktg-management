@@ -28,6 +28,8 @@ export interface Profile {
   overdue_days: number;
   created_at: string;
   updated_at: string;
+  /** aktív fiók: vezető, vagy élő és jóváhagyott munkavállaló (a chat megemlítés-ajánlója csak őket kínálja) */
+  active?: boolean;
 }
 
 export interface AppSettings {
@@ -76,6 +78,8 @@ export interface Site extends BaseRow {
 /** Közös chat üzenet: mindenki látja; @említések (profil-azonosítók), hozzátűzött feladat, vezetői kitűzés */
 export interface ChatMessage extends BaseRow {
   body: string;
+  /** a szerző neve pillanatképként (fiók törlése után is látszik, ki írta) */
+  author_name?: string | null;
   mentions: UUID[];
   task_id: UUID | null;
   /** a feladat kódja · címe pillanatképként (annak is érthető, aki a feladatot nem látja) */

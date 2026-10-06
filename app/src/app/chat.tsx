@@ -52,6 +52,7 @@ export default function Chat() {
   const myProfile = profiles.find((p) => p.id === me);
   const isWorker = !!myProfile?.worker_id;
   const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? 'Ismeretlen';
+  const authorOf = (m: ChatMessage) => profiles.find((p) => p.id === m.created_by)?.display_name ?? m.author_name ?? 'Ismeretlen';
   const names = useMemo(() => profiles.map((p) => p.display_name).filter(Boolean), [profiles]);
 
   const [text, setText] = useState('');
@@ -72,8 +73,9 @@ export default function Chat() {
   // @név ajánló: a kurzor előtti (szöveg végi) „@valami” részre illeszkedő nevek
   const atMatch = /(^|\s)@([^@]{0,30})$/.exec(text);
   const suggestions = atMatch
-    ? profiles.filter((p) => p.id !== me && p.display_name && p.display_name.toLowerCase().includes(atMatch[2].toLowerCase()))
-      .sort((a, b) => a.display_name.localeCompare(b.display_name, 'hu')).slice(0, 8)
+    // csak aktív fiókok: vezetők, élő és jóváhagyott munkavállalók (a törölt / függő nem)
+    ? profiles.filter((p) => p.id !== me && p.active !== false && p.display_name && p.display_name.toLowerCase().includes(atMatch[2].toLowerCase()))
+      .sort((a, b) => a.display_name.localeCompare(b.display_name, 'hu')).slice(0, 60)
     : [];
   const pickMention = (p: Profile) => {
     setText(text.slice(0, text.length - (atMatch ? atMatch[0].length : 0)) + `${atMatch?.[1] ?? ''}@${p.display_name} `);
@@ -120,7 +122,7 @@ export default function Chat() {
           style={{ maxWidth: '88%', backgroundColor: mine ? C.primary + '22' : C.card, borderWidth: 1, borderColor: m.pinned_at ? C.warning : C.border,
             borderRadius: 14, borderBottomRightRadius: mine ? 4 : 14, borderBottomLeftRadius: mine ? 14 : 4, paddingVertical: 6, paddingHorizontal: 10, gap: 3 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: mine ? C.primary : C.text, flexShrink: 1 }}>{mine ? 'Én' : nameOf(m.created_by)}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: mine ? C.primary : C.text, flexShrink: 1 }}>{mine ? 'Én' : authorOf(m)}</Text>
             <Text style={{ fontSize: 11, color: C.sub }}>{hm(m.created_at)}</Text>
             {m.pinned_at ? <Text style={{ fontSize: 11 }}>📌</Text> : null}
             {canMenu ? <Pressable onPress={() => setMenuFor(menuFor === m.id ? null : m.id)} hitSlop={8}><Text style={{ color: C.sub, fontSize: 14 }}>⋯</Text></Pressable> : null}
@@ -160,13 +162,16 @@ export default function Chat() {
   const composer = (
     <View style={{ borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.card, padding: S.sm, gap: 6 }}>
       {suggestions.length ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {suggestions.map((p) => (
-            <Pressable key={p.id} onPress={() => pickMention(p)} style={{ backgroundColor: C.chipBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: C.text }}>@{p.display_name}</Text>
-            </Pressable>
-          ))}
-        </View>
+        // minden aktív név látszik (görgethető), gépelésre szűkül
+        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 132 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {suggestions.map((p) => (
+              <Pressable key={p.id} onPress={() => pickMention(p)} style={{ backgroundColor: C.chipBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: C.text }}>@{p.display_name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
       ) : null}
       {task ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8 }}>
@@ -216,7 +221,7 @@ export default function Chat() {
               <Pressable key={m.id} onPress={() => m.task_id ? router.push(`/task/${m.task_id}`) : undefined} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                 <Text style={{ fontSize: 12 }}>📌</Text>
                 <Text style={{ flex: 1, fontSize: 12, color: C.text }} numberOfLines={1}>
-                  <Text style={{ fontWeight: '800' }}>{nameOf(m.created_by)}: </Text>{m.body || m.task_label}
+                  <Text style={{ fontWeight: '800' }}>{authorOf(m)}: </Text>{m.body || m.task_label}
                 </Text>
               </Pressable>
             ))}
