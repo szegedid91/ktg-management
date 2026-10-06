@@ -194,8 +194,11 @@ async function reconcileAll(): Promise<void> {
 // csak a kurzor visszaállításával lehet lecserélni a készüléken
 // 2026-10-05: az utólag (régebbi feladatra) kiosztott feladat sora nem jött le a munkavállalóhoz — a szerver
 // javítása mellé egyszeri teljes újratöltés kell, hogy a már kimaradt feladatok is megérkezzenek
+// 2026-10-06: a profilok új „aktív” jelzőt kaptak (chat megemlítés-ajánló) — a régen letöltött, azóta nem
+// változott profilsorokban ez hiányzik, ezért egyszer teljesen újratöltjük őket
 const RESYNC_MARKS: Partial<Record<SyncTable, string>> = {
   worker_tasks: 'assign-2026-10-05', task_assignees: 'assign-2026-10-05', task_subtasks: 'assign-2026-10-05', task_notes: 'assign-2026-10-05',
+  profiles: 'active-2026-10-06',
 };
 
 /** Munkavállalónál újonnan láthatóvá vált feladatok (most osztották rá / visszarakták): a hozzájuk tartozó

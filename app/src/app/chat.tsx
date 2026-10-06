@@ -74,7 +74,7 @@ export default function Chat() {
   const atMatch = /(^|\s)@([^@]{0,30})$/.exec(text);
   const suggestions = atMatch
     // csak aktív fiókok: vezetők, élő és jóváhagyott munkavállalók (a törölt / függő nem)
-    ? profiles.filter((p) => p.id !== me && p.active !== false && p.display_name && p.display_name.toLowerCase().includes(atMatch[2].toLowerCase()))
+    ? profiles.filter((p) => p.id !== me && p.active === true && p.display_name && p.display_name.toLowerCase().includes(atMatch[2].toLowerCase()))
       .sort((a, b) => a.display_name.localeCompare(b.display_name, 'hu')).slice(0, 60)
     : [];
   const pickMention = (p: Profile) => {
