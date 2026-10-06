@@ -11,9 +11,12 @@ import { useTable } from '../lib/hooks';
 import { insertRow, updateRow, softDeleteRow, getCurrentUserId } from '../lib/repo';
 import { confirmDialog } from '../lib/dialogs';
 import { hd, todayISO, localDateISO } from '../lib/format';
-import { isActiveTask, isOpenForWorker } from '../lib/tasks';
+import { isActiveTask, isOpenForWorker, wname } from '../lib/tasks';
 import { markChatSeen } from '../lib/chatSeen';
-import { ChatMessage, Profile, WorkerTask, TaskAssignee } from '../lib/types';
+import { ChatMessage, Profile, WorkerTask, TaskAssignee, Worker } from '../lib/types';
+
+/** Megemlíthető személy: a megjelenő név + ki kapja az értesítést (fiók nélküli embernél a vállalkozója) */
+type Cand = { key: string; name: string; recipient: string | null };
 
 const hm = (ts: string) => new Date(ts).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
 const dayLabel = (iso: string) => iso === todayISO() ? 'Ma' : iso === localDateISO(new Date(Date.now() - 864e5)) ? 'Tegnap' : hd(iso);
@@ -49,14 +52,38 @@ export default function Chat() {
   const messages = useTable<ChatMessage>('chat_messages');
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
+  const workers = useTable<Worker>('workers');
   const myProfile = profiles.find((p) => p.id === me);
   const isWorker = !!myProfile?.worker_id;
-  const nameOf = (id: string | null) => profiles.find((p) => p.id === id)?.display_name ?? 'Ismeretlen';
-  const authorOf = (m: ChatMessage) => profiles.find((p) => p.id === m.created_by)?.display_name ?? m.author_name ?? 'Ismeretlen';
-  const names = useMemo(() => profiles.map((p) => p.display_name).filter(Boolean), [profiles]);
+  // a név ugyanaz, mint a Munkavállalók listában (becenév / név); vezetőnél a fiók neve
+  const profileName = (p: Profile) => {
+    const w = p.worker_id ? workers.find((x) => x.id === p.worker_id) : undefined;
+    return w ? wname(w) : p.display_name;
+  };
+  const authorOf = (m: ChatMessage) => { const p = profiles.find((x) => x.id === m.created_by); return p ? profileName(p) : (m.author_name ?? 'Ismeretlen'); };
+  // megemlíthetők: minden élő, jóváhagyott munkavállaló (fiók nélkülinél a vállalkozója kapja az értesítést)
+  // + a vezetők; akinek nincs se fiókja, se vállalkozója, az csak névként kerül a szövegbe
+  const candidates = useMemo<Cand[]>(() => {
+    const out: Cand[] = [];
+    const covered = new Set<string>();
+    for (const w of workers) {
+      if (!w.approved_at || w.id === myProfile?.worker_id) continue;
+      covered.add(w.id);
+      const own = profiles.find((p) => p.worker_id === w.id);
+      const boss = w.contractor_id ? profiles.find((p) => p.worker_id === w.contractor_id) : undefined;
+      out.push({ key: `w:${w.id}`, name: wname(w), recipient: own?.id ?? boss?.id ?? null });
+    }
+    for (const p of profiles) {
+      if (p.id === me || !p.display_name) continue;
+      if (!p.worker_id) out.push({ key: `p:${p.id}`, name: p.display_name, recipient: p.id });
+      else if (p.active === true && !covered.has(p.worker_id)) out.push({ key: `p:${p.id}`, name: p.display_name, recipient: p.id });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  }, [workers, profiles, me, myProfile?.worker_id]);
+  const names = useMemo(() => Array.from(new Set([...candidates.map((c) => c.name), ...profiles.map(profileName), ...profiles.map((p) => p.display_name)].filter(Boolean))), [candidates, profiles, workers]);
 
   const [text, setText] = useState('');
-  const [mentions, setMentions] = useState<Profile[]>([]);
+  const [mentions, setMentions] = useState<Cand[]>([]);
   const [task, setTask] = useState<WorkerTask | null>(null);
   const [taskPick, setTaskPick] = useState(false);
   const [taskQ, setTaskQ] = useState('');
@@ -73,13 +100,11 @@ export default function Chat() {
   // @név ajánló: a kurzor előtti (szöveg végi) „@valami” részre illeszkedő nevek
   const atMatch = /(^|\s)@([^@]{0,30})$/.exec(text);
   const suggestions = atMatch
-    // csak aktív fiókok: vezetők, élő és jóváhagyott munkavállalók (a törölt / függő nem)
-    ? profiles.filter((p) => p.id !== me && p.active === true && p.display_name && p.display_name.toLowerCase().includes(atMatch[2].toLowerCase()))
-      .sort((a, b) => a.display_name.localeCompare(b.display_name, 'hu')).slice(0, 60)
+    ? candidates.filter((c) => c.name.toLowerCase().includes(atMatch[2].toLowerCase())).slice(0, 60)
     : [];
-  const pickMention = (p: Profile) => {
-    setText(text.slice(0, text.length - (atMatch ? atMatch[0].length : 0)) + `${atMatch?.[1] ?? ''}@${p.display_name} `);
-    if (!mentions.some((m) => m.id === p.id)) setMentions([...mentions, p]);
+  const pickMention = (c: Cand) => {
+    setText(text.slice(0, text.length - (atMatch ? atMatch[0].length : 0)) + `${atMatch?.[1] ?? ''}@${c.name} `);
+    if (!mentions.some((m) => m.key === c.key)) setMentions([...mentions, c]);
   };
 
   // feladat-választó: vezetőnek a futó feladatok, munkavállalónak a sajátjai
@@ -95,8 +120,8 @@ export default function Chat() {
   const send = () => {
     const body = text.trim();
     if (!body && !task) return;
-    // csak az marad említés, akinek a neve tényleg benne van a szövegben
-    const ids = mentions.filter((p) => body.includes(`@${p.display_name}`)).map((p) => p.id);
+    // csak az marad említés, akinek a neve tényleg benne van a szövegben; az értesítést a fiók (vagy a vállalkozó) kapja
+    const ids = Array.from(new Set(mentions.filter((c) => body.includes(`@${c.name}`)).map((c) => c.recipient).filter((x): x is string => !!x)));
     insertRow('chat_messages', {
       body, mentions: ids, task_id: task?.id ?? null, task_label: task ? taskLabelOf(task) : null, pinned_at: null, pinned_by: null,
     });
@@ -165,9 +190,9 @@ export default function Chat() {
         // minden aktív név látszik (görgethető), gépelésre szűkül
         <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 132 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {suggestions.map((p) => (
-              <Pressable key={p.id} onPress={() => pickMention(p)} style={{ backgroundColor: C.chipBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: C.text }}>@{p.display_name}</Text>
+            {suggestions.map((c) => (
+              <Pressable key={c.key} onPress={() => pickMention(c)} style={{ backgroundColor: C.chipBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: C.text }}>@{c.name}</Text>
               </Pressable>
             ))}
           </View>
