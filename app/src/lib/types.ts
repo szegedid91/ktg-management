@@ -30,6 +30,8 @@ export interface Profile {
   updated_at: string;
   /** aktív fiók: vezető, vagy élő és jóváhagyott munkavállaló (a chat megemlítés-ajánlója csak őket kínálja) */
   active?: boolean;
+  /** megemlíthető a chatben: vezető (de nem admin), vagy megemlíthetőre állított aktív munkavállaló */
+  mentionable?: boolean;
 }
 
 export interface AppSettings {
@@ -138,6 +140,8 @@ export interface Worker extends BaseRow {
   commission_unit: 'hour' | 'day' | 'project' | null;
   /** a közvetítő a kiszállási díjból is részesül-e (alap: igen — a kiszállás 1 órának számít) */
   callout_commission?: boolean;
+  /** megemlíthető a chatben (@név); alapértelmezetten igen */
+  chat_mentionable?: boolean;
   /** meghívóval regisztrált munkavállaló: amíg üres, egy vezető
    *  jóváhagyására vár (nem tud belépni) */
   approved_at: string | null;

@@ -69,14 +69,16 @@ export default function Chat() {
     for (const w of workers) {
       if (!w.approved_at || w.id === myProfile?.worker_id) continue;
       covered.add(w.id);
+      if (w.chat_mentionable === false) continue; // a vezető kikapcsolta nála
       const own = profiles.find((p) => p.worker_id === w.id);
       const boss = w.contractor_id ? profiles.find((p) => p.worker_id === w.contractor_id) : undefined;
       out.push({ key: `w:${w.id}`, name: wname(w), recipient: own?.id ?? boss?.id ?? null });
     }
     for (const p of profiles) {
       if (p.id === me || !p.display_name) continue;
-      if (!p.worker_id) out.push({ key: `p:${p.id}`, name: p.display_name, recipient: p.id });
-      else if (p.active === true && !covered.has(p.worker_id)) out.push({ key: `p:${p.id}`, name: p.display_name, recipient: p.id });
+      // vezető: az admin fiók nem; munkavállaló (akinek a törzsadatát nem látom): a szerver jelzője dönt
+      if (!p.worker_id) { if (p.mentionable === true) out.push({ key: `p:${p.id}`, name: p.display_name, recipient: p.id }); }
+      else if (p.mentionable === true && !covered.has(p.worker_id)) out.push({ key: `p:${p.id}`, name: p.display_name, recipient: p.id });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name, 'hu'));
   }, [workers, profiles, me, myProfile?.worker_id]);

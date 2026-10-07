@@ -198,7 +198,7 @@ async function reconcileAll(): Promise<void> {
 // változott profilsorokban ez hiányzik, ezért egyszer teljesen újratöltjük őket
 const RESYNC_MARKS: Partial<Record<SyncTable, string>> = {
   worker_tasks: 'assign-2026-10-05', task_assignees: 'assign-2026-10-05', task_subtasks: 'assign-2026-10-05', task_notes: 'assign-2026-10-05',
-  profiles: 'active-2026-10-06',
+  profiles: 'mentionable-2026-10-07',
 };
 
 /** Munkavállalónál újonnan láthatóvá vált feladatok (most osztották rá / visszarakták): a hozzájuk tartozó

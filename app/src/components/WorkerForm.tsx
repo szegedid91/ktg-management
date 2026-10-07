@@ -41,6 +41,8 @@ export interface WorkerFormValues {
   commission_value: string;
   commission_unit: 'hour' | 'day' | 'project' | null;
   callout_commission: boolean;
+  /** megemlíthető a chatben (@név) */
+  chat_mentionable: boolean;
 }
 
 export function emptyWorkerForm(): WorkerFormValues {
@@ -51,6 +53,7 @@ export function emptyWorkerForm(): WorkerFormValues {
     default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '', callout_fee: '',
     referrer_kind: 'none', referrer_user_id: null, referrer_external_id: null,
     commission_mode: null, commission_value: '', commission_unit: null, callout_commission: true,
+    chat_mentionable: true,
   };
 }
 
@@ -71,6 +74,7 @@ export function workerToForm(w: Worker): WorkerFormValues {
     commission_mode: w.commission_mode, commission_value: w.commission_value != null ? String(w.commission_value) : '',
     commission_unit: w.commission_unit,
     callout_commission: w.callout_commission ?? true,
+    chat_mentionable: w.chat_mentionable ?? true,
   };
 }
 
@@ -116,6 +120,7 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
     commission_value: f.referrer_kind !== 'none' && f.commission_value ? parseAmount(f.commission_value) : null,
     commission_unit: f.referrer_kind !== 'none' && f.commission_mode === 'fixed' ? f.commission_unit : null,
     callout_commission: f.callout_commission,
+    chat_mentionable: f.chat_mentionable,
   };
 }
 
@@ -364,6 +369,8 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
       <FormSection icon="📝" title="Bankszámla és megjegyzés" summary={value.note ? value.note.slice(0, 30) : ''} open={open === 'other'} onToggle={() => tog('other')}>
         <Input label="Bankszámlaszám" value={value.bank_account} onChangeText={(t) => set({ bank_account: t })} placeholder="titkosítva tárolódik" />
         <Input label="Megjegyzés" value={value.note} onChangeText={(t) => set({ note: t })} multiline />
+        <Check checked={value.chat_mentionable} onToggle={() => set({ chat_mentionable: !value.chat_mentionable })}
+          label="Megemlíthető a chatben (@név)" sub={value.chat_mentionable ? 'A neve felajánlódik a chatben, és értesítést kap, ha megemlítik.' : 'A neve nem jelenik meg a chat megemlítés-listájában.'} />
       </FormSection>
     </View>
   );
