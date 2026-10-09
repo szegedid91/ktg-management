@@ -26,7 +26,11 @@ function Chip({ label, count, color, on, onPress }: { label: string; count?: num
   );
 }
 
-export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null }: { tasks: WorkerTask[]; showClosed?: boolean; initialFilter?: Filter | null }) {
+export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null, initialWho = null }: {
+  tasks: WorkerTask[]; showClosed?: boolean; initialFilter?: Filter | null;
+  /** vállalkozónál: melyik emberének a feladatai (munkavállaló-azonosító), 'me' = a sajátjaim */
+  initialWho?: string | null;
+}) {
   const assignees = useTable<TaskAssignee>('task_assignees');
   const materials = useTable<TaskMaterial>('task_materials');
   const sessions = useTable<WorkSession>('work_sessions');
@@ -54,6 +58,16 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   // a kezdőlapról érkező hivatkozás (pl. „Kész feladataim”) a már nyitott listán is átváltson
   useEffect(() => { setFilter(initialFilter); }, [initialFilter]);
   const [siteId, setSiteId] = useState<string | null>(null);
+  // vállalkozó: az embereim — emberenként szűrhető, kinek mi van kiosztva („Én” = amin én is rajta vagyok)
+  const crew = workers.filter((w) => !!wid && w.contractor_id === wid).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+  const [who, setWho] = useState<string | null>(initialWho);
+  useEffect(() => { setWho(initialWho); }, [initialWho]);
+  const onWho = (t: WorkerTask) => who === null ? true
+    : who === 'me' ? !assignees.some((a) => a.task_id === t.id && crew.some((c) => c.id === a.worker_id))
+    : assignees.some((a) => a.task_id === t.id && a.worker_id === who);
+  const whoCount = (id: string | 'me') => tasks.filter((t) => isOpenForWorker(t) && (id === 'me'
+    ? !assignees.some((a) => a.task_id === t.id && crew.some((c) => c.id === a.worker_id))
+    : assignees.some((a) => a.task_id === t.id && a.worker_id === id))).length;
 
   const running = new Set(sessions.filter((s) => !s.ended_at && s.task_id).map((s) => s.task_id as string));
   const counts = {
@@ -67,12 +81,13 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
   const showSites = siteIds.length >= 2;
   const siteName = (id: string) => (id ? sites.find((s) => s.id === id)?.name ?? 'Ismeretlen' : 'Helyszín nélkül');
 
-  const list = filter === 'closed' ? done.filter((t) => siteId === null || (t.site_id ?? '') === siteId) : tasks
+  const list = filter === 'closed' ? done.filter((t) => siteId === null || (t.site_id ?? '') === siteId).filter(onWho) : tasks
     .filter((t) => filter === null ? isOpenForWorker(t)
       : filter === 'quote' ? isOpenForWorker(t) && isQuoteOpen(t)
       : filter === 'assigned' ? isOpenForWorker(t) && !ackedByMe(t) && !isQuoteOpen(t)
       : isOpenForWorker(t) && ackedByMe(t))
     .filter((t) => siteId === null || (t.site_id ?? '') === siteId)
+    .filter(onWho)
     // rögzítés dátuma szerint, a legfrissebb elöl
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
@@ -85,6 +100,16 @@ export function WorkerTaskList({ tasks, showClosed = false, initialFilter = null
         <Chip label="Folyamatban" count={counts.acknowledged} color={STATUS_COLOR.acknowledged} on={filter === 'acknowledged'} onPress={() => setFilter(filter === 'acknowledged' ? null : 'acknowledged')} />
         {showClosed ? <Chip label="✔ Kész" count={counts.closed} color={STATUS_COLOR.done} on={filter === 'closed'} onPress={() => setFilter(filter === 'closed' ? null : 'closed')} /> : null}
       </View>
+      {crew.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600' }}>👥 Kinél:</Text>
+          <Chip label="Mind" on={who === null} onPress={() => setWho(null)} />
+          <Chip label="Csak nálam" count={whoCount('me')} on={who === 'me'} onPress={() => setWho(who === 'me' ? null : 'me')} />
+          {crew.map((c) => (
+            <Chip key={c.id} label={c.name} count={whoCount(c.id)} on={who === c.id} onPress={() => setWho(who === c.id ? null : c.id)} />
+          ))}
+        </View>
+      ) : null}
       {showSites ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           <Text style={{ fontSize: 12, color: C.sub, fontWeight: '600' }}>Helyszín:</Text>

@@ -70,6 +70,8 @@ const STATUS_COLOR: Record<string, string> = {
   assigned: '#B7791F', acknowledged: '#2B6CB0', done: '#2F855A', failed: '#C53030', cancelled: '#718096',
 };
 
+const hm = (ts: string) => new Date(ts).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
+
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const task = useRow<WorkerTask>('worker_tasks', id);
@@ -126,7 +128,6 @@ Biztosan leveszed?`, 'Levétel', true);
   };
   const [subBusy, setSubBusy] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
-  const [crewWho, setCrewWho] = useState<Set<string> | null>(null);
   // vállalkozó: a feladat szétosztása az emberei között (null = a szerveren lévő állapot)
   const [distWho, setDistWho] = useState<Set<string> | null>(null);
   const [distBusy, setDistBusy] = useState(false);
@@ -269,6 +270,22 @@ Biztosan leveszed?`, 'Levétel', true);
   const crewAssigned = new Set(assignees.filter((a) => crew.some((c) => c.id === a.worker_id)).map((a) => a.worker_id));
   const distSel = distWho ?? crewAssigned;
   const distDirty = distWho !== null && (distWho.size !== crewAssigned.size || [...distWho].some((id) => !crewAssigned.has(id)));
+  // szétosztás az embereimre — a saját részem készre jelentése után is (amíg a feladat nyitva van)
+  const distributionBlock = crew.length > 0 ? (
+    <View style={{ gap: 2 }}>
+      <Sub style={{ fontWeight: '700' }}>👥 Kire osztod az embereid közül?</Sub>
+      <Sub>Akit bejelölsz, megkapja a feladatot: visszaigazolja, dolgozik rajta és le is zárhatja.</Sub>
+      {crew.map((c) => {
+        const row = assignees.find((a) => a.worker_id === c.id);
+        return (
+          <Check key={c.id} checked={distSel.has(c.id)}
+            onToggle={() => setDistWho((prev) => { const n = new Set(prev ?? crewAssigned); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+            label={`${c.name}${row ? (row.done_at ? ' ✔ kész' : row.acknowledged_at ? ' ✓' : ' ⏳ visszaigazolásra vár') : ''}`} />
+        );
+      })}
+      {distDirty ? <Btn title={distBusy ? 'Mentés…' : 'Szétosztás mentése'} small disabled={distBusy} onPress={() => void saveDistribution()} /> : null}
+    </View>
+  ) : null;
   const saveDistribution = async () => {
     setDistBusy(true);
     try {
@@ -283,8 +300,9 @@ Biztosan leveszed?`, 'Levétel', true);
   // Egy helyszínen több feladat is futhat egyszerre; MÁSIK munkaterületen futó munkaidőt viszont
   // itt lezárjuk és ide váltunk (különben a szerver elutasítja az indítást).
   const elsewhere = (ids: (string | null)[]) => allSessions.filter((s) => !s.ended_at && !s.deleted_at && s.task_id !== task.id && (s.site_id ?? null) !== (task.site_id ?? null) && ids.includes(s.worker_id));
-  const startWork = async () => {
-    const ids = crew.length ? [...(crewWho ?? new Set([myWorkerId!]))] : [myWorkerId];
+  // indítás: alapból én (vállalkozónál személyenkénti gombbal az emberei is)
+  const startWork = async (only?: string[]) => {
+    const ids = only ?? [myWorkerId!];
     const other = elsewhere(ids);
     if (other.length) {
       const t0 = other[0].task_id ? allTasks.find((x) => x.id === other[0].task_id) : undefined;
@@ -298,9 +316,10 @@ Biztosan leveszed?`, 'Levétel', true);
       insertRow('work_sessions', { worker_id: id, task_id: task.id, site_id: task.site_id, started_at: t, ended_at: null, note: null });
     }
   };
-  const stopWork = () => {
-    if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
-    for (const s of crewOpenSessions) updateRow('work_sessions', s.id, { ended_at: nowISO() });
+  // leállítás: mindenki (alap), vagy csak a megadott emberek
+  const stopWork = (only?: string[]) => {
+    if (openSession && (!only || only.includes(openSession.worker_id))) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
+    for (const s of crewOpenSessions) if (!only || only.includes(s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
   };
 
   const markDone = async () => {
@@ -972,33 +991,33 @@ Biztosan leveszed?`, 'Levétel', true);
             <Btn title="Feladat elfogadása ✅" onPress={acknowledge} />
           ) : (
             <>
+        {isWorker && myAssignment && active && crew.length > 0 ? distributionBlock : null}
         {isWorker && myAssignment && active && crew.length > 0 ? (
-          <View style={{ gap: 2 }}>
-            <Sub style={{ fontWeight: '700' }}>👥 Kire osztod az embereid közül?</Sub>
-            <Sub>Akit bejelölsz, megkapja a feladatot: visszaigazolja, dolgozik rajta és le is zárhatja.</Sub>
-            {crew.map((c) => {
-              const row = assignees.find((a) => a.worker_id === c.id);
+          // vállalkozó: személyenként indítható / állítható a munkaidő — így át is adható a munka az emberének
+          <View style={{ gap: 4 }}>
+            <Sub style={{ fontWeight: '700' }}>⏱ Ki dolgozik ezen a feladaton?</Sub>
+            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => {
+              const run = sessions.find((x) => !x.ended_at && x.worker_id === p.id);
               return (
-                <Check key={c.id} checked={distSel.has(c.id)}
-                  onToggle={() => setDistWho((prev) => { const n = new Set(prev ?? crewAssigned); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
-                  label={`${c.name}${row ? (row.acknowledged_at ? ' ✓' : ' ⏳ visszaigazolásra vár') : ''}`} />
+                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 2 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.text, fontWeight: '600' }}>{p.name}</Text>
+                    {run ? <Sub style={{ color: C.success, fontWeight: '700' }}>● dolgozik {hm(run.started_at)} óta</Sub> : null}
+                  </View>
+                  {run
+                    ? <Btn title="⏹ Befejezi" kind="danger" small onPress={() => stopWork([p.id])} />
+                    : <Btn title="▶ Kezdi" kind="secondary" small onPress={() => void startWork([p.id])} />}
+                </View>
               );
             })}
-            {distDirty ? <Btn title={distBusy ? 'Mentés…' : 'Szétosztás mentése'} small disabled={distBusy} onPress={() => void saveDistribution()} /> : null}
+            {(openSession ? 1 : 0) + crewOpenSessions.length > 1
+              ? <Btn title={`⏹ Mindenki befejezi (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)`} kind="danger" onPress={() => stopWork()} /> : null}
           </View>
         ) : null}
-        {isWorker && myAssignment && active && crew.length > 0 && !openSession && crewOpenSessions.length === 0 ? (
-          <View style={{ gap: 2 }}>
-            <Sub style={{ fontWeight: '700' }}>Ki dolgozik ezen a feladaton?</Sub>
-            {[{ id: myWorkerId!, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))].map((p) => (
-              <Check key={p.id} checked={(crewWho ?? new Set([myWorkerId!])).has(p.id)} onToggle={() => setCrewWho((s) => { const n = new Set(s ?? [myWorkerId!]); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} label={p.name} />
-            ))}
-          </View>
-        ) : null}
-        {isWorker && myAssignment && active ? (
-          openSession || crewOpenSessions.length
-            ? <Btn title={crewOpenSessions.length ? `⏹ Munka befejezése (${crewOpenSessions.length + (openSession ? 1 : 0)} fő)` : '⏹ Munka befejezése most'} kind="danger" onPress={stopWork} />
-            : <Btn title="▶ Munka megkezdése most" kind="secondary" disabled={crew.length > 0 && (crewWho?.size ?? 1) === 0} onPress={() => void startWork()} />
+        {isWorker && myAssignment && active && crew.length === 0 ? (
+          openSession
+            ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={() => stopWork()} />
+            : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={() => void startWork()} />
         ) : null}
               {startedByMe ? <Btn title="Kész ✔" onPress={() => void markDone()} /> : null}
               {!failOpen ? (
@@ -1099,6 +1118,12 @@ Biztosan leveszed?`, 'Levétel', true);
       ) : null}
 
       {/* ---------- ajánlat: munkavállaló ---------- */}
+      {isWorker && myAssignment && !active && myAssignment.done_at && isOpenForWorker(task) && crew.length > 0 ? (
+        <Card style={{ borderColor: C.accent, gap: S.sm }}>
+          <Sub>A te részed kész, de a feladat még nyitva van — az embereidre továbbra is rá tudod osztani.</Sub>
+          {distributionBlock}
+        </Card>
+      ) : null}
       {isWorker && mine && active ? (
         <Card style={{ borderColor: C.primary }}>
           <H2>💬 Ajánlat</H2>

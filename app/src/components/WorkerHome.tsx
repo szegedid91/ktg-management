@@ -274,6 +274,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                       ? <Badge text="📱 saját fiók" color={C.sub} />
                       : <Btn title={inviteFor === c.id ? 'Bezár' : '📲 Meghívó'} kind="ghost" small onPress={() => setInviteFor(inviteFor === c.id ? null : c.id)} />}
                     {allSessions.some((s) => s.worker_id === c.id && !s.ended_at) ? <Badge text="● dolgozik" color={C.success} /> : null}
+                    <Btn title={`🛠️ ${tasks.filter((t) => isOpenForWorker(t) && assignees.some((a) => a.task_id === t.id && a.worker_id === c.id)).length} feladat`} kind="ghost" small onPress={() => router.navigate(`/tasks?who=${c.id}`)} />
                     <Btn title="🗑️" kind="ghost" small onPress={() => void removeMember(c)} />
                   </View>
                   {inviteFor === c.id && !c.email ? <InviteCard workerId={c.id} workerName={c.name} crewMember /> : null}

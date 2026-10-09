@@ -12,7 +12,7 @@ import { TaskBoard, BoardFilter } from '../components/TaskBoard';
 import { WorkerTask, TaskAssignee, Profile } from '../lib/types';
 
 export default function Tasks() {
-  const { filter } = useLocalSearchParams<{ filter?: string }>();
+  const { filter, who } = useLocalSearchParams<{ filter?: string; who?: string }>();
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
   const profiles = useTable<Profile>('profiles');
@@ -25,7 +25,7 @@ export default function Tasks() {
     return (
       <Screen>
         <Sub>A folyamatban lévő feladataid — az elfogadásra várók a kezdőlapon. A nemrég elkészültek a „✔ Kész” fülön.</Sub>
-        <WorkerTaskList tasks={mine} showClosed initialFilter={filter === 'closed' ? 'closed' : 'acknowledged'} />
+        <WorkerTaskList tasks={mine} showClosed initialFilter={filter === 'closed' ? 'closed' : 'acknowledged'} initialWho={who ?? null} />
       </Screen>
     );
   }
