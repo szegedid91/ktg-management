@@ -223,10 +223,21 @@ function PendingScreenInner() {
     return null;
   }, [groups, expandedKey]);
 
-  const openItemIds = new Set((openPerson?.items ?? []).map((i) => i.id));
-  const selectedIds = [...selected].filter((id) => openItemIds.has(id));
-  const amountById = new Map((openPerson?.items ?? []).map((i) => [i.id, i.amount]));
+  // közvetítői díjnál egyszerre több közvetítő / építkezés tétele is kijelölhető és kifizethető;
+  // bérnél marad az egy emberes kifizetés (a nyitva lévő ember tételei)
+  const allVisibleItems = useMemo(() => visibleGroups.flatMap((g) => g.persons.flatMap((p) => p.items.map((it) => ({ ...it, personKey: p.key, personName: p.name })))), [visibleGroups]);
+  const payableItems = isWages ? (openPerson?.items ?? []) : allVisibleItems;
+  const payableIds = new Set(payableItems.map((i) => i.id));
+  const selectedIds = [...selected].filter((id) => payableIds.has(id));
+  const amountById = new Map(payableItems.map((i) => [i.id, i.amount]));
   const selectedTotal = selectedIds.reduce((s, id) => s + (amountById.get(id) ?? 0), 0);
+  const selectedPersons = isWages ? [] : [...new Set(allVisibleItems.filter((i) => selected.has(i.id)).map((i) => i.personName))];
+  const toggleMany = (ids: string[]) => setSelected((prev) => {
+    const next = new Set(prev);
+    const all = ids.length > 0 && ids.every((id) => next.has(id));
+    ids.forEach((id) => { if (all) next.delete(id); else next.add(id); });
+    return next;
+  });
 
   const paySelected = () => {
     if (selectedIds.length === 0) return;
@@ -247,8 +258,8 @@ function PendingScreenInner() {
       paddingHorizontal: S.lg, paddingVertical: 8, gap: 6,
     }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ fontWeight: '700', fontSize: 14, color: C.text }}>
-          {openPerson?.name}: {selectedIds.length} tétel · {ft(selectedTotal)}
+        <Text style={{ fontWeight: '700', fontSize: 14, color: C.text, flex: 1 }} numberOfLines={2}>
+          {isWages ? `${openPerson?.name}: ` : selectedPersons.length === 1 ? `${selectedPersons[0]}: ` : `${selectedPersons.length} közvetítő · `}{selectedIds.length} tétel · {ft(selectedTotal)}
         </Text>
         <Text
           onPress={() => setSelected((prev) => {
@@ -319,7 +330,12 @@ function PendingScreenInner() {
           v={ft(grandTotal)}
           strong
         />
-        <Sub>A pipa kijelöli a tételeket — a kifizetést az alul megjelenő sáv gombja rögzíti.</Sub>
+        <Sub>{isWages ? 'A pipa kijelöli a tételeket — a kifizetést az alul megjelenő sáv gombja rögzíti.'
+          : 'A pipa kijelöli a tételeket — több közvetítő és építkezés is egyszerre; a kifizetést az alul megjelenő sáv gombja rögzíti.'}</Sub>
+        {!isWages && allVisibleItems.length > 0 ? (
+          <Btn title={allVisibleItems.every((i) => selected.has(i.id)) ? 'Kijelölés törlése' : `Mind kijelölése${isFiltered ? ' (szűrt)' : ''} — ${ft(grandTotal)}`}
+            kind="secondary" small onPress={() => toggleMany(allVisibleItems.map((i) => i.id))} />
+        ) : null}
       </Card>
 
       {overpaid.length > 0 ? (
@@ -336,10 +352,14 @@ function PendingScreenInner() {
 
       {visibleGroups.map((g) => (
         <Card key={g.siteId}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: S.sm }}>
             <H2>🏗️ {g.siteName}</H2>
             <Text style={{ fontWeight: '800', fontSize: 16 }}>{ft(g.total)}</Text>
           </View>
+          {!isWages ? (
+            <Btn title={g.persons.every((p) => p.items.every((i) => selected.has(i.id))) ? 'Építkezés kijelölésének törlése' : `Építkezés mind kijelölése — ${ft(g.total)}`}
+              kind="ghost" small onPress={() => toggleMany(g.persons.flatMap((p) => p.items.map((i) => i.id)))} />
+          ) : null}
           <Divider />
           {g.persons.map((p) => {
             const expKey = `${g.siteId}:${p.key}`;
@@ -354,10 +374,20 @@ function PendingScreenInner() {
                   })}
                 >
                   <Text style={{ fontSize: 13, color: C.sub, width: 14 }}>{isOpen ? '▾' : '▸'}</Text>
+                  {!isWages ? (
+                    // pipa a sorban: a közvetítő összes tétele kinyitás nélkül is kijelölhető
+                    <Pressable onPress={() => toggleMany(p.items.map((i) => i.id))} hitSlop={8}
+                      style={{ width: 22, height: 22, borderRadius: 5, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
+                        borderColor: p.items.every((i) => selected.has(i.id)) ? C.primary : C.border,
+                        backgroundColor: p.items.every((i) => selected.has(i.id)) ? C.primary : p.items.some((i) => selected.has(i.id)) ? C.chipBg : 'transparent' }}>
+                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>{p.items.every((i) => selected.has(i.id)) ? '✓' : p.items.some((i) => selected.has(i.id)) ? '•' : ''}</Text>
+                    </Pressable>
+                  ) : null}
                   <Text style={{ fontWeight: '700', fontSize: 15, color: C.text, flex: 1 }}>
                     {isWages ? '👷' : '🤝'} {p.name}
                   </Text>
                   <Badge text={`${p.items.length} nap`} />
+                  {!isWages && !isOpen && p.items.some((i) => selected.has(i.id)) ? <Text style={{ fontSize: 12, color: C.primary, fontWeight: '700' }}>{p.items.filter((i) => selected.has(i.id)).length} kijelölve</Text> : null}
                   {isOpen ? <Text style={{ fontWeight: '700' }}>{ft(p.total)}</Text> : null}
                 </Pressable>
                 {isOpen ? (
