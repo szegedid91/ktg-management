@@ -146,6 +146,17 @@ async function pushOutbox(): Promise<boolean> {
     }
     if (result === 'done') store.removeOp(op.opId);
     if (result === 'rejected') {
+      if (op.kind === 'upsert' && op.table === 'work_sessions' && /csak most indítható/i.test(String(op.lastError ?? ''))) {
+        // késve (napokkal később) szinkronizált offline munkaidő: a szerver nem fogad el visszadátumozott indítást —
+        // a kimaradt időszakot jelentjük, a vezetők értesítést kapnak, és kézzel rögzítik
+        const r = op.row as any;
+        await Promise.resolve(supabase.rpc('report_missed_session', { p_site: r.site_id ?? null, p_task: r.task_id ?? null, p_started: r.started_at, p_ended: r.ended_at ?? null }))
+          .catch(() => {});
+        store.removeOp(op.opId);
+        await rollbackOp(op);
+        status.lastError = 'Egy korábbi munkaidőd nem rögzült (a készülék késve szinkronizált) — a vezető értesítést kapott, és kézzel rögzíti.';
+        continue;
+      }
       if (isStaleRejection(op)) {
         // a szerver állapota már „előrébb jár” (pl. a vezető közben lezárta a munkaidőt): a helyi
         // módosításnak nincs értelme — csendben eldobjuk és a szerver sorát töltjük vissza (nincs banner,
