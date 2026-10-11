@@ -123,7 +123,8 @@ Biztosan leveszed?`, 'Levétel', true);
       softDeleteRow('task_assignees', row.id);
       return;
     }
-    if (row) updateRow('task_assignees', row.id, { deleted_at: null, acknowledged_at: null });
+    // volt már ilyen kiosztás (levették): a régi sort állítjuk vissza — új sor beszúrása az egyediséget sértené
+    if (row) updateRow('task_assignees', row.id, { deleted_at: null, acknowledged_at: null, done_at: null });
     else insertRow('task_assignees', { task_id: task.id, worker_id: w.id });
   };
   const [subBusy, setSubBusy] = useState<string | null>(null);

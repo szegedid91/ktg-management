@@ -129,6 +129,13 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
   }
 }
 
+/** Olyan elutasítás, amit a felhasználó nem tud „megjavítani”: a szerver sora időközben továbblépett
+ *  (lezárt munkaidő, már elfogadott / lezárt feladat) — az elavult helyi művelet eldobható. */
+function isStaleRejection(op: OutboxOp): boolean {
+  const msg = String(op.lastError ?? '');
+  return /Lezárt munkamenet már nem módosítható|már le van zárva|már elfogadták/i.test(msg);
+}
+
 async function pushOutbox(): Promise<boolean> {
   for (const op of store.peekOutbox()) {
     const result = await pushOp(op);
@@ -139,6 +146,14 @@ async function pushOutbox(): Promise<boolean> {
     }
     if (result === 'done') store.removeOp(op.opId);
     if (result === 'rejected') {
+      if (isStaleRejection(op)) {
+        // a szerver állapota már „előrébb jár” (pl. a vezető közben lezárta a munkaidőt): a helyi
+        // módosításnak nincs értelme — csendben eldobjuk és a szerver sorát töltjük vissza (nincs banner,
+        // nincs végtelen „Újrapróbálás”)
+        store.removeOp(op.opId);
+        await rollbackOp(op);
+        continue;
+      }
       // a szerver végleg elutasította: sikertelen listába kerül (a UI bannert
       // mutat), és az optimista lokális állapotot visszagörgetjük
       store.moveOpToFailed(op.opId);
@@ -324,8 +339,14 @@ async function runSync(): Promise<void> {
   // a zárat azonnal (szinkron módon) fogjuk: két egyidejű hívás ne futtassa kétszer az outboxot
   syncing = true;
   await store.whenLoaded(); // a diszk-állapot betöltése előtt nem szinkronizálunk
-  const { data: sess } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
+  let { data: sess } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
   if (!sess?.session) { syncing = false; return; }
+  // lejárt vagy perceken belül lejáró token (a háttérben nyugvó böngésző nem frissítette): előbb frissítünk,
+  // különben a szerver „JWT expired” hibával küldené vissza az egész kört
+  if ((sess.session.expires_at ?? 0) * 1000 < Date.now() + 90_000) {
+    const r = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } } as any));
+    if (r?.data?.session) sess = { session: r.data.session } as any;
+  }
   const gen = store.generation;
 
   status.syncing = true;
@@ -354,8 +375,15 @@ async function runSync(): Promise<void> {
       import('./push').then((m) => m.drainPushQueue()).catch(() => {});
     }
   } catch (err: any) {
-    status.lastError = isNetworkError(err) ? null : String(err?.message ?? err);
-    if (!isNetworkError(err)) logError('sync', String(err?.message ?? err), errInfo(err));
+    const code = String(err?.code ?? '');
+    if (code === 'PGRST303' || /JWT expired/i.test(String(err?.message ?? ''))) {
+      // lejárt token menet közben: frissítünk és hamarosan újra próbáljuk — ez nem hiba, nem naplózzuk
+      await supabase.auth.refreshSession().catch(() => {});
+      runAgain = true;
+    } else {
+      status.lastError = isNetworkError(err) ? null : String(err?.message ?? err);
+      if (!isNetworkError(err)) logError('sync', String(err?.message ?? err), errInfo(err));
+    }
   } finally {
     syncing = false;
     status.syncing = false;
