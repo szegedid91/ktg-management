@@ -103,8 +103,13 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
       const { error } = await supabase.from(op.table!).upsert(op.row!);
       if (error) throw error;
     } else if (op.kind === 'update') {
-      const { error } = await supabase.from(op.table!).update(op.patch!).eq('id', op.id!);
+      // a módosított sort visszakérjük: ha a szerver 0 sort módosított (jogosultsági szabály szűrte ki, vagy
+      // a sor már nincs), az eddig CSENDBEN veszett el — a készüléken az új érték maradt, a szerveren a régi
+      const { data, error } = await supabase.from(op.table!).update(op.patch!).eq('id', op.id!).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw Object.assign(new Error('A szerver nem engedte a módosítást (nincs rá jogosultságod, vagy a tétel már nem létezik).'), { code: '42501' });
+      }
     } else {
       const { error } = await supabase.rpc(op.fn!, op.args ?? {});
       if (error) throw error;
@@ -225,6 +230,11 @@ async function reconcileAll(): Promise<void> {
 const RESYNC_MARKS: Partial<Record<SyncTable, string>> = {
   worker_tasks: 'assign-2026-10-05', task_assignees: 'assign-2026-10-05', task_subtasks: 'assign-2026-10-05', task_notes: 'assign-2026-10-05',
   profiles: 'mentionable-2026-10-07',
+  // 2026-10-11: a más vezető által rögzített tételek módosítása eddig csendben bukhatott (a készüléken az
+  // új érték maradt) — az érintett táblák egyszeri teljes újratöltése helyreállítja a szerver állapotát
+  sites: 'rls-2026-10-11', external_people: 'rls-2026-10-11', equipment: 'rls-2026-10-11', equipment_moves: 'rls-2026-10-11',
+  expense_categories: 'rls-2026-10-11', expenses: 'rls-2026-10-11', expense_photos: 'rls-2026-10-11',
+  invoices: 'rls-2026-10-11', attendance: 'rls-2026-10-11', settlements: 'rls-2026-10-11',
 };
 
 /** Munkavállalónál újonnan láthatóvá vált feladatok (most osztották rá / visszarakták): a hozzájuk tartozó
