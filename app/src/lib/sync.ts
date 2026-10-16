@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { store, OutboxOp, opRowIds } from './store';
 import { logError, errInfo, flushErrlog, setErrlogUser } from './errlog';
 import { SYNC_TABLES, SyncTable } from './types';
+import { notify } from './dialogs';
 
 let syncing = false;
 let runAgain = false; // írás érkezett futó szinkron közben → a végén újrafutunk
@@ -118,7 +119,7 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
   } catch (err: any) {
     const what = op.kind === 'rpc' ? `rpc ${op.fn}` : `${op.kind} ${op.table}`;
     if (isRejection(err)) {
-      store.markOpError(op.opId, String(err?.message ?? err));
+      store.markOpError(op.opId, String(err?.message ?? err), String(err?.code ?? ''));
       logError('sync-rejected', `${what}: ${String(err?.message ?? err)}`, { ...errInfo(err), op: opSummary(op) });
       return 'rejected';
     }
@@ -139,6 +140,24 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
 function isStaleRejection(op: OutboxOp): boolean {
   const msg = String(op.lastError ?? '');
   return /Lezárt munkamenet már nem módosítható|már le van zárva|már elfogadták/i.test(msg);
+}
+
+/** Üzleti elutasítás: a szerver szabálya (P0001), egyediség / megszorítás (23xxx) vagy jogosultság (42501)
+ *  tiltotta — ezen az újrapróbálás nem segít, a felhasználónak az adatot kell másképp rögzítenie. */
+function isBusinessRejection(op: OutboxOp): boolean {
+  return /^(P0|23|42501)/.test(String(op.lastCode ?? ''));
+}
+
+/** Egyszeri takarítás (2026-10-16): a korábban „sikertelen” listában ragadt, üzleti okból elutasított
+ *  műveletek (pl. átfedő munkaidő) a sávban hetekig ott maradtak, és az „Újrapróbálás” újra és újra
+ *  ugyanazt a hibát adta — ezeket eldobjuk, a szerver állapotát visszatöltjük. */
+async function cleanupStaleFailed(): Promise<void> {
+  const MARK = 'failed-cleanup-2026-10-16';
+  if (store.getCursor('failed:cleanup') === MARK) return;
+  const failed = store.getFailed();
+  for (const op of failed) { store.discardFailed(op.opId); await rollbackOp(op); }
+  store.setCursor('failed:cleanup', MARK);
+  if (failed.length) notify('Elutasított módosítások törölve', `${failed.length} korábban elutasított módosítás kikerült a sorból (pl. ütköző munkaidő). A szerver szerinti állapot áll vissza; ha valamelyik mégis kell, rögzítsd újra.`);
 }
 
 async function pushOutbox(): Promise<boolean> {
@@ -170,8 +189,16 @@ async function pushOutbox(): Promise<boolean> {
         await rollbackOp(op);
         continue;
       }
-      // a szerver végleg elutasította: sikertelen listába kerül (a UI bannert
-      // mutat), és az optimista lokális állapotot visszagörgetjük
+      if (isBusinessRejection(op)) {
+        // üzleti szabály / megszorítás / jogosultság: az újrapróbálás ugyanígy bukna — a módosítást
+        // eldobjuk, a szerver állapotát visszatöltjük, és EGYSZER, érthetően szólunk (nincs beragadó sáv)
+        store.removeOp(op.opId);
+        await rollbackOp(op);
+        notify('A szerver nem fogadta el a módosítást', `${op.lastError ?? ''}\n\nA módosítás nem került mentésre, a korábbi állapot maradt. Ha mégis kell, nézd meg az ütköző tételt, és próbáld újra.`);
+        continue;
+      }
+      // technikai hiba (séma, kérés): sikertelen listába kerül (a UI bannert mutat), az optimista lokális
+      // állapotot visszagörgetjük
       store.moveOpToFailed(op.opId);
       status.lastError = op.lastError ?? 'Egy műveletet a szerver elutasított.';
       await rollbackOp(op);
@@ -373,6 +400,7 @@ async function runSync(): Promise<void> {
   status.syncing = true;
   notifyStatus();
   try {
+    await cleanupStaleFailed();
     const pushed = await pushOutbox();
     // a lehúzás akkor is fut, ha egy művelet elakadt (átmeneti szerverhiba): a többi adat frissüljön;
     // a függő sorokat a tükör nem írja felül. Ha tényleg offline vagyunk, a lehúzás hálózati hibával áll meg.

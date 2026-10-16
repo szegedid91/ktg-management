@@ -20,6 +20,8 @@ export interface OutboxOp {
   args?: Record<string, any>;
   queuedAt: string;
   lastError?: string;
+  /** a szerver hibakódja az utolsó elutasításnál (P0001 üzleti szabály, 23xxx megszorítás, 42501 jogosultság…) */
+  lastCode?: string;
   /** átmeneti (nem hálózati) szerverhibás próbálkozások száma */
   attempts?: number;
   /** rpc: az optimistán módosított sorok — elutasításnál mindet visszatöltjük */
@@ -227,9 +229,9 @@ class Store {
     return op.attempts;
   }
 
-  markOpError(opId: string, error: string) {
+  markOpError(opId: string, error: string, code?: string) {
     const op = this.outbox.find((o) => o.opId === opId);
-    if (op) op.lastError = error;
+    if (op) { op.lastError = error; op.lastCode = code; }
     this.schedulePersist(PREFIX + 'outbox', () => this.outbox);
     this.emit();
   }
