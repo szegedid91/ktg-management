@@ -13,7 +13,7 @@ import { confirmDialog } from '../lib/dialogs';
 import { hd, todayISO, localDateISO } from '../lib/format';
 import { isActiveTask, isOpenForWorker, wname } from '../lib/tasks';
 import { markChatSeen } from '../lib/chatSeen';
-import { ChatMessage, Profile, WorkerTask, TaskAssignee, Worker } from '../lib/types';
+import { ChatMessage, ChatReaction, Profile, WorkerTask, TaskAssignee, Worker } from '../lib/types';
 
 /** Megemlíthető személy: a megjelenő név + ki kapja az értesítést (fiók nélküli embernél a vállalkozója) */
 type Cand = { key: string; name: string; recipient: string | null };
@@ -50,6 +50,8 @@ export default function Chat() {
   const me = getCurrentUserId();
   const profiles = useTable<Profile>('profiles');
   const messages = useTable<ChatMessage>('chat_messages');
+  // 👍 reakciók (a törölt = levett sorokkal együtt, hogy a saját levett reakció visszaállítható legyen)
+  const reactionsAll = useTable<ChatReaction>('chat_reactions', true);
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
   const workers = useTable<Worker>('workers');
@@ -140,9 +142,18 @@ export default function Chat() {
     updateRow('chat_messages', m.id, m.pinned_at ? { pinned_at: null, pinned_by: null } : { pinned_at: new Date().toISOString(), pinned_by: me });
   };
 
+  // 👍 „láttam / értem”: saját reakció fel / le; az író látja, kik nyugtázták
+  const toggleLike = (m: ChatMessage) => {
+    const own = reactionsAll.find((r) => r.message_id === m.id && r.user_id === me && r.emoji === '👍');
+    if (own) updateRow('chat_reactions', own.id, { deleted_at: own.deleted_at ? null : new Date().toISOString() });
+    else insertRow('chat_reactions', { message_id: m.id, user_id: me, emoji: '👍' });
+  };
   const bubble = (m: ChatMessage) => {
     const mine = m.created_by === me;
     const canMenu = mine || !isWorker;
+    const likes = reactionsAll.filter((r) => r.message_id === m.id && !r.deleted_at && r.emoji === '👍');
+    const liked = likes.some((r) => r.user_id === me);
+    const likeNames = likes.map((r) => { const p = profiles.find((x) => x.id === r.user_id); return r.user_id === me ? 'én' : p ? profileName(p) : 'valaki'; });
     return (
       <View key={m.id} style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
         <Pressable onLongPress={() => canMenu && setMenuFor(menuFor === m.id ? null : m.id)} onPress={() => menuFor && setMenuFor(null)} delayLongPress={350}
@@ -170,6 +181,15 @@ export default function Chat() {
             </View>
           ) : null}
         </Pressable>
+        <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'center', gap: 6, marginTop: 2, maxWidth: '88%' }}>
+          <Pressable onPress={() => toggleLike(m)} hitSlop={6} accessibilityLabel={liked ? 'Kedvelés levétele' : 'Kedvelés'}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+              backgroundColor: liked ? C.primary + '33' : C.chipBg, borderWidth: 1, borderColor: liked ? C.primary : 'transparent' }}>
+            <Text style={{ fontSize: 13 }}>👍</Text>
+            {likes.length ? <Text style={{ fontSize: 12, fontWeight: '800', color: liked ? C.primary : C.text }}>{likes.length}</Text> : null}
+          </Pressable>
+          {likes.length ? <Text style={{ fontSize: 11, color: C.sub, flexShrink: 1 }} numberOfLines={1}>{likeNames.join(', ')}</Text> : null}
+        </View>
       </View>
     );
   };
