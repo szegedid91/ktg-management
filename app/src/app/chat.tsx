@@ -13,7 +13,8 @@ import { confirmDialog } from '../lib/dialogs';
 import { hd, todayISO, localDateISO } from '../lib/format';
 import { isActiveTask, isOpenForWorker, wname } from '../lib/tasks';
 import { markChatSeen } from '../lib/chatSeen';
-import { ChatMessage, ChatReaction, Profile, WorkerTask, TaskAssignee, Worker } from '../lib/types';
+import { ChatMessage, ChatReaction, ChatRead, Profile, WorkerTask, TaskAssignee, Worker } from '../lib/types';
+import { Avatar } from '../components/Avatar';
 
 /** Megemlíthető személy: a megjelenő név + ki kapja az értesítést (fiók nélküli embernél a vállalkozója) */
 type Cand = { key: string; name: string; recipient: string | null };
@@ -52,6 +53,8 @@ export default function Chat() {
   const messages = useTable<ChatMessage>('chat_messages');
   // 👍 reakciók (a törölt = levett sorokkal együtt, hogy a saját levett reakció visszaállítható legyen)
   const reactionsAll = useTable<ChatReaction>('chat_reactions', true);
+  // ki meddig olvasta: felhasználónként az utolsó olvasott üzenet
+  const reads = useTable<ChatRead>('chat_reads');
   const tasks = useTable<WorkerTask>('worker_tasks');
   const assignees = useTable<TaskAssignee>('task_assignees');
   const workers = useTable<Worker>('workers');
@@ -61,6 +64,11 @@ export default function Chat() {
   const profileName = (p: Profile) => {
     const w = p.worker_id ? workers.find((x) => x.id === p.worker_id) : undefined;
     return w ? wname(w) : p.display_name;
+  };
+  // monogramhoz a teljes név kell (becenév helyett): „Kovács Márton” → KM, „Szegedi Martin” → SzM
+  const fullNameOf = (p: Profile) => {
+    const w = p.worker_id ? workers.find((x) => x.id === p.worker_id) : undefined;
+    return w?.name ?? p.display_name;
   };
   const authorOf = (m: ChatMessage) => { const p = profiles.find((x) => x.id === m.created_by); return p ? profileName(p) : (m.author_name ?? 'Ismeretlen'); };
   // megemlíthetők: minden élő, jóváhagyott munkavállaló (fiók nélkülinél a vállalkozója kapja az értesítést)
@@ -97,8 +105,31 @@ export default function Chat() {
   const sorted = useMemo(() => [...messages].sort((a, b) => a.created_at.localeCompare(b.created_at)), [messages]);
   const pinned = sorted.filter((m) => m.pinned_at);
 
-  // megnyitva: minden eddigi olvasott; új üzenetnél az aljára görgetünk
-  useEffect(() => { markChatSeen(); }, [sorted.length]);
+  // megnyitva: minden eddigi olvasott; új üzenetnél az aljára görgetünk; a szerveren is jelöljük, meddig tartunk
+  useEffect(() => {
+    markChatSeen();
+    const last = sorted[sorted.length - 1];
+    if (!last || !me) return;
+    const own = reads.find((r) => r.user_id === me);
+    if (own?.last_message_id === last.id) return;
+    if (own) updateRow('chat_reads', own.id, { last_message_id: last.id, last_read_at: last.created_at });
+    else insertRow('chat_reads', { user_id: me, last_message_id: last.id, last_read_at: last.created_at });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sorted.length]);
+  // üzenet-azonosító → kik tartanak ott (a saját jelzőnk nem kell)
+  const readersAt = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const r of reads) {
+      if (r.user_id === me) continue;
+      const p = profiles.find((x) => x.id === r.user_id);
+      if (!p || p.active === false) continue;
+      let at: ChatMessage | undefined = r.last_message_id ? sorted.find((m) => m.id === r.last_message_id) : undefined;
+      if (!at) for (const m of sorted) { if (m.created_at <= r.last_read_at) at = m; else break; }
+      if (!at) continue;
+      map.set(at.id, [...(map.get(at.id) ?? []), fullNameOf(p)]);
+    }
+    return map;
+  }, [reads, sorted, profiles, me]);
   useEffect(() => { const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 50); return () => clearTimeout(t); }, [sorted.length]);
 
   // @név ajánló: a kurzor előtti (szöveg végi) „@valami” részre illeszkedő nevek
@@ -190,6 +221,13 @@ export default function Chat() {
           </Pressable>
           {likes.length ? <Text style={{ fontSize: 11, color: C.sub, flexShrink: 1 }} numberOfLines={1}>{likeNames.join(', ')}</Text> : null}
         </View>
+        {readersAt.get(m.id)?.length ? (
+          // eddig olvasták: monogram-körök (koppintás nélkül is érthető, a név a hozzáférhetőségi címkében)
+          <View style={{ flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+            {readersAt.get(m.id)!.slice(0, 12).map((n, i) => <Avatar key={`${n}-${i}`} name={n} size={20} />)}
+            {readersAt.get(m.id)!.length > 12 ? <Text style={{ fontSize: 11, color: C.sub }}>+{readersAt.get(m.id)!.length - 12}</Text> : null}
+          </View>
+        ) : null}
       </View>
     );
   };

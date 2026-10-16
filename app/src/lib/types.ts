@@ -101,6 +101,17 @@ export interface ChatReaction {
   deleted_at: string | null;
 }
 
+/** Chat-olvasottság: felhasználónként az utolsó olvasott üzenet (az üzenet alatt monogram mutatja, ki tart ott) */
+export interface ChatRead {
+  id: UUID;
+  user_id: UUID;
+  last_message_id: UUID | null;
+  last_read_at: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
 /** Az építkezés elérhetősége (kapcsolattartó): több is lehet; a vezetők írják */
 export interface SiteContact extends BaseRow {
   site_id: UUID;
@@ -585,7 +596,7 @@ export const SYNC_TABLES = [
   'worker_tasks', 'task_assignees', 'task_materials', 'work_sessions',
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
-  'item_codes', 'task_events', 'site_contacts', 'chat_messages', 'chat_reactions',
+  'item_codes', 'task_events', 'site_contacts', 'chat_messages', 'chat_reactions', 'chat_reads',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];
