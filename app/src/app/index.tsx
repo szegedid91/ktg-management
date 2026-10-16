@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { router, Redirect } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, Badge, Empty, Loading, Input } from '../ui/kit';
 import { C, S } from '../ui/theme';
@@ -207,11 +207,14 @@ function DashboardInner() {
         </View>
         {activeSites.length === 0 ? <Empty text="Nincs aktív építkezés. Hozz létre egyet!" /> : null}
         {activeSites.length > 3 ? <Input value={siteQ} onChangeText={setSiteQ} placeholder="Keresés név vagy cím szerint…" /> : null}
-        {activeSites
-          .filter((s) => !siteQ.trim() || `${s.name} ${s.address ?? ''}`.toLowerCase().includes(siteQ.trim().toLowerCase()))
-          .map((s) => (
-            <Btn key={s.id} title={s.name} kind="ghost" onPress={() => router.push(`/site/${s.id}`)} />
-          ))}
+        {/* a lista saját dobozban görgethető (kb. 5 sor magas), hogy ne tolja le a kezdőlap többi részét */}
+        <ScrollView nestedScrollEnabled style={{ maxHeight: 270 }} contentContainerStyle={{ gap: S.sm }}>
+          {activeSites
+            .filter((s) => !siteQ.trim() || `${s.name} ${s.address ?? ''}`.toLowerCase().includes(siteQ.trim().toLowerCase()))
+            .map((s) => (
+              <Btn key={s.id} title={s.name} kind="ghost" onPress={() => router.push(`/site/${s.id}`)} />
+            ))}
+        </ScrollView>
         {siteQ.trim() && !activeSites.some((s) => `${s.name} ${s.address ?? ''}`.toLowerCase().includes(siteQ.trim().toLowerCase())) ? <Sub>Nincs találat.</Sub> : null}
         {closedSites.length > 0 ? (
           <Pressable onPress={() => router.push('/sites?filter=closed')}>
