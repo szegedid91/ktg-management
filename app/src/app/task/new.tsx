@@ -9,7 +9,7 @@ import { Screen, Card, H2, Sub, Input, Btn, Picker, Check, Empty } from '../../u
 import { useTable } from '../../lib/hooks';
 import { insertRow, newId, getCurrentUserId as currentUser } from '../../lib/repo';
 import { getCurrentUserId } from '../../lib/repo';
-import { notify } from '../../lib/dialogs';
+import { notify, confirmDialog } from '../../lib/dialogs';
 import { pickPhotos, uploadTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { Site, Worker, TaskTemplate, Profile, WorkSession, Attendance, TaskMaterial, TaskAssignee, WorkerTask, ItemCode, ITEM_GROUP_LABEL, itemCodeLabel } from '../../lib/types';
@@ -138,6 +138,12 @@ export default function NewTask() {
     if (!title.trim()) { notify('Hiba', 'Adj címet a feladatnak.'); return; }
     if (!site) { notify('Helyszín kell', 'A bér (munkaidő, ajánlat) építkezésenként képződik — válassz helyszínt a feladathoz.'); return; }
     if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { notify('Határidő', 'A határidőt ÉÉÉÉ-HH-NN formában add meg.'); return; }
+    // 2026-10-18: Lukinál néha kód nélkül ment fel a feladat, pedig úgy tudta, kiválasztotta (a lista
+    // koppintása telefonon elveszhet) — kód nélkül csak kifejezett megerősítéssel mentünk
+    if (!itemCode && itemCodes.length > 0) {
+      const ok = await confirmDialog('Nincs cikktörzs-kód', 'A feladathoz nincs kiválasztva cikktörzs-kód. Mented így, kód nélkül?', 'Mentés kód nélkül', false, 'Vissza');
+      if (!ok) return;
+    }
     setSaving(true);
     // a fotók előre mennek fel (internet kell); ha nem sikerül, a feladat
     // fotó nélkül is kimegy

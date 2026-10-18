@@ -206,7 +206,8 @@ export function Picker<T>({ label, items, selectedId, getId, getLabel, onSelect,
       </Pressable>
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
         <Pressable style={st.modalBg} onPress={() => setOpen(false)}>
-          <View style={st.modalSheet}>
+          {/* a lapon belüli koppintás (sor köze, görgetés vége) nem zárja be a listát választás nélkül */}
+          <Pressable style={st.modalSheet} onPress={() => {}}>
             <ScrollView>
               {allowNull ? (
                 <Pressable style={st.modalRow} onPress={() => { onSelect(null); setOpen(false); }}>
@@ -220,7 +221,7 @@ export function Picker<T>({ label, items, selectedId, getId, getLabel, onSelect,
               ))}
               {items.length === 0 ? <Text style={[F.sub, { padding: S.lg }]}>Nincs elem.</Text> : null}
             </ScrollView>
-          </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </View>
