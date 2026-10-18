@@ -570,6 +570,16 @@ export interface WorkSession extends BaseRow {
   started_at: string;
   ended_at: string | null;
   note: string | null;
+  /** utolsó ismert helyzet futó munkaidő alatt (a munkavállaló appja küldi, csak nyitott app mellett) */
+  last_lat?: number | null;
+  last_lng?: number | null;
+  last_accuracy_m?: number | null;
+  /** távolság a munkaterület középpontjától (m), ha a helyszínnek van koordinátája */
+  last_distance_m?: number | null;
+  last_seen_at?: string | null;
+  /** mióta van a munkaterület sugarán kívül (null = bent van / nem tudjuk) */
+  left_site_at?: string | null;
+  left_notified_at?: string | null;
 }
 
 // A szinkronizálható táblák nevei

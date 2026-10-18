@@ -148,6 +148,11 @@ function DashboardInner() {
               {g.items.map(({ s, worker, task }) => (
                 <Pressable key={s.id} onPress={() => task && router.push(`/task/${task.id}`)}>
                   <Sub>👷 {worker ? wname(worker) : '?'} · {hdt(s.started_at).slice(-5)} óta{task ? ` · ${task.code ? `${task.code} ` : ''}${task.title}` : ''}</Sub>
+                  {s.left_site_at ? (
+                    <Sub style={{ color: C.warning, fontWeight: '700' }}>🚶 {hdt(s.left_site_at).slice(-5)} óta nincs a területen{s.last_distance_m != null ? ` (kb. ${s.last_distance_m} m)` : ''}</Sub>
+                  ) : s.last_seen_at ? (
+                    <Sub>📍 a területen · {hdt(s.last_seen_at).slice(-5)}</Sub>
+                  ) : null}
                 </Pressable>
               ))}
             </View>

@@ -76,7 +76,7 @@ export function ArrivalPrompt({ sites, openSiteIds, onCheckIn, onSwitch }: {
     return (
       <Card style={{ borderColor: C.primary, gap: S.sm }}>
         <Text style={{ fontWeight: '800', fontSize: 16, color: C.text }}>📍 Szóljunk, ha megérkeztél?</Text>
-        <Sub>Ha engedélyezed a helymeghatározást, az app jelzi, amikor egy munkaterületen vagy, és egy koppintással bejelentkezhetsz. A helyzetedet nem tároljuk és nem küldjük el sehova.</Sub>
+        <Sub>Ha engedélyezed a helymeghatározást, az app jelzi, amikor egy munkaterületen vagy, és egy koppintással bejelentkezhetsz. Munkaidőn kívül a helyzetedet nem mérjük és nem tároljuk. Futó munkaidő alatt — amíg az app nyitva van — a vezetők látják, hogy a munkaterületen vagy-e.</Sub>
         <Btn title="📍 Engedélyezem" onPress={() => void check()} />
         <View style={{ alignItems: 'center' }}><Btn title="Most nem" kind="ghost" small onPress={() => { ls.set(`ktg:geoask:${uid}`, String(Date.now())); setAskHidden(true); }} /></View>
       </Card>

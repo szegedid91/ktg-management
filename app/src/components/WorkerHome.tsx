@@ -17,6 +17,8 @@ import { InviteCard } from './InviteCard';
 import { SyncBanner } from './SyncBanner';
 import { PushPrompt } from './PushPrompt';
 import { ArrivalPrompt } from './ArrivalPrompt';
+import { LeftSiteCard } from './LeftSiteCard';
+import { useSessionTracker } from '../lib/tracker';
 import { BackgroundGeoCard } from './BackgroundGeoCard';
 import { openDirections } from '../lib/maps';
 import { router } from 'expo-router';
@@ -90,6 +92,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       materials={materials.filter((m) => m.task_id === t.id)} workers={workers} sites={sites} running={runningIds.has(t.id)} />
   );
   const openSession = sessions.find((s) => !s.ended_at);
+  // futó munkaidő alatt (nyitott app mellett) a helyzet jelentése a szervernek — a saját menetemé
+  const track = useSessionTracker(sessions.find((s) => !s.ended_at && s.worker_id === wid), sites);
   // egy helyszínen több feladat is futhat egyszerre — a sáv mindet felsorolja
   const openSessions = sessions.filter((s) => !s.ended_at);
   // munkaidő csak akkor, ha van legalább egy elfogadott, futó feladata
@@ -179,6 +183,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
       <SyncBanner />
       <PushPrompt />
       <BackgroundGeoCard sites={activeSites} openSession={openSession} />
+      <LeftSiteCard track={track} openSession={sessions.find((s) => !s.ended_at && s.worker_id === wid)} sites={sites} onStop={stopAll} />
       <ArrivalPrompt sites={activeSites}
         openSiteIds={[...new Set(allSessions.filter((x) => !x.ended_at && x.site_id).map((x) => x.site_id as string))]}
         onSwitch={switchTo}
