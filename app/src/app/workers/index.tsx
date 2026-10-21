@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Linking, Pressable } from 'react-native';
 import { router } from 'expo-router';
-import { Screen, Input, Row, Body, Sub, Btn, Empty, Badge, Card, Picker } from '../../ui/kit';
+import { Screen, Input, Row, Body, Sub, Btn, Empty, Badge } from '../../ui/kit';
 import { InviteCard } from '../../components/InviteCard';
 import { C } from '../../ui/theme';
 import { useTable, useIsWorker } from '../../lib/hooks';
@@ -73,8 +73,6 @@ function WorkersInner() {
   const pending = workers.filter((w) => !w.approved_at).sort((a, b) => b.created_at.localeCompare(a.created_at));
   // meghívó egy vállalkozó csapatába: aki a linkkel regisztrál, egyből az ő embere lesz
   const contractors = workers.filter((w) => w.is_contractor && !!w.approved_at).sort((a, b) => a.name.localeCompare(b.name, 'hu'));
-  const [inviteContractor, setInviteContractor] = useState<string | null>(null);
-  const inviteBoss = contractors.find((w) => w.id === inviteContractor);
   const filtered = workers
     .filter((w) => !!w.approved_at)
     .filter((w) => `${w.name} ${w.nickname ?? ''} ${w.trade ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
@@ -85,14 +83,7 @@ function WorkersInner() {
 
   return (
     <Screen>
-      {contractors.length ? (
-        <Card style={{ paddingVertical: 10 }}>
-          <Picker label="Meghívó — kihez tartozzon, aki regisztrál?" items={contractors} selectedId={inviteContractor} getId={(w) => w.id}
-            getLabel={(w) => `${w.name} csapata (vállalkozó)`} onSelect={setInviteContractor}
-            allowNull nullLabel="Önálló munkavállaló (nem vállalkozó embere)" placeholder="Önálló munkavállaló (nem vállalkozó embere)" />
-        </Card>
-      ) : null}
-      <InviteCard key={inviteContractor ?? 'none'} contractorId={inviteBoss?.id} contractorName={inviteBoss?.name} />
+      <InviteCard contractors={contractors.map((w) => ({ id: w.id, name: w.name }))} />
       {pending.length ? (
         <View style={{ gap: 6 }}>
           <Body style={{ fontWeight: '800' }}>⏳ Jóváhagyásra váró regisztráció ({pending.length})</Body>

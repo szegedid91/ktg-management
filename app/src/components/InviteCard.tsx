@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { View, Text, Modal, Pressable, Platform, Share, Linking } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { Card, H2, Sub, Body, Btn } from '../ui/kit';
+import { Card, H2, Sub, Body, Btn, Picker } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { callRpc } from '../lib/repo';
 import { useTable } from '../lib/hooks';
@@ -12,12 +12,14 @@ import { Profile } from '../lib/types';
 
 const APP_ORIGIN = 'https://ktg.szakify.hu';
 
-export function InviteCard({ workerId, workerName, contractor, email, crewMember, contractorId, contractorName }: {
+export function InviteCard({ workerId, workerName, contractor, email, crewMember, contractorId: contractorIdProp, contractorName: contractorNameProp, contractors }: {
   workerId?: string; workerName?: string; contractor?: boolean; email?: string | null;
   /** vállalkozó a MÁR FELVETT emberének készít személyre szóló meghívót (a profilhoz kapcsolódik) */
   crewMember?: boolean;
   /** vezető: meghívó egy kijelölt vállalkozó csapatába — aki regisztrál, egyből az ő embere lesz */
   contractorId?: string; contractorName?: string;
+  /** vezető, általános meghívó: a „Meghívó készítése” gombra előbb megkérdezzük, kihez tartozzon az új ember */
+  contractors?: { id: string; name: string }[];
 }) {
   const profiles = useTable<Profile>('profiles');
   const account = workerId ? profiles.find((p) => p.worker_id === workerId) : undefined;
@@ -25,9 +27,15 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
   const [link, setLink] = useState<string | null>(null);
   const [qr, setQr] = useState(false);
   const [busy, setBusy] = useState(false);
+  // a választás csak a gomb megnyomása után jelenik meg (2026-10-21, Daniel kérése)
+  const [choosing, setChoosing] = useState(false);
+  const [pick, setPick] = useState<string | null>(null);
+  const contractorId = contractorIdProp ?? pick ?? undefined;
+  const contractorName = contractorNameProp ?? contractors?.find((c) => c.id === pick)?.name;
 
   const makeLink = async (): Promise<string | null> => {
     if (link) return link;
+    if (!contractorIdProp && contractors?.length && !choosing) { setChoosing(true); return null; }
     setBusy(true);
     try {
       const token = await callRpc<string>('create_worker_invite', { p_worker: workerId ?? null, p_contractor: contractorId ?? null });
@@ -99,6 +107,11 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
             email
               ? <Btn title={busy ? '…' : `📧 Meghívó küldése e-mailben (${email})`} onPress={() => void sendEmail()} disabled={busy} />
               : <Sub style={{ color: C.warning }}>Nincs e-mail címe — add meg a Szerkesztésnél, és innen egy gombbal kiküldheted a meghívót.</Sub>
+          ) : null}
+          {!link && choosing && contractors?.length ? (
+            <Picker label="Kihez tartozzon, aki ezzel regisztrál?" items={contractors} selectedId={pick} getId={(c) => c.id}
+              getLabel={(c) => `${c.name} csapata (vállalkozó)`} onSelect={setPick}
+              allowNull nullLabel="Önálló munkavállaló (nem vállalkozó embere)" placeholder="Önálló munkavállaló (nem vállalkozó embere)" />
           ) : null}
           {!link ? (
             <Btn title={busy ? '…' : !generic && !contractor && !contractorId ? 'Link / QR-kód készítése' : 'Meghívó készítése'} kind="secondary" onPress={() => void makeLink()} disabled={busy} />
