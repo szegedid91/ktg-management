@@ -43,6 +43,8 @@ export interface WorkerFormValues {
   callout_commission: boolean;
   /** megemlíthető a chatben (@név) */
   chat_mentionable: boolean;
+  /** vállalkozó: saját embereket hozhat (csapata van), meghívó készülhet a csapatába */
+  is_contractor: boolean;
 }
 
 export function emptyWorkerForm(): WorkerFormValues {
@@ -53,7 +55,7 @@ export function emptyWorkerForm(): WorkerFormValues {
     default_pay_basis: null, hourly_rate: '', daily_rate: '', project_rate: '', callout_fee: '',
     referrer_kind: 'none', referrer_user_id: null, referrer_external_id: null,
     commission_mode: null, commission_value: '', commission_unit: null, callout_commission: true,
-    chat_mentionable: true,
+    chat_mentionable: true, is_contractor: false,
   };
 }
 
@@ -75,6 +77,7 @@ export function workerToForm(w: Worker): WorkerFormValues {
     commission_unit: w.commission_unit,
     callout_commission: w.callout_commission ?? true,
     chat_mentionable: w.chat_mentionable ?? true,
+    is_contractor: !!w.is_contractor,
   };
 }
 
@@ -121,6 +124,7 @@ export function formToRow(f: WorkerFormValues): Partial<Worker> {
     commission_unit: f.referrer_kind !== 'none' && f.commission_mode === 'fixed' ? f.commission_unit : null,
     callout_commission: f.callout_commission,
     chat_mentionable: f.chat_mentionable,
+    is_contractor: f.is_contractor,
   };
 }
 
@@ -229,7 +233,7 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
         ) : null}
       </FormSection>
 
-      <FormSection icon="🏢" title="Típus" summary={value.worker_type === 'company' ? `Céges${value.company_name ? ` · ${value.company_name}` : ''}` : 'Magánszemély'} open={open === 'type'} onToggle={() => tog('type')}>
+      <FormSection icon="🏢" title="Típus" summary={`${value.worker_type === 'company' ? `Céges${value.company_name ? ` · ${value.company_name}` : ''}` : 'Magánszemély'}${value.is_contractor ? ' · vállalkozó (csapata van)' : ''}`} open={open === 'type'} onToggle={() => tog('type')}>
         <Segmented
           label="Típus"
           options={[
@@ -255,6 +259,10 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
             ) : null}
           </>
         ) : null}
+        <Check checked={value.is_contractor} onToggle={() => set({ is_contractor: !value.is_contractor })}
+          label="Vállalkozó — saját embereket hoz" sub={value.is_contractor
+            ? 'Csapata lehet: a vezető meghívót készíthet a csapatába, ő maga embereket vehet fel, és az emberei bére hozzá kerül.'
+            : 'Egyedül dolgozik. Kapcsold be, ha a saját embereivel jön, és meghívót akarsz készíteni a csapatába.'} />
       </FormSection>
 
       <FormSection icon="💰" title="Díjazás" summary={rateSummary} open={open === 'pay'} onToggle={() => tog('pay')}>
