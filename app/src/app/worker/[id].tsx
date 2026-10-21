@@ -275,7 +275,8 @@ function WorkerDetailInner() {
         ) : <Sub>Csak a rögzítője szerkesztheti.</Sub>}
       </Card>
 
-      {isPartner && !hasAccount && !pendingApproval && !worker.contractor_id ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} email={worker.email} /> : null}
+      {isPartner && !hasAccount && !pendingApproval ? <InviteCard workerId={worker.id} workerName={worker.nickname || worker.name} email={worker.email} crewMember={!!worker.contractor_id} /> : null}
+      {isPartner && worker.is_contractor && !!worker.approved_at ? <InviteCard contractorId={worker.id} contractorName={worker.name} /> : null}
       <Card>
         <H2>Díjazás</H2>
         {settings ? (

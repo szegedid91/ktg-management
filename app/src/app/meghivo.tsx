@@ -19,6 +19,7 @@ export default function Invite() {
   const [phone, setPhone] = useState('');
   const [trade, setTrade] = useState('');
   const [contractor, setContractor] = useState(false);
+  const [contractorName, setContractorName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -29,9 +30,10 @@ export default function Invite() {
   useEffect(() => {
     if (!token) { setKind('invalid'); return; }
     let alive = true;
-    callRpc<{ kind: string; name?: string; email?: string; phone?: string; trade?: string }>('invite_info', { p_token: token })
+    callRpc<{ kind: string; name?: string; email?: string; phone?: string; trade?: string; contractor_name?: string }>('invite_info', { p_token: token })
       .then((info) => {
         if (!alive) return;
+        if (info?.kind === 'contractor') setContractorName(info.contractor_name ?? '');
         if (info?.kind === 'personal') {
           setName((v) => v || info.name || '');
           setEmail((v) => v || info.email || '');
@@ -95,7 +97,7 @@ export default function Invite() {
             <Sub>{personal
               ? 'A vezetők már felvették az adataidat — nézd át, javítsd, ha kell, és adj meg egy jelszót. A fiókod a meglévő profilodhoz kapcsolódik, a korábbi napjaidat is látod majd.'
               : viaContractor
-              ? 'Egy vállalkozó meghívott a csapatába. Add meg az adataid — a profilod az ő embereként jön létre, a béred hozzá kerül (emberenként részletezve), és rögtön be tudsz lépni.'
+              ? `${contractorName ? `${contractorName} vállalkozó` : 'Egy vállalkozó'} csapatába hívtak meg. Add meg az adataid — a profilod az ő embereként jön létre, a béred hozzá kerül (emberenként részletezve), és rögtön be tudsz lépni.`
               : 'A vezetők meghívtak az appba. Add meg az adataid — ezekből jön létre a munkavállalói profilod.'}</Sub>
             <Input label="Teljes név *" value={name} onChangeText={setName} placeholder="pl. Kovács Márton" autoCapitalize="words" />
             <Input label="Telefonszám" value={phone} onChangeText={setPhone} placeholder="+36 30 …" keyboardType="phone-pad" />

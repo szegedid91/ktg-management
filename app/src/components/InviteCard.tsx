@@ -12,10 +12,12 @@ import { Profile } from '../lib/types';
 
 const APP_ORIGIN = 'https://ktg.szakify.hu';
 
-export function InviteCard({ workerId, workerName, contractor, email, crewMember }: {
+export function InviteCard({ workerId, workerName, contractor, email, crewMember, contractorId, contractorName }: {
   workerId?: string; workerName?: string; contractor?: boolean; email?: string | null;
   /** vállalkozó a MÁR FELVETT emberének készít személyre szóló meghívót (a profilhoz kapcsolódik) */
   crewMember?: boolean;
+  /** vezető: meghívó egy kijelölt vállalkozó csapatába — aki regisztrál, egyből az ő embere lesz */
+  contractorId?: string; contractorName?: string;
 }) {
   const profiles = useTable<Profile>('profiles');
   const account = workerId ? profiles.find((p) => p.worker_id === workerId) : undefined;
@@ -28,8 +30,8 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
     if (link) return link;
     setBusy(true);
     try {
-      const token = await callRpc<string>('create_worker_invite', { p_worker: workerId ?? null });
-      const l = `${APP_ORIGIN}/meghivo?token=${token}${contractor ? '&c=1' : ''}`;
+      const token = await callRpc<string>('create_worker_invite', { p_worker: workerId ?? null, p_contractor: contractorId ?? null });
+      const l = `${APP_ORIGIN}/meghivo?token=${token}${contractor || contractorId ? '&c=1' : ''}`;
       setLink(l);
       return l;
     } catch (e: any) {
@@ -55,7 +57,9 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
 
   const share = async () => {
     if (!link) return;
-    const message = contractor
+    const message = contractorId
+      ? `Szia! Regisztrálj az Építkezés Költségkövető appba ezzel a linkkel — ${contractorName ?? 'a vállalkozód'} csapatába kerülsz (7 napig érvényes):\n${link}`
+      : contractor
       ? `Szia! Regisztrálj az Építkezés Költségkövető appba ezzel a linkkel, így az én csapatomhoz kerülsz (7 napig érvényes):\n${link}`
       : `Szia${workerName ? ` ${workerName}` : ''}! Regisztrálj az Építkezés Költségkövető appba ezzel a linkkel — az adataid már ki vannak töltve, csak jelszót kell megadnod (7 napig érvényes):\n${link}`;
     try {
@@ -74,7 +78,7 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
 
   return (
     <Card>
-      <H2>{crewMember ? `📲 ${workerName ?? 'Emberem'} meghívása` : contractor ? '📲 Új ember meghívása' : generic ? '📲 Munkavállaló meghívása' : '📲 Meghívás az appba'}</H2>
+      <H2>{contractorId ? `📲 Új ember meghívása ${contractorName ?? 'a vállalkozó'} csapatába` : crewMember ? `📲 ${workerName ?? 'Emberem'} meghívása` : contractor ? '📲 Új ember meghívása' : generic ? '📲 Munkavállaló meghívása' : '📲 Meghívás az appba'}</H2>
       {account ? (
         <>
           <Body style={{ fontWeight: '700', color: C.success }}>✅ Regisztrált fiók: {account.email ?? account.display_name}</Body>
@@ -82,8 +86,10 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
         </>
       ) : (
         <>
-          <Sub>{crewMember
-            ? 'A linkkel vagy a QR-kód beolvasásával regisztrál: az adatai már ki lesznek töltve, csak jelszót kell megadnia. A fiókja ehhez a meglévő emberedhez kapcsolódik, így a korábbi napjait, munkaidejét és bérét is látni fogja, és továbbra is hozzád tartozik. A meghívó 7 napig érvényes, egyszer használható.'
+          <Sub>{contractorId
+            ? `Aki ezzel a linkkel vagy a QR-kód beolvasásával regisztrál, automatikusan ${contractorName ?? 'a vállalkozó'} embere lesz: a vállalkozó díjazását örökli, a bére emberenként számolódik, de a kifizetés a vállalkozóhoz megy. A meghívó 7 napig érvényes, több ember is használhatja.`
+            : crewMember
+            ? 'A linkkel vagy a QR-kód beolvasásával regisztrál: az adatai már ki lesznek töltve, csak jelszót kell megadnia. A fiókja ehhez a meglévő emberhez kapcsolódik, így a korábbi napjait, munkaidejét és bérét is látni fogja, és továbbra is a vállalkozó csapatában marad. A meghívó 7 napig érvényes, egyszer használható.'
             : contractor
             ? 'Az embered a linkkel vagy a QR-kód beolvasásával regisztrál, és automatikusan hozzád kerül: a bére emberenként számolódik, de a kifizetés hozzád megy. A meghívó 7 napig érvényes, több ember is használhatja.'
             : generic
@@ -95,7 +101,7 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
               : <Sub style={{ color: C.warning }}>Nincs e-mail címe — add meg a Szerkesztésnél, és innen egy gombbal kiküldheted a meghívót.</Sub>
           ) : null}
           {!link ? (
-            <Btn title={busy ? '…' : !generic && !contractor ? 'Link / QR-kód készítése' : 'Meghívó készítése'} kind="secondary" onPress={() => void makeLink()} disabled={busy} />
+            <Btn title={busy ? '…' : !generic && !contractor && !contractorId ? 'Link / QR-kód készítése' : 'Meghívó készítése'} kind="secondary" onPress={() => void makeLink()} disabled={busy} />
           ) : (
             <>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
@@ -111,7 +117,7 @@ export function InviteCard({ workerId, workerName, contractor, email, crewMember
         <Pressable style={{ flex: 1, backgroundColor: '#000a', alignItems: 'center', justifyContent: 'center' }} onPress={() => setQr(false)}>
           <View style={{ backgroundColor: '#fff', padding: 24, borderRadius: 16, alignItems: 'center', gap: 12 }}>
             {link ? <QRCode value={link} size={240} /> : null}
-            <Text style={{ fontWeight: '700', color: '#111' }}>{contractor ? 'Csatlakozás a csapatomhoz' : workerName ? `${workerName} — regisztráció` : 'Munkavállalói regisztráció'}</Text>
+            <Text style={{ fontWeight: '700', color: '#111' }}>{contractorId ? `Csatlakozás: ${contractorName ?? 'vállalkozó'} csapata` : contractor ? 'Csatlakozás a csapatomhoz' : workerName ? `${workerName} — regisztráció` : 'Munkavállalói regisztráció'}</Text>
             <Text style={{ fontSize: 12, color: '#555', textAlign: 'center' }}>Olvasd be a telefon kamerájával, majd regisztrálj.</Text>
           </View>
         </Pressable>
