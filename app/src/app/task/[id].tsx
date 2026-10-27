@@ -190,9 +190,13 @@ Biztosan leveszed?`, 'Levétel', true);
   // munkafotó-feltöltés folyamatban (a hookoknak a korai visszatérések ELŐTT kell állniuk)
   const [photoBusy, setPhotoBusy] = useState<'before' | 'after' | null>(null);
   // munkavállaló: saját tétel összegének / megjegyzésének szerkesztése
-  const [matEdit, setMatEdit] = useState<{ id: string; amount: string; note: string } | null>(null);
+  const [matEdit, setMatEdit] = useState<{ id: string; amount: string; note: string; reason: string } | null>(null);
   const [matAmount, setMatAmount] = useState('');
   const [matNote, setMatNote] = useState('');
+  const [matReason, setMatReason] = useState('');
+  // készre jelentés: a megerősítő kártya a „miért tartott ennyi ideig?” mezővel (nem kötelező)
+  const [doneAsk, setDoneAsk] = useState(false);
+  const [doneNote, setDoneNote] = useState('');
   const [matPhotos, setMatPhotos] = useState<PickedPhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [xlsBusy, setXlsBusy] = useState(false);
@@ -323,24 +327,24 @@ Biztosan leveszed?`, 'Levétel', true);
     for (const s of crewOpenSessions) if (!only || only.includes(s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
   };
 
+  // több emberes feladat: csak a saját részem lesz kész; a feladat akkor, ha mindenki kész. Vállalkozónál
+  // a fiók nélküli embereié is (ők maguk nem tudják jelenteni) — akinek van saját fiókja, az maga jelenti
+  const doneMineIds = () => new Set<string>([myWorkerId!, ...crew.filter((c) => !profiles.some((p) => p.worker_id === c.id)).map((c) => c.id)]);
+  const doneOthers = () => { const mine = doneMineIds(); return assignees.filter((a) => !mine.has(a.worker_id) && !a.done_at); };
   const markDone = async () => {
     if (busy) return;
-    // több emberes feladat: csak a saját részem lesz kész; a feladat akkor, ha mindenki kész. Vállalkozónál
-    // a fiók nélküli embereié is (ők maguk nem tudják jelenteni) — akinek van saját fiókja, az maga jelenti
-    const mineIds = new Set<string>([myWorkerId!, ...crew.filter((c) => !profiles.some((p) => p.worker_id === c.id)).map((c) => c.id)]);
-    const others = assignees.filter((a) => !mineIds.has(a.worker_id) && !a.done_at);
-    const msg = others.length
-      ? `Készre jelented a saját részedet? A feladat akkor lesz kész, ha ${others.map((a) => workerName(a.worker_id)).join(', ')} is készre jelentette.`
-      : 'Késznek jelölöd a feladatot?';
-    if (!await confirmDialog(others.length ? 'A te részed kész' : 'Feladat kész', msg, 'Kész ✔')) return;
+    const mineIds = doneMineIds();
+    const others = doneOthers();
+    const note = doneNote.trim() || null;
     // csak azok munkaideje áll le, akiknek a része most kész lesz (a fiókkal rendelkező embereim dolgozhatnak tovább)
     if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
     for (const s of crewOpenSessions) if (mineIds.has(s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
     const t = nowISO();
-    queueRpc('worker_task_action', { p_id: task.id, p_action: 'done' }, [
-      ...assignees.filter((a) => mineIds.has(a.worker_id) && !a.done_at).map((a) => ({ table: 'task_assignees' as const, id: a.id, patch: { done_at: t } })),
+    queueRpc('worker_task_action', { p_id: task.id, p_action: 'done', p_reason: note }, [
+      ...assignees.filter((a) => mineIds.has(a.worker_id) && !a.done_at).map((a) => ({ table: 'task_assignees' as const, id: a.id, patch: { done_at: t, done_note: note } })),
       ...(others.length ? [] : [{ table: 'worker_tasks' as const, id: task.id, patch: { status: 'done', done_at: t } }]),
     ]);
+    setDoneAsk(false); setDoneNote('');
     if (others.length) { notify('A te részed kész ✔', 'A feladat akkor zárul le, ha mindenki készre jelentette.'); smartBack(); }
   };
 
@@ -371,8 +375,8 @@ Biztosan leveszed?`, 'Levétel', true);
     try {
       const paths: string[] = [];
       for (const ph of matPhotos) paths.push(await uploadTaskPhoto(ph.base64, `${task.id}/material`));
-      insertRow('task_materials', { task_id: task.id, worker_id: isWorker ? myWorkerId : (retroWorker ?? assignees[0]?.worker_id ?? null), amount, note: matNote.trim() || null, photo_path: paths[0] ?? null, photo_paths: paths });
-      setMatOpen(false); setMatAmount(''); setMatNote(''); setMatPhotos([]);
+      insertRow('task_materials', { task_id: task.id, worker_id: isWorker ? myWorkerId : (retroWorker ?? assignees[0]?.worker_id ?? null), amount, note: matNote.trim() || null, reason: matReason.trim() || null, photo_path: paths[0] ?? null, photo_paths: paths });
+      setMatOpen(false); setMatAmount(''); setMatNote(''); setMatReason(''); setMatPhotos([]);
       notify('Anyagköltség rögzítve 📦', `${ft(amount)}${paths.length ? ` · ${paths.length} fotóval` : ''}.`);
     } catch {
       notify('Hiba', 'A fotó feltöltéséhez internet kell — próbáld újra kapcsolattal.');
@@ -720,6 +724,7 @@ Biztosan leveszed?`, 'Levétel', true);
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
               {!isWorker ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
+            {m.reason ? <Sub>💬 Miért ennyi: {m.reason}</Sub> : null}
             <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={canEditMaterial(m) ? (ph) => void removeMaterialPhoto(m, ph) : undefined} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {isWorker && canEditMaterial(m) ? (
@@ -727,17 +732,18 @@ Biztosan leveszed?`, 'Levétel', true);
                 <View style={{ gap: S.sm }}>
                   <Input label="Összeg (Ft)" value={matEdit.amount} onChangeText={(v) => setMatEdit({ ...matEdit, amount: v })} keyboardType="numeric" />
                   <Input label="Mi ez?" value={matEdit.note} onChangeText={(v) => setMatEdit({ ...matEdit, note: v })} />
+                  <Input label="Miért ennyibe került? (nem kötelező)" value={matEdit.reason} onChangeText={(v) => setMatEdit({ ...matEdit, reason: v })} />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setMatEdit(null)} /></View>
                     <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={parseAmount(matEdit.amount) <= 0} onPress={() => {
                       if (parseAmount(matEdit.amount) > INVOICE_PHOTO_LIMIT && materialPhotos(m).length === 0) { notify('Számla fotó kell', '100 000 Ft feletti anyagköltséghez kötelező a számla fotója.'); return; }
-                      updateRow('task_materials', m.id, { amount: parseAmount(matEdit.amount), note: matEdit.note.trim() || null });
+                      updateRow('task_materials', m.id, { amount: parseAmount(matEdit.amount), note: matEdit.note.trim() || null, reason: matEdit.reason.trim() || null });
                       setMatEdit(null);
                     }} /></View>
                   </View>
                 </View>
               ) : (
-                <Btn title="✏️ Összeg / megjegyzés módosítása" kind="ghost" small onPress={() => setMatEdit({ id: m.id, amount: String(m.amount), note: m.note ?? '' })} />
+                <Btn title="✏️ Összeg / megjegyzés módosítása" kind="ghost" small onPress={() => setMatEdit({ id: m.id, amount: String(m.amount), note: m.note ?? '', reason: m.reason ?? '' })} />
               )
             ) : null}
             {!isWorker ? (
@@ -767,6 +773,7 @@ Biztosan leveszed?`, 'Levétel', true);
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />
               <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó 2 zsák" />
+              <Input label="Miért ennyibe került? (nem kötelező)" value={matReason} onChangeText={setMatReason} placeholder="pl. csak a drágább volt kapható, sürgős volt" />
               <Sub>{isWorker ? 'Számla / blokk fotója — 100 000 Ft felett kötelező; több kép is csatolható:' : 'Számla / blokk fotója (vezetőnél nem kötelező):'}</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Btn title="📷 Fotó" kind="ghost" small onPress={() => void pick(true, 'mat')} /></View>
@@ -869,6 +876,7 @@ Biztosan leveszed?`, 'Levétel', true);
               </View>
             ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub>
               : myAssignment?.done_at ? <Sub>✔ A te részed kész: {hdt(myAssignment.done_at)} — a többiek még dolgoznak rajta.</Sub> : null}
+            {myAssignment?.done_note ? <Sub>💬 Megjegyzésed: {myAssignment.done_note}</Sub> : null}
           </>
         ) : (
           <>
@@ -879,6 +887,9 @@ Biztosan leveszed?`, 'Levétel', true);
         {siteContacts.map((c) => <ContactLine key={c.id} c={c} showVisibility />)}
         <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
         <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.done_at && isActiveTask(task) ? '✔ kész' : a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
+        {assignees.filter((a) => a.done_note).map((a) => (
+          <Sub key={a.id}>💬 {workerName(a.worker_id)}, miért tartott ennyi ideig: {a.done_note}</Sub>
+        ))}
         {partlyDone ? <Sub>✔ kész = a saját részét készre jelentette — a feladat akkor lesz kész, ha mindenki készre jelentette (vagy te lezárod).</Sub> : null}
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {active ? <KV k="Határidő" v={task.due_date ? hd(task.due_date) : 'nincs'} /> : null}
@@ -1020,7 +1031,21 @@ Biztosan leveszed?`, 'Levétel', true);
             ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={() => stopWork()} />
             : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={() => void startWork()} />
         ) : null}
-              {startedByMe ? <Btn title="Kész ✔" onPress={() => void markDone()} /> : null}
+              {startedByMe && !doneAsk ? <Btn title="Kész ✔" onPress={() => setDoneAsk(true)} /> : null}
+              {startedByMe && doneAsk ? (
+                <View style={{ gap: S.sm, borderWidth: 2, borderColor: C.success, borderRadius: S.radiusSm, padding: S.sm }}>
+                  <Body style={{ fontWeight: '800' }}>{doneOthers().length ? 'A te részed kész' : 'Feladat kész'}</Body>
+                  <Sub>{doneOthers().length
+                    ? `A feladat akkor lesz kész, ha ${doneOthers().map((a) => workerName(a.worker_id)).join(', ')} is készre jelentette.`
+                    : 'Késznek jelölöd a feladatot?'}</Sub>
+                  <Input label="Miért tartott ennyi ideig? (nem kötelező)" value={doneNote} onChangeText={setDoneNote} multiline
+                    placeholder="pl. plusz munka jött elő, anyagra kellett várni, nehéz hozzáférés" />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => { setDoneAsk(false); setDoneNote(''); }} /></View>
+                    <View style={{ flex: 2 }}><Btn title="Kész ✔" onPress={() => void markDone()} disabled={busy} /></View>
+                  </View>
+                </View>
+              ) : null}
               {!failOpen ? (
                 <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" small onPress={() => setFailOpen(true)} />
               ) : (

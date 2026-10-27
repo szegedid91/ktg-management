@@ -490,6 +490,8 @@ export interface TaskAssignee {
   acknowledged_at: string | null;
   /** a munkavállaló a SAJÁT részét készre jelentette (több emberes feladatnál a feladat csak akkor kész, ha mindenki) */
   done_at?: string | null;
+  /** a munkavállaló megjegyzése a készre jelentéskor (pl. miért tartott ennyi ideig) */
+  done_note?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -502,6 +504,8 @@ export interface TaskMaterial extends BaseRow {
   worker_id: string | null;
   amount: number;
   note: string | null;
+  /** miért ennyibe került (a munkavállaló indoklása, nem kötelező) */
+  reason?: string | null;
   photo_path: string | null;
   /** több fotó; az első = photo_path */
   photo_paths: string[];
