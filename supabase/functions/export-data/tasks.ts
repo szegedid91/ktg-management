@@ -66,7 +66,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const [sites, workers, assignees, sessions, attendance, materials, pricing, finance, quotedTasks] = await Promise.all([
     fetchAll(() => supabase.from('sites').select('id, name, address')),
     fetchAll(() => supabase.from('workers').select('id, name')),
-    idList.length ? inChunks((c) => supabase.from('task_assignees').select('id, task_id, worker_id').is('deleted_at', null).in('task_id', c)) : [],
+    idList.length ? inChunks((c) => supabase.from('task_assignees').select('id, task_id, worker_id, done_note').is('deleted_at', null).in('task_id', c)) : [],
     workerIds.length && fromTs && toTs
       ? fetchAll(() => supabase.from('work_sessions').select('id, task_id, worker_id, site_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).in('worker_id', workerIds).gte('started_at', fromTs).lte('started_at', toTs))
       : [],
@@ -80,7 +80,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
           return [...byTask, ...byDays].filter((a: any) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
         })()
       : [],
-    idList.length ? inChunks((c) => supabase.from('task_materials').select('id, task_id, worker_id, amount, note, created_at').is('deleted_at', null).in('task_id', c)) : [],
+    idList.length ? inChunks((c) => supabase.from('task_materials').select('id, task_id, worker_id, amount, note, reason, created_at').is('deleted_at', null).in('task_id', c)) : [],
     fetchAll(() => supabase.from('task_material_pricing').select('id, material_id, resale_net').is('deleted_at', null)),
     idList.length ? inChunks((c) => supabase.from('task_finance').select('id, task_id, invoice_net').is('deleted_at', null).in('task_id', c)) : [],
     fetchAll(() => supabase.from('worker_tasks').select('id, quote_accepted_at').not('quote_accepted_at', 'is', null)),
@@ -166,7 +166,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   type Row = {
     taskId: string; first: boolean; site: string; code: string; item: string; title: string; status: string; worker: string; hours: number;
     wage: number; callout: number; matCost: number; cost: number; matResale: number; invoice: number | null; profit: number | null;
-    created: string; done: string; siteId: string;
+    created: string; done: string; siteId: string; doneNote: string;
   };
   const rows: Row[] = list.flatMap((t) => {
     const s = siteOf.get(t.site_id) ?? { name: '— helyszín nélkül —', address: '' };
@@ -202,7 +202,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       const matCost = mats.filter((m: any) => m.worker_id === wid || (first && !m.worker_id)).reduce((a, m) => a + Number(m.amount), 0);
       const cost = wage + callout + matCost;
       taskCost += cost;
-      return { ...base, first, worker: wid ? nameOf(wid) : '', hours, wage, callout, matCost, cost,
+      // a munkavállaló megjegyzése a készre jelentéskor („miért tartott ennyi ideig”)
+      const doneNote = wid ? String((assBy.get(t.id) ?? []).find((a: any) => a.worker_id === wid)?.done_note ?? '') : '';
+      return { ...base, first, worker: wid ? nameOf(wid) : '', hours, wage, callout, matCost, cost, doneNote,
         matResale: first ? matResale : 0, invoice: first ? invoice : null, profit: null };
     });
     if (invoice != null) out[0].profit = invoice + matResale - taskCost;
@@ -213,7 +215,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     'Feladat kód': r.code, 'Helyszín': r.site, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállaló': r.worker,
     'Munkaóra': r.hours, 'Munkabér (Ft)': r.wage, 'Kiszállás (Ft)': r.callout, 'Anyagköltség (Ft)': r.matCost, 'Összes költség (Ft)': r.cost,
     'Anyag továbbszámlázva (Ft)': r.first ? r.matResale : '', 'Kiszámlázott (Ft)': r.invoice ?? '', 'Haszon (Ft)': r.profit ?? '',
-    'Kiadva': r.created, 'Elkészült': r.done,
+    'Kiadva': r.created, 'Elkészült': r.done, 'Miért tartott ennyi ideig': r.doneNote,
   }));
   const sum = (f: (r: Row) => number, rs: Row[] = rows) => rs.reduce((s, r) => s + f(r), 0);
   const taskCount = new Set(rows.map((r) => r.taskId)).size;
@@ -221,7 +223,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     'Feladat kód': 'ÖSSZESEN', 'Helyszín': '', 'Cikktörzs': '', 'Feladat': `${taskCount} feladat`, 'Állapot': '', 'Munkavállaló': '',
     'Munkaóra': r2(sum((r) => r.hours)), 'Munkabér (Ft)': sum((r) => r.wage), 'Kiszállás (Ft)': sum((r) => r.callout),
     'Anyagköltség (Ft)': sum((r) => r.matCost), 'Összes költség (Ft)': sum((r) => r.cost), 'Anyag továbbszámlázva (Ft)': sum((r) => r.matResale),
-    'Kiszámlázott (Ft)': sum((r) => r.invoice ?? 0), 'Haszon (Ft)': sum((r) => r.profit ?? 0), 'Kiadva': '', 'Elkészült': '',
+    'Kiszámlázott (Ft)': sum((r) => r.invoice ?? 0), 'Haszon (Ft)': sum((r) => r.profit ?? 0), 'Kiadva': '', 'Elkészült': '', 'Miért tartott ennyi ideig': '',
   });
 
   // helyszínenként: a csatolt feladatkódok és az összegek
@@ -252,18 +254,18 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     .sort((a: any, b: any) => a.created_at.localeCompare(b.created_at))
     .map((m: any) => ({
       'Helyszín': siteNameOf.get(m.task_id) ?? '', 'Feladat kód': codeOf.get(m.task_id) ?? '', 'Dátum': hd(m.created_at), 'Rögzítette': nameOf(m.worker_id),
-      'Összeg (Ft)': Number(m.amount), 'Továbbszámlázva (Ft)': resaleOf.get(m.id) ?? '', 'Megjegyzés': m.note ?? '',
+      'Összeg (Ft)': Number(m.amount), 'Továbbszámlázva (Ft)': resaleOf.get(m.id) ?? '', 'Megjegyzés': m.note ?? '', 'Miért ennyibe került': m.reason ?? '',
     }));
 
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.json_to_sheet(taskSheet);
-  s1['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }];
+  s1['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
   const s2 = XLSX.utils.json_to_sheet(siteSheet);
   s2['!cols'] = [{ wch: 26 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
   const s3 = XLSX.utils.json_to_sheet(daySheet);
   s3['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 7 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 9 }];
   const s4 = XLSX.utils.json_to_sheet(matSheet);
-  s4['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 18 }, { wch: 36 }];
+  s4['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 40 }];
   XLSX.utils.book_append_sheet(wb, s1, 'Feladatok');
   XLSX.utils.book_append_sheet(wb, s2, 'Helyszínek');
   XLSX.utils.book_append_sheet(wb, s3, 'Munkaidő');
