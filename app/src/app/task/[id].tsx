@@ -190,10 +190,15 @@ Biztosan leveszed?`, 'Levétel', true);
   // munkafotó-feltöltés folyamatban (a hookoknak a korai visszatérések ELŐTT kell állniuk)
   const [photoBusy, setPhotoBusy] = useState<'before' | 'after' | null>(null);
   // munkavállaló: saját tétel összegének / megjegyzésének szerkesztése
-  const [matEdit, setMatEdit] = useState<{ id: string; amount: string; note: string; reason: string } | null>(null);
+  const [matEdit, setMatEdit] = useState<{ id: string; amount: string; note: string; reason: string; qty: string; unit: string } | null>(null);
   const [matAmount, setMatAmount] = useState('');
   const [matNote, setMatNote] = useState('');
   const [matReason, setMatReason] = useState('');
+  const [matQty, setMatQty] = useState('');
+  const [matUnit, setMatUnit] = useState('');
+  // mennyiség: üres = 1; egység: üres = db
+  const qtyOf = (v: string) => { const n = parseAmount(v); return n > 0 ? n : null; };
+  const qtyLabel = (m: TaskMaterial) => `${m.quantity != null ? String(Number(m.quantity)).replace('.', ',') : '1'} ${m.unit?.trim() || 'db'}`;
   // készre jelentés: a megerősítő kártya a „miért tartott ennyi ideig?” mezővel (nem kötelező)
   const [doneAsk, setDoneAsk] = useState(false);
   const [doneNote, setDoneNote] = useState('');
@@ -375,8 +380,8 @@ Biztosan leveszed?`, 'Levétel', true);
     try {
       const paths: string[] = [];
       for (const ph of matPhotos) paths.push(await uploadTaskPhoto(ph.base64, `${task.id}/material`));
-      insertRow('task_materials', { task_id: task.id, worker_id: isWorker ? myWorkerId : (retroWorker ?? assignees[0]?.worker_id ?? null), amount, note: matNote.trim() || null, reason: matReason.trim() || null, photo_path: paths[0] ?? null, photo_paths: paths });
-      setMatOpen(false); setMatAmount(''); setMatNote(''); setMatReason(''); setMatPhotos([]);
+      insertRow('task_materials', { task_id: task.id, worker_id: isWorker ? myWorkerId : (retroWorker ?? assignees[0]?.worker_id ?? null), amount, note: matNote.trim() || null, reason: matReason.trim() || null, quantity: qtyOf(matQty), unit: matUnit.trim() || null, photo_path: paths[0] ?? null, photo_paths: paths });
+      setMatOpen(false); setMatAmount(''); setMatNote(''); setMatReason(''); setMatQty(''); setMatUnit(''); setMatPhotos([]);
       notify('Anyagköltség rögzítve 📦', `${ft(amount)}${paths.length ? ` · ${paths.length} fotóval` : ''}.`);
     } catch {
       notify('Hiba', 'A fotó feltöltéséhez internet kell — próbáld újra kapcsolattal.');
@@ -722,7 +727,7 @@ Biztosan leveszed?`, 'Levétel', true);
         {materials.map((m) => (
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''}</Body>
+              <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''} · {qtyLabel(m)}</Body>
               {!isWorker ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
             {m.reason ? <Sub>💬 Miért ennyi: {m.reason}</Sub> : null}
@@ -733,18 +738,22 @@ Biztosan leveszed?`, 'Levétel', true);
                 <View style={{ gap: S.sm }}>
                   <Input label="Összeg (Ft)" value={matEdit.amount} onChangeText={(v) => setMatEdit({ ...matEdit, amount: v })} keyboardType="numeric" />
                   <Input label="Mi ez?" value={matEdit.note} onChangeText={(v) => setMatEdit({ ...matEdit, note: v })} />
+                  <View style={{ flexDirection: 'row', gap: S.sm }}>
+                    <View style={{ flex: 1 }}><Input label="Mennyiség" value={matEdit.qty} onChangeText={(v) => setMatEdit({ ...matEdit, qty: v })} keyboardType="numeric" placeholder="1" /></View>
+                    <View style={{ flex: 1 }}><Input label="Egység" value={matEdit.unit} onChangeText={(v) => setMatEdit({ ...matEdit, unit: v })} placeholder="db" autoCapitalize="none" /></View>
+                  </View>
                   <Input label="Miért ennyibe került? (nem kötelező)" value={matEdit.reason} onChangeText={(v) => setMatEdit({ ...matEdit, reason: v })} />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setMatEdit(null)} /></View>
                     <View style={{ flex: 2 }}><Btn title="Mentés" small disabled={parseAmount(matEdit.amount) <= 0} onPress={() => {
                       if (parseAmount(matEdit.amount) > INVOICE_PHOTO_LIMIT && materialPhotos(m).length === 0) { notify('Számla fotó kell', '100 000 Ft feletti anyagköltséghez kötelező a számla fotója.'); return; }
-                      updateRow('task_materials', m.id, { amount: parseAmount(matEdit.amount), note: matEdit.note.trim() || null, reason: matEdit.reason.trim() || null });
+                      updateRow('task_materials', m.id, { amount: parseAmount(matEdit.amount), note: matEdit.note.trim() || null, reason: matEdit.reason.trim() || null, quantity: qtyOf(matEdit.qty), unit: matEdit.unit.trim() || null });
                       setMatEdit(null);
                     }} /></View>
                   </View>
                 </View>
               ) : (
-                <Btn title="✏️ Összeg / megjegyzés módosítása" kind="ghost" small onPress={() => setMatEdit({ id: m.id, amount: String(m.amount), note: m.note ?? '', reason: m.reason ?? '' })} />
+                <Btn title="✏️ Összeg / megjegyzés módosítása" kind="ghost" small onPress={() => setMatEdit({ id: m.id, amount: String(m.amount), note: m.note ?? '', reason: m.reason ?? '', qty: m.quantity != null ? String(Number(m.quantity)) : '', unit: m.unit ?? '' })} />
               )
             ) : null}
             {!isWorker ? (
@@ -773,7 +782,11 @@ Biztosan leveszed?`, 'Levétel', true);
           ) : (
             <View style={{ gap: S.sm }}>
               <Input label="Összeg (Ft) *" value={matAmount} onChangeText={setMatAmount} keyboardType="numeric" placeholder="pl. 12 500" />
-              <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó 2 zsák" />
+              <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó" />
+              <View style={{ flexDirection: 'row', gap: S.sm }}>
+                <View style={{ flex: 1 }}><Input label="Mennyiség" value={matQty} onChangeText={setMatQty} keyboardType="numeric" placeholder="pl. 2" /></View>
+                <View style={{ flex: 1 }}><Input label="Egység" value={matUnit} onChangeText={setMatUnit} placeholder="db / méter / zsák" autoCapitalize="none" /></View>
+              </View>
               <Input label="Miért ennyibe került? (nem kötelező)" value={matReason} onChangeText={setMatReason} placeholder="pl. csak a drágább volt kapható, sürgős volt" />
               <Sub>{isWorker ? 'Számla / blokk fotója — 100 000 Ft felett kötelező; több kép is csatolható:' : 'Számla / blokk fotója (vezetőnél nem kötelező):'}</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm }}>

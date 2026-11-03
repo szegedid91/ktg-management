@@ -508,6 +508,9 @@ export interface TaskMaterial extends BaseRow {
   note: string | null;
   /** miért ennyibe került (a munkavállaló indoklása, nem kötelező) */
   reason?: string | null;
+  /** mennyiség és egység (üres = 1 db); az összeg a teljes bekerülési érték */
+  quantity?: number | null;
+  unit?: string | null;
   photo_path: string | null;
   /** több fotó; az első = photo_path */
   photo_paths: string[];

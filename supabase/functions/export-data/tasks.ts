@@ -91,7 +91,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
           return [...byTask, ...byDays].filter((a: any) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
         })()
       : [],
-    idList.length ? inChunks((c) => supabase.from('task_materials').select('id, task_id, worker_id, amount, note, reason, created_at').is('deleted_at', null).in('task_id', c)) : [],
+    idList.length ? inChunks((c) => supabase.from('task_materials').select('id, task_id, worker_id, amount, note, reason, quantity, unit, created_at').is('deleted_at', null).in('task_id', c)) : [],
     fetchAll(() => supabase.from('task_material_pricing').select('id, material_id, resale_net').is('deleted_at', null)),
     idList.length ? inChunks((c) => supabase.from('task_finance').select('id, task_id, invoice_net').is('deleted_at', null).in('task_id', c)) : [],
     fetchAll(() => supabase.from('worker_tasks').select('id, quote_accepted_at').not('quote_accepted_at', 'is', null)),
@@ -270,6 +270,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     .sort((a: any, b: any) => a.created_at.localeCompare(b.created_at))
     .map((m: any) => ({
       'Helyszín': siteNameOf.get(m.task_id) ?? '', 'Feladat kód': codeOf.get(m.task_id) ?? '', 'Dátum': hd(m.created_at), 'Rögzítette': nameOf(m.worker_id),
+      'Mennyiség': m.quantity != null ? Number(m.quantity) : 1, 'Egység': m.unit || 'db',
       'Összeg (Ft)': Number(m.amount), 'Továbbszámlázva (Ft)': resaleOf.get(m.id) ?? '', 'Megjegyzés': m.note ?? '', 'Miért ennyibe került': m.reason ?? '',
     }));
 
@@ -281,7 +282,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const s3 = XLSX.utils.json_to_sheet(daySheet);
   s3['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 7 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 9 }];
   const s4 = XLSX.utils.json_to_sheet(matSheet);
-  s4['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 40 }];
+  s4['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 40 }];
   XLSX.utils.book_append_sheet(wb, s1, 'Feladatok');
   XLSX.utils.book_append_sheet(wb, s2, 'Helyszínek');
   XLSX.utils.book_append_sheet(wb, s3, 'Munkaidő');
@@ -323,17 +324,23 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
     aoa.push([`ODO megnevezés: ${t.title}${t.item ? ` (${t.item})` : ''}`]); merges.push({ s: { r: top + 1, c: 0 }, e: { r: top + 1, c: 5 } });
     aoa.push(['Megnevezés', 'Mennyiség', 'Egység', 'Árak/Díjak', 'Összesen']);
     const first = aoa.length + 1; // 1-alapú Excel-sor
+    let blockSum = 0;
     const line = (name: string, qty: number, unit: string, price: number) => {
       const n = aoa.length + 1;
       aoa.push([name, num(qty), unit, num(price), formula(`B${n}*D${n}`, Math.round(qty * price))]);
+      blockSum += Math.round(qty * price);
     };
     line('Munkaóra', hours, 'óra', hourly);
     line('Kiszállás', calloutN, 'alkalom', callout);
-    for (const m of mats) line(m.note || 'Anyag', 1, 'db', resaleOf.get(m.id) ?? Number(m.amount));
+    // anyag: mennyiség × egységár (egységár = továbbszámlázott / bekerülési összeg osztva a mennyiséggel)
+    for (const m of mats) {
+      const qty = m.quantity != null && Number(m.quantity) > 0 ? Number(m.quantity) : 1;
+      line(m.note || 'Anyag', qty, m.unit || 'db', Math.round((resaleOf.get(m.id) ?? Number(m.amount)) / qty));
+    }
     aoa.push([]);
     const last = aoa.length; // az üres sor is a SUM tartományában (mint a mintában)
     const totalRow = aoa.length + 1;
-    const sum = Math.round(hours * hourly + calloutN * callout + mats.reduce((a: number, m: any) => a + (resaleOf.get(m.id) ?? Number(m.amount)), 0));
+    const sum = blockSum;
     aoa.push(['Összesen:', null, null, null, formula(`SUM(E${first}:E${last})`, sum)]);
     totals.push(`E${totalRow}`); grand += sum;
     aoa.push([]); aoa.push([]);
