@@ -5,7 +5,7 @@ import { S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
 import { downloadExport } from '../lib/exportfile';
 import { todayISO } from '../lib/format';
-import { Site, Worker } from '../lib/types';
+import { Site, Worker, AppSettings } from '../lib/types';
 import { notify } from '../lib/dialogs';
 
 function ExportScreenInner() {
@@ -36,12 +36,34 @@ function ExportScreenInner() {
   const shiftWeek = (n: number) => { const m = addDays(mondayOf(wFrom.trim() || todayISO()), 7 * n); setWFrom(m); setWTo(addDays(m, 6)); };
   const dateLabel = tStatus === 'done' ? 'Készre jelentve' : tStatus === 'failed' ? 'Nem sikerültre jelentve' : 'Kiadva';
 
-  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' = 'books') => {
+  // elszámolás az ügyfél felé („Heti elszámolás” minta): feladatonként tömb — munkaóra, kiszállás, anyagok, összesen
+  const settings = useTable<AppSettings>('app_settings')[0];
+  const [sStatus, setSStatus] = useState<TaskStatusFilter>('done');
+  const [sFrom, setSFrom] = useState(mondayOf(todayISO()));
+  const [sTo, setSTo] = useState(addDays(mondayOf(todayISO()), 6));
+  const [sSite, setSSite] = useState<string | null>(null);
+  const [sWorker, setSWorker] = useState<string | null>(null);
+  const [sCode, setSCode] = useState('');
+  const [sHourly, setSHourly] = useState<string | null>(null);
+  const [sCallout, setSCallout] = useState<string | null>(null);
+  const hourlyStr = sHourly ?? (settings?.out_hourly_rate ? String(Number(settings.out_hourly_rate)) : '');
+  const calloutStr = sCallout ?? (settings?.out_callout_fee != null ? String(Number(settings.out_callout_fee)) : '');
+  const monthRange = (shift: number) => {
+    const d = new Date(todayISO() + 'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + shift);
+    const first = d.toISOString().slice(0, 10); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0);
+    setSFrom(first); setSTo(d.toISOString().slice(0, 10));
+  };
+  const shiftSWeek = (n: number) => { const m = addDays(mondayOf(sFrom.trim() || todayISO()), 7 * n); setSFrom(m); setSTo(addDays(m, 6)); };
+  const num = (v: string) => { const n = Number(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n >= 0 ? n : 0; };
+
+  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'settlement' = 'books') => {
     setBusy(`${mode}-${format}`);
     try {
       await downloadExport(
         mode === 'wages' ? { mode, month, worker_id: workerId, format }
           : mode === 'tasks' ? { mode, status: tStatus, from: wFrom.trim() || undefined, to: wTo.trim() || undefined, site_id: wSite }
+          : mode === 'settlement' ? { mode: 'tasks', layout: 'settlement', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
+              site_id: sSite, worker_id: sWorker, code: sCode.trim() || undefined, bill_hourly_rate: num(hourlyStr), bill_callout_fee: num(calloutStr) }
           : { from, to, site_id: site, format },
       );
     } catch (e: any) {
@@ -133,6 +155,35 @@ function ExportScreenInner() {
           nullLabel="— minden építkezés —"
         />
         <Btn title={busy === 'tasks-xlsx' ? 'Készül…' : '📊 Excel (xlsx)'} onPress={() => void doExport('xlsx', 'tasks')} disabled={!!busy} />
+      </Card>
+
+      <Card>
+        <H2>Elszámolás az ügyfél felé</H2>
+        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható.</Sub>
+        <Segmented label="Melyik feladatok" value={sStatus} onChange={setSStatus}
+          options={[{ value: 'done', label: 'Kész' }, { value: 'open', label: 'Folyamatban' }, { value: 'all', label: 'Minden' }]} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
+          <Btn title="‹" kind="ghost" small onPress={() => shiftSWeek(-1)} />
+          <H2 style={{ flex: 1, textAlign: 'center' }}>{sFrom.trim() ? `${sFrom.replace(/-/g, '.')}.` : 'kezdettől'} – {sTo.replace(/-/g, '.')}.</H2>
+          <Btn title="›" kind="ghost" small onPress={() => shiftSWeek(1)} />
+        </View>
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}><Btn title="Ez a hét" kind="ghost" small onPress={() => shiftSWeek(0)} /></View>
+          <View style={{ flex: 1 }}><Btn title="Ez a hónap" kind="ghost" small onPress={() => monthRange(0)} /></View>
+          <View style={{ flex: 1 }}><Btn title="Előző hónap" kind="ghost" small onPress={() => monthRange(-1)} /></View>
+        </View>
+        <Input label={`${sStatus === 'done' ? 'Készre jelentve' : 'Kiadva'} ettől (ÉÉÉÉ-HH-NN)`} value={sFrom} onChangeText={setSFrom} />
+        <Input label={`${sStatus === 'done' ? 'Készre jelentve' : 'Kiadva'} eddig (ÉÉÉÉ-HH-NN)`} value={sTo} onChangeText={setSTo} />
+        <Picker label="Terület (építkezés)" items={sites} selectedId={sSite} getId={(s) => s.id} getLabel={(s) => s.name} onSelect={setSSite}
+          allowNull nullLabel="— minden terület —" />
+        <Picker label="Ember (munkavállaló)" items={[...workers].sort((a, b) => a.name.localeCompare(b.name, 'hu'))} selectedId={sWorker} getId={(w) => w.id}
+          getLabel={(w) => w.name} onSelect={setSWorker} allowNull nullLabel="— mindenki —" />
+        <Input label="Munka sorszáma (feladatkód, részlet is elég)" value={sCode} onChangeText={setSCode} placeholder="pl. 1502209" autoCapitalize="none" />
+        <View style={{ flexDirection: 'row', gap: S.sm }}>
+          <View style={{ flex: 1 }}><Input label="Kimenő órabér (Ft/óra)" value={hourlyStr} onChangeText={setSHourly} keyboardType="numeric" placeholder="Beállítások › Díjak" /></View>
+          <View style={{ flex: 1 }}><Input label="Kimenő kiszállás (Ft/alkalom)" value={calloutStr} onChangeText={setSCallout} keyboardType="numeric" placeholder="Beállítások › Díjak" /></View>
+        </View>
+        <Btn title={busy === 'settlement-xlsx' ? 'Készül…' : '🧾 Elszámolás Excelbe'} onPress={() => void doExport('xlsx', 'settlement')} disabled={!!busy} />
       </Card>
     </Screen>
   );

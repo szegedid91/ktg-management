@@ -547,10 +547,11 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   // a feladat összefoglalója Excelben (helyszín, kód, munkaóra, bér, kiszállás, anyagköltség)
-  const exportSummary = async () => {
+  const exportSummary = async (layout?: 'settlement') => {
     setXlsBusy(true);
     try {
-      await downloadExport({ mode: 'tasks', task_id: task.id });
+      // elszámolásnál a kimenő órabér / kiszállási díj a Beállításokból (a szerver tölti ki)
+      await downloadExport(layout ? { mode: 'tasks', task_id: task.id, layout } : { mode: 'tasks', task_id: task.id });
     } catch (e: any) {
       notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
     } finally {
@@ -1255,6 +1256,7 @@ Biztosan leveszed?`, 'Levétel', true);
       {!isWorker ? (
         <Section title="⋯ További műveletek" summary={active ? 'export · visszavonás · törlés' : 'export · törlés'}>
           <Btn title={xlsBusy ? 'Készül…' : '📊 Összefoglaló Excelbe'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary()} />
+          <Btn title={xlsBusy ? 'Készül…' : '🧾 Elszámolás az ügyfél felé (Excel)'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary('settlement')} />
           {active ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
           <Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} />
         </Section>

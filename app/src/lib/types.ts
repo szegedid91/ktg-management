@@ -48,6 +48,8 @@ export interface AppSettings {
   out_hourly_rate: number;
   out_daily_rate: number;
   out_project_rate: number;
+  /** kimenő (ügyfélnek számlázott) kiszállási díj alkalmanként — az elszámolás-export alapértelmezése */
+  out_callout_fee?: number | null;
   default_vat_rate: number;
   /** alapértelmezett fizetési határidő: napok száma a számlázástól */
   default_payment_days: number;

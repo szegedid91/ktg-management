@@ -11,7 +11,17 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const STATUS: Record<string, string> = { assigned: 'kiadva', acknowledged: 'folyamatban', done: 'kész', failed: 'nem sikerült', cancelled: 'visszavonva' };
 
 export type TaskStatusFilter = 'all' | 'open' | 'done' | 'failed';
-export interface TaskFilter { taskId: string | null; siteId: string | null; from: string; to: string; status: TaskStatusFilter }
+export interface TaskFilter {
+  taskId: string | null; siteId: string | null; from: string; to: string; status: TaskStatusFilter;
+  /** elszámolás-elrendezés (ügyfél felé): feladatonként tömb — munkaóra, kiszállás, anyagok, összesen */
+  layout?: 'summary' | 'settlement';
+  /** csak ennek a munkavállalónak a sorai (elszámolásnál) */
+  workerId?: string | null;
+  /** feladatkód részlete (elszámolásnál) */
+  code?: string | null;
+  /** kimenő (ügyfélnek számlázott) órabér és kiszállási díj — a tömbök „Árak/Díjak” oszlopa */
+  billHourly?: number; billCallout?: number;
+}
 /** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
 const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
 
@@ -34,6 +44,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       .is('deleted_at', null);
     if (f.taskId) tq = tq.eq('id', f.taskId);
     if (f.siteId) tq = tq.eq('site_id', f.siteId);
+    if (f.code) tq = tq.ilike('code', `%${f.code.replace(/[%_\\]/g, '')}%`);
     if (f.status === 'done') tq = tq.eq('status', 'done');
     else if (f.status === 'failed') tq = tq.eq('status', 'failed');
     // „folyamatban”: a kiadott / elfogadott, és a nyitva hagyott „nem sikerült” (a munkavállalónál még él)
@@ -167,6 +178,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     taskId: string; first: boolean; site: string; code: string; item: string; title: string; status: string; worker: string; hours: number;
     wage: number; callout: number; matCost: number; cost: number; matResale: number; invoice: number | null; profit: number | null;
     created: string; done: string; siteId: string; doneNote: string;
+    wid: string; calloutCount: number; mats: any[];
   };
   const rows: Row[] = list.flatMap((t) => {
     const s = siteOf.get(t.site_id) ?? { name: '— helyszín nélkül —', address: '' };
@@ -199,17 +211,21 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       const hours = booked > 0 ? r2(booked)
         : r2(ses.filter((x: any) => x.worker_id === wid).reduce((a, x) => a + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 3600000, 0));
       // anyag: a munkavállaló saját tételei; a vezető által (munkavállaló nélkül) rögzített tétel az első soron
-      const matCost = mats.filter((m: any) => m.worker_id === wid || (first && !m.worker_id)).reduce((a, m) => a + Number(m.amount), 0);
+      const myMats = mats.filter((m: any) => m.worker_id === wid || (first && !m.worker_id));
+      const matCost = myMats.reduce((a, m) => a + Number(m.amount), 0);
       const cost = wage + callout + matCost;
       taskCost += cost;
       // a munkavállaló megjegyzése a készre jelentéskor („miért tartott ennyi ideig”)
       const doneNote = wid ? String((assBy.get(t.id) ?? []).find((a: any) => a.worker_id === wid)?.done_note ?? '') : '';
       return { ...base, first, worker: wid ? nameOf(wid) : '', hours, wage, callout, matCost, cost, doneNote,
+        wid: wid ?? '', calloutCount: myAtt.filter((x) => x.callout > 0).length, mats: myMats,
         matResale: first ? matResale : 0, invoice: first ? invoice : null, profit: null };
     });
     if (invoice != null) out[0].profit = invoice + matResale - taskCost;
     return out;
   }).sort((a, b) => a.site.localeCompare(b.site, 'hu') || a.code.localeCompare(b.code, 'hu') || a.taskId.localeCompare(b.taskId) || (a.first ? -1 : b.first ? 1 : 0));
+
+  if (f.layout === 'settlement') return settlementWorkbook(rows, f, resaleOf, json);
 
   const taskSheet = rows.map((r) => ({
     'Feladat kód': r.code, 'Helyszín': r.site, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállaló': r.worker,
@@ -274,6 +290,69 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     : `${{ all: 'feladatok', open: 'folyamatban_feladatok', done: 'kesz_feladatok', failed: 'nem_sikerult_feladatok' }[f.status]}_${f.from}_${f.to}`;
   return json({
     filename: `${stem}.xlsx`,
+    mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    base64: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }),
+  });
+}
+
+/** Elszámolás az ügyfél felé („Heti elszámolás” minta): feladatonként egy tömb — Munka sorszáma, megnevezés,
+ *  majd Megnevezés / Mennyiség / Egység / Árak/Díjak / Összesen sorok: Munkaóra (óra × kimenő órabér),
+ *  Kiszállás (alkalom × kimenő kiszállási díj), anyagok (a rögzített tétel, 1 db, a továbbszámlázott ár —
+ *  ha nincs beárazva, a bekerülési összeg), végül Összesen; a lap alján Mindösszesen. Az összegek képletek,
+ *  így a mennyiség vagy az ár átírása után az Excel újraszámol. */
+function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
+  const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
+  const byTask = new Map<string, any[]>();
+  for (const r of rows) byTask.set(r.taskId, [...(byTask.get(r.taskId) ?? []), r]);
+  const hourly = Number(f.billHourly ?? 0), callout = Number(f.billCallout ?? 0);
+  const aoa: any[][] = [];
+  const merges: any[] = [];
+  const totals: string[] = [];
+  let grand = 0;
+  const num = (v: number) => ({ t: 'n', v, z: '#,##0' });
+  const formula = (fx: string, v: number) => ({ t: 'n', f: fx, v, z: '#,##0' });
+  for (const rs of byTask.values()) {
+    const t = rs[0];
+    const hours = r2(rs.reduce((a, r) => a + r.hours, 0));
+    const calloutN = rs.reduce((a, r) => a + r.calloutCount, 0);
+    const seen = new Set<string>();
+    const mats = rs.flatMap((r) => r.mats).filter((m: any) => (seen.has(m.id) ? false : (seen.add(m.id), true)))
+      .sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
+    const top = aoa.length;
+    aoa.push([`Munka sorszáma: ${t.code || '—'}`]); merges.push({ s: { r: top, c: 0 }, e: { r: top, c: 5 } });
+    aoa.push([`ODO megnevezés: ${t.title}${t.item ? ` (${t.item})` : ''}`]); merges.push({ s: { r: top + 1, c: 0 }, e: { r: top + 1, c: 5 } });
+    aoa.push(['Megnevezés', 'Mennyiség', 'Egység', 'Árak/Díjak', 'Összesen']);
+    const first = aoa.length + 1; // 1-alapú Excel-sor
+    const line = (name: string, qty: number, unit: string, price: number) => {
+      const n = aoa.length + 1;
+      aoa.push([name, num(qty), unit, num(price), formula(`B${n}*D${n}`, Math.round(qty * price))]);
+    };
+    line('Munkaóra', hours, 'óra', hourly);
+    line('Kiszállás', calloutN, 'alkalom', callout);
+    for (const m of mats) line(m.note || 'Anyag', 1, 'db', resaleOf.get(m.id) ?? Number(m.amount));
+    aoa.push([]);
+    const last = aoa.length; // az üres sor is a SUM tartományában (mint a mintában)
+    const totalRow = aoa.length + 1;
+    const sum = Math.round(hours * hourly + calloutN * callout + mats.reduce((a: number, m: any) => a + (resaleOf.get(m.id) ?? Number(m.amount)), 0));
+    aoa.push(['Összesen:', null, null, null, formula(`SUM(E${first}:E${last})`, sum)]);
+    totals.push(`E${totalRow}`); grand += sum;
+    aoa.push([]); aoa.push([]);
+  }
+  if (byTask.size === 0) aoa.push(['Nincs a szűrésnek megfelelő feladat.']);
+  if (totals.length > 1) {
+    const n = aoa.length + 1;
+    aoa.push(['Mindösszesen:', null, null, null, formula(totals.join('+'), grand)]);
+    merges.push({ s: { r: n - 1, c: 0 }, e: { r: n - 1, c: 3 } });
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = merges;
+  ws['!cols'] = [{ wch: 44 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  (wb as any).Workbook = { CalcPr: { fullCalcOnLoad: true } };
+  XLSX.utils.book_append_sheet(wb, ws, 'Elszámolás');
+  const one = f.taskId && rows[0] ? `elszamolas_${(rows[0].code || 'feladat').replace(/[^\w-]+/g, '_')}` : `elszamolas_${f.from}_${f.to}`;
+  return json({
+    filename: `${one}.xlsx`,
     mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     base64: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }),
   });

@@ -111,6 +111,7 @@ function SettingsInner() {
         out_hourly_rate: String(Number(settings.out_hourly_rate) || ''),
         out_daily_rate: String(Number(settings.out_daily_rate) || ''),
         out_project_rate: String(Number(settings.out_project_rate) || ''),
+        out_callout_fee: settings.out_callout_fee != null ? String(Number(settings.out_callout_fee)) : '',
         default_vat_rate: String(Number(settings.default_vat_rate)),
         default_payment_days: String(Number(settings.default_payment_days) || 8),
       });
@@ -218,7 +219,7 @@ function SettingsInner() {
     { label: 'Órabér', ind: 'individual_hourly_rate', comp: 'company_hourly_rate', out: 'out_hourly_rate' },
     { label: 'Napi díj', ind: 'individual_daily_rate', comp: 'company_daily_rate', out: 'out_daily_rate' },
     { label: 'Projektdíj', ind: 'individual_project_rate', comp: 'company_project_rate', out: 'out_project_rate' },
-    { label: 'Kiszállás', ind: 'individual_callout_fee', comp: 'company_callout_fee', ph: '1 óra' },
+    { label: 'Kiszállás', ind: 'individual_callout_fee', comp: 'company_callout_fee', out: 'out_callout_fee', ph: '1 óra' },
   ];
   const setRate = (k: string, v: string) => setRates({ ...rates, [k]: v });
   const notifOn = myProfile ? [myProfile.notify_comments, myProfile.notify_big_expense, myProfile.notify_weekly, myProfile.notify_overdue].filter(Boolean).length : 0;
@@ -253,10 +254,10 @@ function SettingsInner() {
             <Text style={{ width: 78, fontSize: 13, fontWeight: '600', color: C.text }}>{r.label}</Text>
             <Cell value={rates[r.ind] ?? ''} onChange={(v) => setRate(r.ind, v)} placeholder={r.ph} />
             <Cell value={rates[r.comp] ?? ''} onChange={(v) => setRate(r.comp, v)} placeholder={r.ph} />
-            {r.out ? <Cell value={rates[r.out] ?? ''} onChange={(v) => setRate(r.out!, v)} /> : <View style={{ flex: 1 }} />}
+            {r.out ? <Cell value={rates[r.out] ?? ''} onChange={(v) => setRate(r.out!, v)} placeholder={r.out === 'out_callout_fee' ? 'alkalom' : undefined} /> : <View style={{ flex: 1 }} />}
           </View>
         ))}
-        <Sub style={{ fontSize: 11 }}>Kiszállás: helyszínenként és naponként egyszer. Üres = 1 óra bére, 0 = nincs díj. „Kimenő” = amit a megrendelőnek számlázol.</Sub>
+        <Sub style={{ fontSize: 11 }}>Kiszállás: helyszínenként és naponként egyszer. Üres = 1 óra bére, 0 = nincs díj. „Kimenő” = amit a megrendelőnek számlázol — az elszámolás-export (Pénzügy › Export) ezt teszi az „Árak/Díjak” oszlopba.</Sub>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Alapértelmezett ÁFA (%)</Text>
           <Cell value={rates.default_vat_rate ?? '27'} onChange={(v) => setRate('default_vat_rate', v)} />

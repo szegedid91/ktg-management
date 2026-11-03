@@ -55,6 +55,19 @@ Deno.serve(async (req) => {
       const taskId = UUID.test(body.task_id ?? '') ? body.task_id : null;
       // done_only: a régebbi kliensek mezője (= status 'done')
       const status = (['all', 'open', 'done', 'failed'] as const).find((x) => x === body.status) ?? (body.done_only === true ? 'done' : 'all');
+      if (body.layout === 'settlement') {
+        // elszámolás az ügyfél felé: kimenő órabér / kiszállási díj a kérésből, különben a Beállításokból
+        const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
+        const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().slice(0, 40) : null;
+        const num = (v: unknown) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
+        let billHourly = num(body.bill_hourly_rate), billCallout = num(body.bill_callout_fee);
+        if (billHourly == null || billCallout == null) {
+          const { data: st } = await supabase.from('app_settings').select('out_hourly_rate, out_callout_fee').eq('id', 1).maybeSingle();
+          billHourly ??= Number(st?.out_hourly_rate ?? 0);
+          billCallout ??= Number(st?.out_callout_fee ?? 0);
+        }
+        return await exportTasks(supabase, { taskId, siteId: site_id, from, to, status, layout: 'settlement', workerId, code, billHourly, billCallout }, json);
+      }
       return await exportTasks(supabase, { taskId, siteId: site_id, from, to, status }, json);
     }
 
