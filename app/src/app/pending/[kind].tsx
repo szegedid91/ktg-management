@@ -3,7 +3,7 @@
 
 import { unpaidWorkerPart, paidDiff } from '../../lib/tasks';
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, KV, Divider, Empty, Check, Badge, Input } from '../../ui/kit';
 import { C, S } from '../../ui/theme';
@@ -291,33 +291,38 @@ function PendingScreenInner() {
           {groups.length > 1 ? (
             <>
               <Sub>Terület:</Sub>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-                <Chip label="Mind" on={siteFilter.size === 0} onPress={() => setSiteFilter(new Set())} />
-                {groups.map((g) => (
-                  <Chip
-                    key={g.siteId}
-                    label={`${g.siteName} · ${ft(g.total)}`}
-                    on={siteFilter.has(g.siteId)}
-                    onPress={() => toggleIn(siteFilter, setSiteFilter, g.siteId)}
-                  />
-                ))}
-              </View>
+              {/* sok építkezésnél a szűrő saját, kb. 3 sor magas görgethető dobozban — ne tolja le a listát */}
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 132 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                  <Chip label="Mind" on={siteFilter.size === 0} onPress={() => setSiteFilter(new Set())} />
+                  {groups.map((g) => (
+                    <Chip
+                      key={g.siteId}
+                      label={`${g.siteName} · ${ft(g.total)}`}
+                      on={siteFilter.has(g.siteId)}
+                      onPress={() => toggleIn(siteFilter, setSiteFilter, g.siteId)}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
             </>
           ) : null}
           {personList.length > 1 ? (
             <>
               <Sub>{isWages ? 'Munkavállaló:' : 'Közvetítő:'}</Sub>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-                <Chip label="Mindenki" on={personFilter.size === 0} onPress={() => setPersonFilter(new Set())} />
-                {personList.map((p) => (
-                  <Chip
-                    key={p.key}
-                    label={p.name}
-                    on={personFilter.has(p.key)}
-                    onPress={() => toggleIn(personFilter, setPersonFilter, p.key)}
-                  />
-                ))}
-              </View>
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 132 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+                  <Chip label="Mindenki" on={personFilter.size === 0} onPress={() => setPersonFilter(new Set())} />
+                  {personList.map((p) => (
+                    <Chip
+                      key={p.key}
+                      label={p.name}
+                      on={personFilter.has(p.key)}
+                      onPress={() => toggleIn(personFilter, setPersonFilter, p.key)}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
             </>
           ) : null}
         </Card>
