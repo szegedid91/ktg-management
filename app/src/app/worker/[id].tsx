@@ -8,7 +8,7 @@ import { useRow, useTable, useIsWorker } from '../../lib/hooks';
 import { getCurrentUserId, softDeleteRow, updateRow, callRpc } from '../../lib/repo';
 import { ft, hd } from '../../lib/format';
 import { Worker, Attendance, Site, Profile, ExternalPerson, AppSettings, WorkerTask, TaskAssignee, WorkSession } from '../../lib/types';
-import { isActiveTask, TASK_STATUS_LABEL, fmtHours, sessionHours, paidDiff } from '../../lib/tasks';
+import { isActiveTask, TASK_STATUS_LABEL, fmtHours, sessionHours, paidDiff, workedSuffix } from '../../lib/tasks';
 import { hdt } from '../../lib/format';
 import { Comments } from '../../components/Comments';
 import { CallButton, CopyButton } from '../workers/index';
@@ -366,7 +366,7 @@ function WorkerDetailInner() {
             {a.task_id && taskLabel(a.task_id) ? <Sub style={{ color: C.primary, fontWeight: '700' }}>🛠️ {taskLabel(a.task_id)} ›</Sub> : null}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Sub>{hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '?'}
-                {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? ' · napi díj máshol elszámolva' : Number(a.day_multiplier) !== 1 ? ` · ${a.day_multiplier} nap` : '') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}
+                {a.pay_basis === 'hourly' ? ` · ${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? ' · napi díj máshol elszámolva' : Number(a.day_multiplier) !== 1 ? ` · napi díjas · ${a.day_multiplier} nap` : ' · napi díjas') : a.pay_basis === 'project' ? ' · projektdíj' : ' · jelenlét'}{workedSuffix(a)}
                 {a.source === 'session' ? ' · ⏱' : a.source === 'task' ? ' · 💬' : ''}
                 {(() => {
                   // kiszállás: a munkavállalónak járó (közvetítővel csökkentett) rész — benne van a sor összegében

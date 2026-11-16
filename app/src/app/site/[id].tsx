@@ -13,7 +13,7 @@ import { TaskGroups } from '../../components/TaskGroups';
 import { openDirections } from '../../lib/maps';
 import { SiteContactsCard } from '../../components/SiteContacts';
 import { SiteGeofenceCard } from '../../components/SiteGeofenceCard';
-import { isActiveTask } from '../../lib/tasks';
+import { isActiveTask, workedSuffix } from '../../lib/tasks';
 import { Comments } from '../../components/Comments';
 import { notify, confirmDialog } from '../../lib/dialogs';
 
@@ -234,7 +234,7 @@ export default function SiteDetail() {
                     <View style={{ flex: 1 }}>
                       <Body style={{ fontWeight: '600' }}>{workers.find((w) => w.id === a.worker_id)?.name ?? '?'}</Body>
                       <Sub>
-                        {hd(a.work_date)} · {a.pay_basis === 'hourly' ? `${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj') : 'projektdíj'}
+                        {hd(a.work_date)} · {a.pay_basis === 'hourly' ? `${a.hours} ó` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : Number(a.day_multiplier) === 0.5 ? 'napi díjas · fél nap' : 'napi díjas') : 'projektdíj'}{workedSuffix(a)}
                         {a.paid_at ? ' · kifizetve ✓' : ''}
                       </Sub>
                     </View>

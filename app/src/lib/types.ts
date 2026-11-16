@@ -203,6 +203,8 @@ export interface Attendance extends BaseRow {
   worker_id: UUID;
   pay_basis: AttendanceBasis;
   hours: number | null;
+  /** a nap tényleges (nem felkerekített) munkaideje a munkamenetekből — a bért nem befolyásolja; napi díjasnál ez mutatja, mennyit dolgozott */
+  worked_hours?: number | null;
   day_multiplier: number;
   applied_rate: number | null;
   amount: number;

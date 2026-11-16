@@ -38,7 +38,7 @@ export async function exportWages(supabase: any, month: string, workerId: string
   const from = `${month}-01`;
   const to = `${month}-${String(new Date(Date.UTC(yy, mm, 0)).getUTCDate()).padStart(2, '0')}`;
   let q = supabase.from('attendance')
-    .select('work_date, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at, note, worker_id, sites(name), workers(name, nickname, contractor_id, worker_type, company_name)')
+    .select('work_date, pay_basis, hours, worked_hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at, note, worker_id, sites(name), workers(name, nickname, contractor_id, worker_type, company_name)')
     .gte('work_date', from).lte('work_date', to).is('deleted_at', null).order('work_date');
   if (workerId) q = q.eq('worker_id', workerId);
   const rows: any[] = [];
@@ -65,8 +65,9 @@ export async function exportWages(supabase: any, month: string, workerId: string
     };
     g.days.push({
       date: hd(a.work_date), site: a.sites?.name ?? '',
-      basis: a.pay_basis === 'hourly' ? `órabér (${ft(Number(a.applied_rate))}/ó)` : a.pay_basis === 'daily' ? `napi díj ×${a.day_multiplier}` : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét',
-      hours: Number(a.hours ?? 0), wage: total - callout, callout, total, paid: !!a.paid_at, note: a.note ?? '',
+      basis: a.pay_basis === 'hourly' ? `órabér (${ft(Number(a.applied_rate))}/ó)` : a.pay_basis === 'daily' ? `napi díjas ×${a.day_multiplier}` : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét',
+      // órabéresnél az elszámolt órák, napi / projektdíjasnál a tényleges munkaidő (a bért nem befolyásolja)
+      hours: Number((a.pay_basis === 'hourly' ? a.hours : a.worked_hours) ?? 0), wage: total - callout, callout, total, paid: !!a.paid_at, note: a.note ?? '',
     });
     groups.set(a.worker_id, g);
   }

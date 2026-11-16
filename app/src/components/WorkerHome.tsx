@@ -369,6 +369,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
                 </Text>
                 {a.source === 'session' || a.source === 'task' ? <Text style={{ fontSize: 11, color: C.sub }}>{a.source === 'task' ? '💬' : '⏱'}</Text> : null}
                 {a.pay_basis === 'hourly' && Number(a.hours ?? 0) > 0 ? <Text style={{ color: C.text, fontWeight: '700' }}>{String(Number(a.hours)).replace('.', ',')} ó</Text> : null}
+                {a.pay_basis !== 'hourly' && a.pay_basis !== 'presence' && Number(a.worked_hours ?? 0) > 0 ? <Text style={{ color: C.text, fontWeight: '700' }}>{fmtHours(Number(a.worked_hours))}</Text> : null}
                 {hidePay ? null : a.pay_basis !== 'presence' ? (
                   <>
                     <Text style={{ color: C.text, fontWeight: '700' }}>{ft(Number(a.amount) - Number(a.commission_amount))}</Text>

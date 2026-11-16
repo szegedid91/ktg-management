@@ -144,6 +144,13 @@ export function fmtHours(h: number): string {
   return hh > 0 ? `${hh} ó ${mm} p` : `${mm} p`;
 }
 
+/** Nem órabéres (pl. napi díjas) tételnél a ledolgozott idő szövege, ha a szerver rögzítette: „ · 3 ó 45 p munkaidő”.
+ *  Csak tájékoztatás — a bér napi díj marad. */
+export function workedSuffix(a: { pay_basis: string; worked_hours?: number | null }): string {
+  const h = Number(a.worked_hours ?? 0);
+  return a.pay_basis !== 'hourly' && a.pay_basis !== 'presence' && h > 0 ? ` · ${fmtHours(h)} munkaidő` : '';
+}
+
 export interface TaskTiming {
   startedAt: string | null;
   finishedAt: string | null;

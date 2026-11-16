@@ -1,7 +1,7 @@
 // Függő kifizetések: kifizetetlen bérek vagy közvetítői díjak,
 // építkezésenként csoportosítva, tételes pipálással.
 
-import { unpaidWorkerPart, paidDiff } from '../../lib/tasks';
+import { unpaidWorkerPart, paidDiff, workedSuffix } from '../../lib/tasks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -93,8 +93,8 @@ function PendingScreenInner() {
         const base = total - calloutRaw;
         const netRate = noCalloutComm ? (base > 0 ? Math.round(Number(a.applied_rate) * (workerPart - netCallout) / base) : Number(a.applied_rate)) : Math.round(Number(a.applied_rate) * keep);
         detail = (contractor ? `${w?.name ?? '?'} · ` : '') + (a.pay_basis === 'hourly' ? `${a.hours} ó × ${ft(netRate)}`
-          : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj a nap első helyszínén' : Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'napi díj')
-          : 'projektdíj');
+          : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj a nap első helyszínén' : Number(a.day_multiplier) === 0.5 ? 'napi díjas · fél nap' : 'napi díjas')
+          : 'projektdíj') + workedSuffix(a);
         if (a.source === 'session') detail += ' · ⏱ munkaidőből';
         if (netCallout > 0) detail += ` · 🚗 kiszállás ${ft(netCallout)}`;
         else if (a.source === 'task') detail += ' · 💬 elfogadott ajánlat';

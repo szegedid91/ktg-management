@@ -83,9 +83,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       : [],
     idList.length
       ? (async () => {
-          const byTask = await inChunks((c) => supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null).in('task_id', c));
+          const byTask = await inChunks((c) => supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at, worked_hours').is('deleted_at', null).in('task_id', c));
           const byDays = workerIds.length && fromTs && toTs
-            ? await fetchAll(() => supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at').is('deleted_at', null).eq('source', 'session').in('worker_id', workerIds).gte('work_date', fromTs.slice(0, 10)).lte('work_date', toTs.slice(0, 10)))
+            ? await fetchAll(() => supabase.from('attendance').select('id, task_id, worker_id, site_id, work_date, source, pay_basis, hours, day_multiplier, applied_rate, amount, commission_amount, callout_fee, paid_at, worked_hours').is('deleted_at', null).eq('source', 'session').in('worker_id', workerIds).gte('work_date', fromTs.slice(0, 10)).lte('work_date', toTs.slice(0, 10)))
             : [];
           const seen = new Set<string>();
           return [...byTask, ...byDays].filter((a: any) => (seen.has(a.id) ? false : (seen.add(a.id), true)));
@@ -155,7 +155,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       if (share <= 0) continue;
       const calloutFee = Number(a.callout_fee ?? 0);
       const callout = share >= 1 || first ? calloutFee : 0;
-      const dayHours = Number(a.hours ?? 0);
+      // órabéresnél az elszámolt (megkezdett) órák; napi / projektdíjasnál a nap tényleges munkaideje (tájékoztatás)
+      const dayHours = Number((a.pay_basis === 'hourly' ? a.hours : a.worked_hours) ?? 0);
       if (share < 1 && a.pay_basis === 'hourly' && dayHours > 0) {
         // órabéres, több feladat aznap ugyanott: a feladat bére = a rajta töltött MEGKEZDETT órák × óradíj
         const taskHours = Math.max(1, Math.ceil(Math.round(mine / 3600000 * 10000) / 10000));
@@ -260,7 +261,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     .sort((p, q) => p.x.row.work_date.localeCompare(q.x.row.work_date))
     .map(({ t, x }) => { const a = x.row; return {
       'Helyszín': siteNameOf.get(t.id) ?? '', 'Feladat kód': codeOf.get(t.id) ?? '', 'Munkavállaló': nameOf(a.worker_id), 'Dátum': hd(a.work_date),
-      'Elszámolás': (a.pay_basis === 'hourly' ? `órabér (${a.hours} ó)` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díj') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét')
+      'Elszámolás': (a.pay_basis === 'hourly' ? `órabér (${a.hours} ó)` : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0 ? 'napi díj máshol elszámolva' : 'napi díjas') : a.pay_basis === 'project' ? 'projektdíj' : 'jelenlét')
         + (x.share < 1 ? (a.pay_basis === 'hourly' ? ` · ezen a feladaton ${x.hours} megkezdett óra` : ` · ezen a feladaton ${hm(x.mineMs)} a nap ${hm(x.totalMs)} munkaidejéből`) : '') + (x.share < 1 && x.callout > 0 ? ' · kiszállás a nap első feladatán' : ''),
       'Órák': x.hours, 'Munkabér (Ft)': x.amount - x.callout, 'Kiszállás (Ft)': x.callout,
       'Ebből közvetítőé (Ft)': x.commission, 'Kifizetve': a.paid_at ? 'igen' : 'nem',

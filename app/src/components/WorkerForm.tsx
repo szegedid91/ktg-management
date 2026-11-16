@@ -277,6 +277,7 @@ export function WorkerForm({ value, onChange }: { value: WorkerFormValues; onCha
           value={value.default_pay_basis}
           onChange={(v) => set({ default_pay_basis: v })}
         />
+        <Sub style={{ fontSize: 11 }}>Az elszámolás módjának váltása a mai naptól érvényes: a korábbi napok a régi mód szerint maradnak. A napi díjasnál a ledolgozott idő is látszik, de a bére napi díj.</Sub>
         <View style={{ flexDirection: 'row', gap: S.sm }}>
           <View style={{ flex: 1 }}><Input label="Órabér (Ft)" value={value.hourly_rate} onChangeText={(t) => set({ hourly_rate: t })} keyboardType="numeric" placeholder={inherited('hourly')} /></View>
           <View style={{ flex: 1 }}><Input label="Napi díj (Ft)" value={value.daily_rate} onChangeText={(t) => set({ daily_rate: t })} keyboardType="numeric" placeholder={inherited('daily')} /></View>

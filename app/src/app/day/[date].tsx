@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { workedSuffix } from '../../lib/tasks';
 import { View, Text } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, KV, Divider, Empty, Picker, Input, Segmented, Check, Row } from '../../ui/kit';
@@ -140,8 +141,8 @@ function DayViewInner() {
 
   const basisLabel = (a: Attendance) =>
     a.pay_basis === 'hourly' ? `${a.hours} óra`
-      : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'fél nap' : 'egész nap')
-        : a.pay_basis === 'project' ? 'projektdíjas'
+      : a.pay_basis === 'daily' ? (Number(a.day_multiplier) === 0.5 ? 'napi díjas · fél nap' : 'napi díjas · egész nap') + workedSuffix(a)
+        : a.pay_basis === 'project' ? 'projektdíjas' + workedSuffix(a)
           : 'jelenlét';
 
   /** Gyors hozzáadás egy koppintással, a munkavállaló alapértelmezett
