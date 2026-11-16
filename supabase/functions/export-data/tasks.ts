@@ -180,6 +180,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     wage: number; callout: number; matCost: number; cost: number; matResale: number; invoice: number | null; profit: number | null;
     created: string; done: string; siteId: string; doneNote: string;
     wid: string; calloutCount: number; mats: any[];
+    /** megkezdett órák (munkavállalónként és naponként felfelé kerekítve) — az ügyfél felé ezt számlázzuk */
+    startedHours: number;
   };
   const rows: Row[] = list.flatMap((t) => {
     const s = siteOf.get(t.site_id) ?? { name: '— helyszín nélkül —', address: '' };
@@ -211,6 +213,18 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       const booked = myAtt.reduce((a, x) => a + x.hours, 0);
       const hours = booked > 0 ? r2(booked)
         : r2(ses.filter((x: any) => x.worker_id === wid).reduce((a, x) => a + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 3600000, 0));
+      // megkezdett órák: minden megkezdett óra teljes óra, naponként kerekítve (Daniel szabálya az ügyfél felé is);
+      // ahol nincs könyvelt nap (pl. elfogadott ajánlat), a feladaton töltött idő naponként kerekítve
+      const up = (h: number) => (h > 0 ? Math.ceil(Math.round(h * 1e4) / 1e4) : 0);
+      let startedHours = myAtt.reduce((a, x) => a + up(x.hours), 0);
+      if (startedHours <= 0) {
+        const perDay = new Map<string, number>();
+        for (const x of ses.filter((q: any) => q.worker_id === wid)) {
+          const d = budDay(x.started_at);
+          perDay.set(d, (perDay.get(d) ?? 0) + (new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 3600000);
+        }
+        startedHours = [...perDay.values()].reduce((a, h) => a + up(h), 0);
+      }
       // anyag: a munkavállaló saját tételei; a vezető által (munkavállaló nélkül) rögzített tétel az első soron
       const myMats = mats.filter((m: any) => m.worker_id === wid || (first && !m.worker_id));
       const matCost = myMats.reduce((a, m) => a + Number(m.amount), 0);
@@ -219,7 +233,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       // a munkavállaló megjegyzése a készre jelentéskor („miért tartott ennyi ideig”)
       const doneNote = wid ? String((assBy.get(t.id) ?? []).find((a: any) => a.worker_id === wid)?.done_note ?? '') : '';
       return { ...base, first, worker: wid ? nameOf(wid) : '', hours, wage, callout, matCost, cost, doneNote,
-        wid: wid ?? '', calloutCount: myAtt.filter((x) => x.callout > 0).length, mats: myMats,
+        wid: wid ?? '', calloutCount: myAtt.filter((x) => x.callout > 0).length, mats: myMats, startedHours,
         matResale: first ? matResale : 0, invoice: first ? invoice : null, profit: null };
     });
     if (invoice != null) out[0].profit = invoice + matResale - taskCost;
@@ -298,7 +312,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
 }
 
 /** Elszámolás az ügyfél felé („Heti elszámolás” minta): feladatonként egy tömb — Munka sorszáma, megnevezés,
- *  majd Megnevezés / Mennyiség / Egység / Árak/Díjak / Összesen sorok: Munkaóra (óra × kimenő órabér),
+ *  majd Megnevezés / Mennyiség / Egység / Árak/Díjak / Összesen sorok: Munkaóra (megkezdett óra × kimenő órabér),
  *  Kiszállás (alkalom × kimenő kiszállási díj), anyagok (a rögzített tétel, 1 db, a továbbszámlázott ár —
  *  ha nincs beárazva, a bekerülési összeg), végül Összesen; a lap alján Mindösszesen. Az összegek képletek,
  *  így a mennyiség vagy az ár átírása után az Excel újraszámol. */
@@ -315,7 +329,8 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
   const formula = (fx: string, v: number) => ({ t: 'n', f: fx, v, z: '#,##0' });
   for (const rs of byTask.values()) {
     const t = rs[0];
-    const hours = r2(rs.reduce((a, r) => a + r.hours, 0));
+    // az ügyfél felé a megkezdett órák mennek (minden megkezdett óra teljes óra)
+    const hours = rs.reduce((a, r) => a + (r.startedHours ?? Math.ceil(r.hours)), 0);
     const calloutN = rs.reduce((a, r) => a + r.calloutCount, 0);
     const seen = new Set<string>();
     const mats = rs.flatMap((r) => r.mats).filter((m: any) => (seen.has(m.id) ? false : (seen.add(m.id), true)))
