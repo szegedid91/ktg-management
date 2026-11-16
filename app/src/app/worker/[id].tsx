@@ -21,11 +21,22 @@ import { syncNow } from '../../lib/sync';
 function WorkerDetailInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const worker = useRow<Worker>('workers', id);
-  const myTasks = useTable<TaskAssignee>('task_assignees').filter((a) => a.worker_id === id).map((a) => a.task_id);
+  const myAssignments = useTable<TaskAssignee>('task_assignees').filter((a) => a.worker_id === id);
+  const myTasks = myAssignments.map((a) => a.task_id);
   const allTasks = useTable<WorkerTask>('worker_tasks');
   const taskLabel = (id: string | null | undefined) => { const t = id ? allTasks.find((x) => x.id === id) : null; return t ? `${t.code ? `${t.code} · ` : ''}${t.title}` : null; };
   const tasks = allTasks.filter((t) => myTasks.includes(t.id))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  // feladat-szűrő: aktív / kész / minden. „Kész” ennél az embernél: a feladat kész, vagy ő a saját részét
+  // készre jelentette (több emberes feladatnál a többiek még dolgozhatnak rajta)
+  const [taskFilter, setTaskFilter] = useState<'active' | 'done' | 'all'>('active');
+  const [taskLimit, setTaskLimit] = useState(15);
+  const myDoneAt = (t: WorkerTask) => myAssignments.find((a) => a.task_id === t.id)?.done_at ?? null;
+  const isDoneForWorker = (t: WorkerTask) => t.status === 'done' || (isActiveTask(t) && !!myDoneAt(t));
+  const activeTasks = tasks.filter((t) => isActiveTask(t) && !myDoneAt(t));
+  const doneTasks = tasks.filter(isDoneForWorker)
+    .sort((a, b) => String(myDoneAt(b) ?? b.done_at ?? b.created_at).localeCompare(String(myDoneAt(a) ?? a.done_at ?? a.created_at)));
+  const shownTasks = taskFilter === 'active' ? activeTasks : taskFilter === 'done' ? doneTasks : tasks;
   const sessions = useTable<WorkSession>('work_sessions').filter((s) => s.worker_id === id)
     .sort((a, b) => b.started_at.localeCompare(a.started_at));
   const allAttendance = useTable<Attendance>('attendance');
@@ -393,20 +404,36 @@ function WorkerDetailInner() {
 
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <H2>🛠️ Feladatok ({tasks.filter(isActiveTask).length} aktív)</H2>
+          <H2>🛠️ Feladatok ({activeTasks.length} aktív)</H2>
           <Btn title="+ Feladat" small kind="secondary" onPress={() => router.push(`/task/new?workerId=${worker.id}`)} />
         </View>
-        {tasks.length === 0 ? <Sub>Még nincs kiadott feladat.</Sub> : null}
-        {tasks.slice(0, 15).map((t) => (
-          <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)}
-            style={({ pressed }) => ({ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border, opacity: pressed ? 0.7 : 1 })}>
-            <View style={{ flex: 1 }}>
-              <Body style={{ fontWeight: '600' }}>{t.code ? `${t.code} · ` : ''}{t.title}</Body>
-              <Sub>{TASK_STATUS_LABEL[t.status]}{t.done_at ? ` · ${hd(t.done_at)}` : ''}</Sub>
-            </View>
-            <Text style={{ color: C.sub, fontSize: 16 }}>›</Text>
-          </Pressable>
-        ))}
+        {tasks.length === 0 ? <Sub>Még nincs kiadott feladat.</Sub> : (
+          <Segmented value={taskFilter} onChange={(v) => { setTaskFilter(v); setTaskLimit(15); }}
+            options={[
+              { value: 'active', label: `Aktív (${activeTasks.length})` },
+              { value: 'done', label: `✔ Kész (${doneTasks.length})` },
+              { value: 'all', label: `Minden (${tasks.length})` },
+            ]} />
+        )}
+        {tasks.length > 0 && shownTasks.length === 0 ? <Sub>{taskFilter === 'done' ? 'Még nincs kész feladata.' : 'Nincs aktív feladata.'}</Sub> : null}
+        {shownTasks.slice(0, taskLimit).map((t) => {
+          const mine = myDoneAt(t);
+          // a saját részét készre jelentette, de a feladat még fut (a többiek dolgoznak rajta)
+          const partDone = !!mine && isActiveTask(t);
+          return (
+            <Pressable key={t.id} onPress={() => router.push(`/task/${t.id}`)}
+              style={({ pressed }) => ({ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border, opacity: pressed ? 0.7 : 1 })}>
+              <View style={{ flex: 1 }}>
+                <Body style={{ fontWeight: '600' }}>{t.code ? `${t.code} · ` : ''}{t.title}</Body>
+                <Sub>{partDone ? `a saját része kész · ${hd(mine)}` : `${TASK_STATUS_LABEL[t.status]}${t.done_at ? ` · ${hd(t.done_at)}` : ''}`}</Sub>
+              </View>
+              <Text style={{ color: C.sub, fontSize: 16 }}>›</Text>
+            </Pressable>
+          );
+        })}
+        {shownTasks.length > taskLimit ? (
+          <Btn title={`További ${Math.min(30, shownTasks.length - taskLimit)} mutatása (még ${shownTasks.length - taskLimit})`} kind="ghost" small onPress={() => setTaskLimit(taskLimit + 30)} />
+        ) : null}
       </Card>
 
       <Card>
