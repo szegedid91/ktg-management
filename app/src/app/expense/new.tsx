@@ -18,7 +18,7 @@ import { fromGross } from '../../lib/calc';
 import { AmountVat, initialVatState, vatStateToAmounts, VatState } from '../../components/AmountVat';
 import { PercentSlider } from '../../components/PercentSlider';
 import { todayISO, ft, parseAmount } from '../../lib/format';
-import { supabase } from '../../lib/supabase';
+import { supabase, ensureFreshSession } from '../../lib/supabase';
 import { Site, ExpenseCategory, AppSettings } from '../../lib/types';
 
 function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
@@ -197,6 +197,7 @@ function NewExpenseInner() {
         const path = `${expenseId}/${newId()}.jpg`;
         const bin = photo.base64 ? Uint8Array.from(atob(photo.base64), (c) => c.charCodeAt(0)) : null;
         if (!bin) continue;
+        await ensureFreshSession(); // lejárt tokennel a feltöltés névtelenül menne ki és elbukna
         const { error } = await supabase.storage.from('receipts').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
         if (error) { photoFails++; logError('upload', `receipts: ${error.message}`, errInfo(error)); }
         else insertRow('expense_photos', { expense_id: expenseId, storage_path: path });

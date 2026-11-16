@@ -1,7 +1,7 @@
 // Fotó választás/készítés + feltöltés privát tárolóba (feladat-bizonylatok).
 
 import * as ImagePicker from 'expo-image-picker';
-import { supabase } from './supabase';
+import { supabase, ensureFreshSession } from './supabase';
 import { logError, errInfo } from './errlog';
 import { newId } from './repo';
 
@@ -63,7 +63,14 @@ export async function pickPhotos(fromCamera: boolean, limit = 10): Promise<Picke
 export async function uploadTaskPhoto(base64: string, folder: string): Promise<string> {
   const path = `${folder}/${newId()}.jpg`;
   const bin = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const { error } = await supabase.storage.from('tasks').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
+  // lejárt tokennel a feltöltés névtelenül menne ki, és „row-level security” hibával bukna — előbb frissítünk
+  await ensureFreshSession();
+  const put = () => supabase.storage.from('tasks').upload(path, bin.buffer as ArrayBuffer, { contentType: 'image/jpeg' });
+  let { error } = await put();
+  if (error && /row-level security|permission denied|Unauthorized|jwt/i.test(String(error.message))) {
+    // jellemzően a token a kérés pillanatában járt le: frissítés után egyszer újrapróbáljuk
+    if (await ensureFreshSession()) ({ error } = await put());
+  }
   if (error) {
     if (!/Failed to fetch|NetworkError|Load failed/i.test(String(error.message))) {
       logError('upload', `tasks/${folder}: ${error.message}`, { ...errInfo(error), sizeKB: Math.round(bin.length / 1024) });

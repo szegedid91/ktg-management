@@ -1,7 +1,7 @@
 // Szinkronmotor: outbox feltolása + változások lehúzása updated_at kurzorral.
 // Fut: app-induláskor, előtérbe kerüléskor, minden írás után és 30 mp-enként.
 
-import { supabase } from './supabase';
+import { supabase, ensureFreshSession } from './supabase';
 import { store, OutboxOp, opRowIds } from './store';
 import { logError, errInfo, flushErrlog, setErrlogUser } from './errlog';
 import { SYNC_TABLES, SyncTable } from './types';
@@ -37,7 +37,8 @@ export function subscribeSyncStatus(l: (s: SyncStatus) => void): () => void {
 /** Hálózati hiba (offline) vs. szerver által elutasított művelet megkülönböztetése */
 function isNetworkError(err: any): boolean {
   const msg = String(err?.message ?? err ?? '');
-  return /network|fetch|timeout|abort|Failed to fetch|ERR_/i.test(msg);
+  // „Load failed”: az iOS Safari hálózati hibája (pl. az app a háttérbe került kérés közben)
+  return /network|fetch|timeout|abort|Failed to fetch|Load failed|ERR_/i.test(msg);
 }
 
 /** Végleges üzleti elutasítás (RLS, constraint, trigger, séma) — nincs értelme
@@ -119,8 +120,20 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
   } catch (err: any) {
     const what = op.kind === 'rpc' ? `rpc ${op.fn}` : `${op.kind} ${op.table}`;
     if (isRejection(err)) {
-      store.markOpError(op.opId, String(err?.message ?? err), String(err?.code ?? ''));
-      logError('sync-rejected', `${what}: ${String(err?.message ?? err)}`, { ...errInfo(err), op: opSummary(op) });
+      const code = String(err?.code ?? '');
+      const msg = String(err?.message ?? err);
+      // jogosultsági hiba (42501): lehet, hogy a kérés lejárt tokennel, névtelenül ment ki (lásd
+      // ensureFreshSession) — ilyenkor a „nincs jogosultság” NEM a szerver döntése a műveletről. A műveletet
+      // ezért csak akkor tekintjük elutasítottnak, ha érvényes belépéssel, másodszor is ugyanezt kapjuk;
+      // addig a sorban marad (különben a munkavállaló offline rögzített adata elveszne).
+      if (code === '42501' || /permission denied|row-level security/i.test(msg)) {
+        const session = await ensureFreshSession();
+        if (!session) return 'offline';
+        if (!op.authRetried) { store.markOpAuthRetry(op.opId); return 'offline'; }
+      }
+      store.markOpError(op.opId, msg, code);
+      // a „már lezárt / már elfogadott” elutasítást csendben kezeljük (isStaleRejection) — nem hiba, nem naplózzuk
+      if (!STALE_RE.test(msg)) logError('sync-rejected', `${what}: ${msg}`, { ...errInfo(err), op: opSummary(op) });
       return 'rejected';
     }
     // hálózati vagy átmeneti szerverhiba → az op a sorban marad, retry később
@@ -137,9 +150,9 @@ async function pushOp(op: OutboxOp): Promise<'done' | 'offline' | 'rejected'> {
 
 /** Olyan elutasítás, amit a felhasználó nem tud „megjavítani”: a szerver sora időközben továbblépett
  *  (lezárt munkaidő, már elfogadott / lezárt feladat) — az elavult helyi művelet eldobható. */
+const STALE_RE = /Lezárt munkamenet már nem módosítható|már le van zárva|már elfogadták/i;
 function isStaleRejection(op: OutboxOp): boolean {
-  const msg = String(op.lastError ?? '');
-  return /Lezárt munkamenet már nem módosítható|már le van zárva|már elfogadták/i.test(msg);
+  return STALE_RE.test(String(op.lastError ?? ''));
 }
 
 /** Üzleti elutasítás: a szerver szabálya (P0001), egyediség / megszorítás (23xxx) vagy jogosultság (42501)
@@ -383,18 +396,20 @@ export function syncNow(): Promise<void> {
   return current;
 }
 
+/** egymás utáni „permission denied” lehúzási hibák száma (az első csendes újrapróbálás) */
+let permDeniedStreak = 0;
+
 async function runSync(): Promise<void> {
   // a zárat azonnal (szinkron módon) fogjuk: két egyidejű hívás ne futtassa kétszer az outboxot
   syncing = true;
   await store.whenLoaded(); // a diszk-állapot betöltése előtt nem szinkronizálunk
-  let { data: sess } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
-  if (!sess?.session) { syncing = false; return; }
-  // lejárt vagy perceken belül lejáró token (a háttérben nyugvó böngésző nem frissítette): előbb frissítünk,
-  // különben a szerver „JWT expired” hibával küldené vissza az egész kört
-  if ((sess.session.expires_at ?? 0) * 1000 < Date.now() + 90_000) {
-    const r = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } } as any));
-    if (r?.data?.session) sess = { session: r.data.session } as any;
-  }
+  // lejárt vagy perceken belül lejáró token (a háttérben nyugvó böngésző nem frissítette): előbb frissítünk.
+  // Ha nincs érvényes belépés (nincs bejelentkezve, vagy a token lejárt és a frissítés most nem sikerült),
+  // ez a kör kimarad: a kérések névtelenül mennének ki, a szerver „permission denied”-del felelne, és a
+  // sorban álló műveletek tévesen elutasítottnak látszanának. A következő kör (30 mp) újrapróbálja.
+  const fresh = await ensureFreshSession();
+  if (!fresh) { syncing = false; return; }
+  const sess = { session: fresh };
   const gen = store.generation;
 
   status.syncing = true;
@@ -413,6 +428,7 @@ async function runSync(): Promise<void> {
       if (store.generation !== gen) return;
       await reconcileAll();
       status.lastSyncAt = new Date().toISOString();
+      permDeniedStreak = 0;
       if (pushed) status.lastError = null;
       // a naplózó a felhasználó nevével jelent (e-mail nélkül); a helyben várakozó hibák is most mennek fel
       setErrlogUser((store.getAll('profiles') as any[]).find((p) => p.id === sess.session.user.id)?.display_name ?? null);
@@ -428,6 +444,11 @@ async function runSync(): Promise<void> {
     if (code === 'PGRST303' || /JWT expired/i.test(String(err?.message ?? ''))) {
       // lejárt token menet közben: frissítünk és hamarosan újra próbáljuk — ez nem hiba, nem naplózzuk
       await supabase.auth.refreshSession().catch(() => {});
+      runAgain = true;
+    } else if ((code === '42501' || /permission denied/i.test(String(err?.message ?? ''))) && permDeniedStreak++ === 0) {
+      // „permission denied” a lehúzásnál: jellemzően a token a kör közben járt le, és egy kérés névtelenül
+      // ment ki — frissítünk és újrapróbáljuk; csak akkor naplózzuk, ha rögtön utána megismétlődik
+      await ensureFreshSession();
       runAgain = true;
     } else {
       status.lastError = isNetworkError(err) ? null : String(err?.message ?? err);

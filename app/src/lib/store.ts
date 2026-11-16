@@ -24,6 +24,8 @@ export interface OutboxOp {
   lastCode?: string;
   /** átmeneti (nem hálózati) szerverhibás próbálkozások száma */
   attempts?: number;
+  /** jogosultsági hiba után már egyszer újrapróbáltuk */
+  authRetried?: boolean;
   /** rpc: az optimistán módosított sorok — elutasításnál mindet visszatöltjük */
   touched?: { table: SyncTable; id: string }[];
 }
@@ -217,6 +219,14 @@ class Store {
     this.outbox = this.outbox.filter((o) => o.opId !== opId);
     this.schedulePersist(PREFIX + 'outbox', () => this.outbox);
     this.emit();
+  }
+
+  /** jogosultsági hiba után egyszer újrapróbáljuk (a kérés lejárt tokennel, névtelenül is kimehetett) */
+  markOpAuthRetry(opId: string) {
+    const op = this.outbox.find((o) => o.opId === opId);
+    if (!op) return;
+    op.authRetried = true;
+    this.schedulePersist(PREFIX + 'outbox', () => this.outbox);
   }
 
   /** átmeneti szerverhiba: számláló léptetése; a visszaadott érték az eddigi próbák száma */
