@@ -327,7 +327,10 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
     let blockSum = 0;
     const line = (name: string, qty: number, unit: string, price: number) => {
       const n = aoa.length + 1;
-      aoa.push([name, num(qty), unit, num(price), formula(`B${n}*D${n}`, Math.round(qty * price))]);
+      // a mennyiség tört is lehet (pl. 0,5 óra): egész számnál tizedes nélkül, egyébként két tizedessel —
+      // különben a 0,5 „1”-nek látszik, miközben a képlet 0,5-tel számol
+      const qtyCell = { t: 'n', v: qty, z: Number.isInteger(qty) ? '#,##0' : '#,##0.00' };
+      aoa.push([name, qtyCell, unit, num(price), formula(`B${n}*D${n}`, Math.round(qty * price))]);
       blockSum += Math.round(qty * price);
     };
     line('Munkaóra', hours, 'óra', hourly);
