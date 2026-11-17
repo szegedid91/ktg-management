@@ -1013,7 +1013,6 @@ Biztosan leveszed?`, 'Levétel', true);
                 </View>
               );
             })}
-            <Sub>Az „Elszámolás az ügyfél felé” Excel ezekkel a számokkal készül. A munkavállaló bérét ez nem érinti.</Sub>
           </View>
         ) : null}
         {partlyDone ? <Sub>✔ kész = a saját részét készre jelentette — a feladat akkor lesz kész, ha mindenki készre jelentette (vagy te lezárod).</Sub> : null}
