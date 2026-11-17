@@ -1262,7 +1262,8 @@ Biztosan leveszed?`, 'Levétel', true);
                     return (
                       <View key={a.id} style={{ gap: S.sm, borderTopWidth: 1, borderTopColor: C.border, paddingTop: S.sm }}>
                         {people.length > 1 ? <Body style={{ fontWeight: '800' }}>{isMe ? 'Én' : workerName(a.worker_id)}</Body> : null}
-                        <Sub>Az app által mért idő: {fmtHours(d.actual)}{d.hours ? ` (megkezdett órákkal: ${d.hours} óra)` : ''}</Sub>
+                        {/* tételes bontásnál a kerekítésről nem szólunk a munkavállalónak (az elszámolás ettől még megkezdett órákkal megy) */}
+                        <Sub>Az app által mért idő: {fmtHours(d.actual)}{d.hours && !(isMe && itemsMode) ? ` (megkezdett órákkal: ${d.hours} óra)` : ''}</Sub>
                         {isMe && itemsMode ? (
                           <View style={{ gap: S.sm }}>
                             <Body style={{ fontWeight: '700' }}>⏱ Ez a feladat több külön munkából áll. Írd be, melyik mennyi ideig tartott:</Body>
@@ -1276,8 +1277,8 @@ Biztosan leveszed?`, 'Levétel', true);
                               <Body>Egyéb munka (ami nincs a listában)</Body>
                               <NumStep value={otherHours} onChange={setOtherHours} step={0.5} unit="óra" />
                             </View>
-                            <Body style={{ fontWeight: '800' }}>Munkaóra összesen: {hoursText(itemsSum)}{startedHours(itemsSum) !== itemsSum ? ` → elszámolva ${startedHours(itemsSum)} óra` : ''}</Body>
-                            <Sub>Amit nem te csináltál, azt hagyd üresen. Minden megkezdett óra egész órának számít.</Sub>
+                            <Body style={{ fontWeight: '800' }}>Munkaóra összesen: {hoursText(itemsSum)}</Body>
+                            <Sub>Amit nem te csináltál, azt hagyd üresen.</Sub>
                           </View>
                         ) : (
                           <NumStep label="⏱ Munkaóra" value={b.hours} onChange={(v) => setB({ hours: v })} unit="óra" />
