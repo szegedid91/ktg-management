@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
+import { router } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented, Empty } from '../ui/kit';
-import { S } from '../ui/theme';
+import { C, S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
 import { downloadExport } from '../lib/exportfile';
-import { todayISO } from '../lib/format';
+import { todayISO, ft } from '../lib/format';
 import { Site, Worker, AppSettings } from '../lib/types';
 import { notify } from '../lib/dialogs';
 
@@ -44,26 +45,28 @@ function ExportScreenInner() {
   const [sSite, setSSite] = useState<string | null>(null);
   const [sWorker, setSWorker] = useState<string | null>(null);
   const [sCode, setSCode] = useState('');
-  const [sHourly, setSHourly] = useState<string | null>(null);
-  const [sCallout, setSCallout] = useState<string | null>(null);
-  const hourlyStr = sHourly ?? (settings?.out_hourly_rate ? String(Number(settings.out_hourly_rate)) : '');
-  const calloutStr = sCallout ?? (settings?.out_callout_fee != null ? String(Number(settings.out_callout_fee)) : '');
+  // az ügyfél felé számlázott órabér és kiszállási díj egy helyen van megadva: Beállítások › Díjak (a szerver is onnan veszi)
+  const outHourly = Number(settings?.out_hourly_rate ?? 0);
+  const outCallout = Number(settings?.out_callout_fee ?? 0);
   const monthRange = (shift: number) => {
     const d = new Date(todayISO() + 'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + shift);
     const first = d.toISOString().slice(0, 10); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0);
     setSFrom(first); setSTo(d.toISOString().slice(0, 10));
   };
   const shiftSWeek = (n: number) => { const m = addDays(mondayOf(sFrom.trim() || todayISO()), 7 * n); setSFrom(m); setSTo(addDays(m, 6)); };
-  const num = (v: string) => { const n = Number(String(v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n >= 0 ? n : 0; };
 
   const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'settlement' = 'books') => {
+    if (mode === 'settlement' && outHourly <= 0) {
+      notify('Hiányzik az órabér', 'Add meg az ügyfél felé számlázott órabért a Beállítások › Díjak részben — elég egyszer, utána az elszámolás mindig azzal számol.');
+      return;
+    }
     setBusy(`${mode}-${format}`);
     try {
       await downloadExport(
         mode === 'wages' ? { mode, month, worker_id: workerId, format }
           : mode === 'tasks' ? { mode, status: tStatus, from: wFrom.trim() || undefined, to: wTo.trim() || undefined, site_id: wSite }
           : mode === 'settlement' ? { mode: 'tasks', layout: 'settlement', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
-              site_id: sSite, worker_id: sWorker, code: sCode.trim() || undefined, bill_hourly_rate: num(hourlyStr), bill_callout_fee: num(calloutStr) }
+              site_id: sSite, worker_id: sWorker, code: sCode.trim() || undefined }
           : { from, to, site_id: site, format },
       );
     } catch (e: any) {
@@ -179,9 +182,17 @@ function ExportScreenInner() {
         <Picker label="Ember (munkavállaló)" items={[...workers].sort((a, b) => a.name.localeCompare(b.name, 'hu'))} selectedId={sWorker} getId={(w) => w.id}
           getLabel={(w) => w.name} onSelect={setSWorker} allowNull nullLabel="— mindenki —" />
         <Input label="Munka sorszáma (feladatkód, részlet is elég)" value={sCode} onChangeText={setSCode} placeholder="pl. 1502209" autoCapitalize="none" />
-        <View style={{ flexDirection: 'row', gap: S.sm }}>
-          <View style={{ flex: 1 }}><Input label="Kimenő órabér (Ft/óra)" value={hourlyStr} onChangeText={setSHourly} keyboardType="numeric" placeholder="Beállítások › Díjak" /></View>
-          <View style={{ flex: 1 }}><Input label="Kimenő kiszállás (Ft/alkalom)" value={calloutStr} onChangeText={setSCallout} keyboardType="numeric" placeholder="Beállítások › Díjak" /></View>
+        <View style={{ borderWidth: 1, borderColor: outHourly > 0 ? C.border : C.warning, borderRadius: S.radiusSm, padding: S.sm, gap: 4 }}>
+          {outHourly > 0 ? (
+            <>
+              <Text style={{ color: C.text, fontWeight: '700' }}>Órabér: {ft(outHourly)} / megkezdett óra</Text>
+              <Text style={{ color: C.text, fontWeight: '700' }}>Kiszállási díj: {outCallout > 0 ? `${ft(outCallout)} / alkalom` : 'nincs megadva (0 Ft)'}</Text>
+              <Sub>A Beállítások › Díjak részben megadott értékek — itt nem kell újra beírni.</Sub>
+            </>
+          ) : (
+            <Sub style={{ color: C.warning, fontWeight: '700' }}>Még nincs megadva, milyen órabéren számolsz el az ügyfél felé. Add meg egyszer a Beállítások › Díjak részben.</Sub>
+          )}
+          <Btn title="⚙️ Díjak módosítása" kind="ghost" small onPress={() => router.push('/settings?open=rates' as any)} />
         </View>
         <Btn title={busy === 'settlement-xlsx' ? 'Készül…' : '🧾 Elszámolás Excelbe'} onPress={() => void doExport('xlsx', 'settlement')} disabled={!!busy} />
       </Card>

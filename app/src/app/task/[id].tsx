@@ -553,6 +553,10 @@ Biztosan leveszed?`, 'Levétel', true);
 
   // a feladat összefoglalója Excelben (helyszín, kód, munkaóra, bér, kiszállás, anyagköltség)
   const exportSummary = async (layout?: 'settlement') => {
+    if (layout === 'settlement' && Number(appSettings?.out_hourly_rate ?? 0) <= 0) {
+      notify('Hiányzik az órabér', 'Add meg az ügyfél felé számlázott órabért a Beállítások › Díjak részben — elég egyszer, utána az elszámolás mindig azzal számol.');
+      return;
+    }
     setXlsBusy(true);
     try {
       // elszámolásnál a kimenő órabér / kiszállási díj a Beállításokból (a szerver tölti ki)

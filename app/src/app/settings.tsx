@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Platform, View, Text, Pressable, TextInput } from 'react-native';
 import { Screen, Card, H2, Sub, Input, Btn, Divider, Body, Check, Segmented, Empty } from '../ui/kit';
 import { S, C, getThemePref, setThemePref, ThemePref } from '../ui/theme';
@@ -70,7 +71,9 @@ function SettingsInner() {
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [theme, setThemeState] = useState<ThemePref>(getThemePref());
   // egyszerre egy szakasz van nyitva; ha az én jóváhagyásomra vár részesedés-javaslat, az nyílik ki
-  const [open, setOpen] = useState<string | null>(() => (pendingReq && pendingReq.proposed_by !== me ? 'shares' : null));
+  // ?open=rates: az export oldal „Díjak módosítása” gombja egyből a Díjak részt nyitja
+  const { open: openParam } = useLocalSearchParams<{ open?: string }>();
+  const [open, setOpen] = useState<string | null>(() => (openParam ? String(openParam) : pendingReq && pendingReq.proposed_by !== me ? 'shares' : null));
   const tog = (id: string) => setOpen((cur) => (cur === id ? null : id));
 
   // zárt regisztráció: csak az itt engedélyezett e-mailek regisztrálhatnak
@@ -215,11 +218,11 @@ function SettingsInner() {
 
   if (!settings) return <Screen><Sub>Beállítások betöltése (első szinkron)…</Sub></Screen>;
 
-  const RATE_ROWS: { label: string; ind: string; comp: string; out?: string; ph?: string }[] = [
-    { label: 'Órabér', ind: 'individual_hourly_rate', comp: 'company_hourly_rate', out: 'out_hourly_rate' },
-    { label: 'Napi díj', ind: 'individual_daily_rate', comp: 'company_daily_rate', out: 'out_daily_rate' },
-    { label: 'Projektdíj', ind: 'individual_project_rate', comp: 'company_project_rate', out: 'out_project_rate' },
-    { label: 'Kiszállás', ind: 'individual_callout_fee', comp: 'company_callout_fee', out: 'out_callout_fee', ph: '1 óra' },
+  const RATE_ROWS: { label: string; ind: string; comp: string; ph?: string }[] = [
+    { label: 'Órabér', ind: 'individual_hourly_rate', comp: 'company_hourly_rate' },
+    { label: 'Napi díj', ind: 'individual_daily_rate', comp: 'company_daily_rate' },
+    { label: 'Projektdíj', ind: 'individual_project_rate', comp: 'company_project_rate' },
+    { label: 'Kiszállás', ind: 'individual_callout_fee', comp: 'company_callout_fee', ph: '1 óra' },
   ];
   const setRate = (k: string, v: string) => setRates({ ...rates, [k]: v });
   const notifOn = myProfile ? [myProfile.notify_comments, myProfile.notify_big_expense, myProfile.notify_weekly, myProfile.notify_overdue].filter(Boolean).length : 0;
@@ -242,10 +245,11 @@ function SettingsInner() {
 
       <Section icon="💰" title="Díjak" open={open === 'rates'} onToggle={() => tog('rates')}
         summary={`órabér ${rates.individual_hourly_rate || '—'} / ${rates.company_hourly_rate || '—'} Ft`}>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: C.text }}>👷 Munkavállalók díjai</Text>
         <Sub>Alapértelmezett díjak (Ft). A munkavállalónál megadott egyedi díj ezeket felülírja.</Sub>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={{ width: 78 }} />
-          {['Magánsz.', 'Céges', 'Kimenő'].map((h) => (
+          {['Magánsz.', 'Céges'].map((h) => (
             <Text key={h} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700', color: C.sub }}>{h}</Text>
           ))}
         </View>
@@ -254,10 +258,22 @@ function SettingsInner() {
             <Text style={{ width: 78, fontSize: 13, fontWeight: '600', color: C.text }}>{r.label}</Text>
             <Cell value={rates[r.ind] ?? ''} onChange={(v) => setRate(r.ind, v)} placeholder={r.ph} />
             <Cell value={rates[r.comp] ?? ''} onChange={(v) => setRate(r.comp, v)} placeholder={r.ph} />
-            {r.out ? <Cell value={rates[r.out] ?? ''} onChange={(v) => setRate(r.out!, v)} placeholder={r.out === 'out_callout_fee' ? 'alkalom' : undefined} /> : <View style={{ flex: 1 }} />}
           </View>
         ))}
-        <Sub style={{ fontSize: 11 }}>Kiszállás: helyszínenként és naponként egyszer. Üres = 1 óra bére, 0 = nincs díj. „Kimenő” = amit a megrendelőnek számlázol — az elszámolás-export (Pénzügy › Export) ezt teszi az „Árak/Díjak” oszlopba.</Sub>
+        <Sub style={{ fontSize: 11 }}>Kiszállás: helyszínenként és naponként egyszer. Üres = 1 óra bére, 0 = nincs díj.</Sub>
+
+        <Text style={{ fontSize: 14, fontWeight: '800', color: C.text, marginTop: 6 }}>🧾 Elszámolás az ügyfél felé</Text>
+        <Sub>Amit a megrendelőnek számlázol. Elég itt egyszer megadni: az „Elszámolás az ügyfél felé” Excel (Pénzügy › Export, illetve a feladat oldala) mindig ezzel számol.</Sub>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Órabér az ügyfél felé (Ft / megkezdett óra)</Text>
+          <Cell value={rates.out_hourly_rate ?? ''} onChange={(v) => setRate('out_hourly_rate', v)} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Kiszállási díj az ügyfél felé (Ft / alkalom)</Text>
+          <Cell value={rates.out_callout_fee ?? ''} onChange={(v) => setRate('out_callout_fee', v)} />
+        </View>
+
+        <Text style={{ fontSize: 14, fontWeight: '800', color: C.text, marginTop: 6 }}>Egyéb</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={{ flex: 2, fontSize: 13, fontWeight: '600', color: C.text }}>Alapértelmezett ÁFA (%)</Text>
           <Cell value={rates.default_vat_rate ?? '27'} onChange={(v) => setRate('default_vat_rate', v)} />
