@@ -28,7 +28,7 @@ import {
 import {
   WorkerTask, TaskAssignee, TaskMaterial, TaskMaterialPricing, TaskFinance, TaskQuote, WorkSession, Worker, Site, Profile, Attendance, TaskSubtask, TaskNote, AppSettings, TaskPhoto, SiteContact,
 } from '../../lib/types';
-import { isOverdue, sessionHours } from '../../lib/tasks';
+import { isOverdue, sessionHours, billingDefaults, taskListItems, parseHours, startedHours } from '../../lib/tasks';
 import { ContactLine } from '../../components/SiteContacts';
 import { todayISO } from '../../lib/format';
 
@@ -57,6 +57,23 @@ function Section({ title, summary, defaultOpen = false, accent, plain, openSigna
       </Pressable>
       {open ? children : null}
     </Card>
+  );
+}
+
+/** Számmező nagy − / + gombokkal (telefonon könnyebb, mint gépelni); a mezőbe írni is lehet */
+function NumStep({ label, value, onChange, step = 1, unit }: { label?: string; value: string; onChange: (v: string) => void; step?: number; unit: string }) {
+  const n = parseHours(value);
+  const fmt = (x: number) => String(Math.round(x * 100) / 100).replace('.', ',');
+  return (
+    <View style={{ gap: 4 }}>
+      {label ? <Sub style={{ fontWeight: '700' }}>{label}</Sub> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+        <View style={{ width: 56 }}><Btn title="−" kind="secondary" onPress={() => onChange(fmt(Math.max(0, n - step)))} /></View>
+        <View style={{ flex: 1 }}><Input value={value} onChangeText={onChange} keyboardType="numeric" placeholder="0" /></View>
+        <Body style={{ minWidth: 62 }}>{unit}</Body>
+        <View style={{ width: 56 }}><Btn title="+" kind="secondary" onPress={() => onChange(fmt(n + step))} /></View>
+      </View>
+    </View>
   );
 }
 
@@ -202,6 +219,13 @@ Biztosan leveszed?`, 'Levétel', true);
   // készre jelentés: a megerősítő kártya a „miért tartott ennyi ideig?” mezővel (nem kötelező)
   const [doneAsk, setDoneAsk] = useState(false);
   const [doneNote, setDoneNote] = useState('');
+  // elszámolás az ügyfél felé a készre jelentéskor: emberenként munkaóra + kiszállás (a mért időből előtöltve,
+  // javítható); ha a feladat több külön munkát sorol fel, a saját időt tételenként kell megadni
+  const [bill, setBill] = useState<Record<string, { hours: string; callouts: string }>>({});
+  const [itemHours, setItemHours] = useState<Record<number, string>>({});
+  const [otherHours, setOtherHours] = useState('');
+  // vezető: a jóváhagyott számok javítása
+  const [billEdit, setBillEdit] = useState<{ id: string; hours: string; callouts: string } | null>(null);
   const [matPhotos, setMatPhotos] = useState<PickedPhoto[]>([]);
   const [busy, setBusy] = useState(false);
   const [xlsBusy, setXlsBusy] = useState(false);
@@ -336,21 +360,68 @@ Biztosan leveszed?`, 'Levétel', true);
   // a fiók nélküli embereié is (ők maguk nem tudják jelenteni) — akinek van saját fiókja, az maga jelenti
   const doneMineIds = () => new Set<string>([myWorkerId!, ...crew.filter((c) => !profiles.some((p) => p.worker_id === c.id)).map((c) => c.id)]);
   const doneOthers = () => { const mine = doneMineIds(); return assignees.filter((a) => !mine.has(a.worker_id) && !a.done_at); };
+  // ---- elszámolás az ügyfél felé (a bért NEM érinti: az a mért munkaidőből számolódik) ----
+  const listItems = taskListItems(task.title, task.details);
+  const donePeople = () => { const mine = doneMineIds(); return assignees.filter((a) => mine.has(a.worker_id) && !a.done_at); };
+  const openDone = () => {
+    const b: Record<string, { hours: string; callouts: string }> = {};
+    for (const a of donePeople()) {
+      const d = billingDefaults(task.id, a.worker_id, allSessions);
+      b[a.worker_id] = { hours: String(d.hours), callouts: String(d.callouts) };
+    }
+    setBill(b); setItemHours({}); setOtherHours(''); setDoneAsk(true);
+  };
+  const closeDone = () => { setDoneAsk(false); setDoneNote(''); };
+  // tételes bontás csak a saját időmre (az embereimnél fejenként egy összeg)
+  const itemsMode = listItems.length > 0;
+  const myItems = itemsMode
+    ? [...listItems.map((label, i) => ({ label, hours: parseHours(itemHours[i] ?? '') })), { label: 'Egyéb munka', hours: parseHours(otherHours) }].filter((x) => x.hours > 0)
+    : [];
+  const itemsSum = myItems.reduce((a, x) => a + x.hours, 0);
+  const billOf = (wid: string) => ({
+    hours: itemsMode && wid === myWorkerId ? startedHours(itemsSum) : startedHours(parseHours(bill[wid]?.hours ?? '')),
+    callouts: Math.min(99, Math.round(parseHours(bill[wid]?.callouts ?? ''))),
+  });
+  // 4 óránál hosszabb munkánál kötelező a részletes leírás (a mért vagy a megadott idő alapján)
+  const longWork = () => donePeople().some((a) => billOf(a.worker_id).hours > 4 || billingDefaults(task.id, a.worker_id, allSessions).actual > 4);
+  const hoursText = (h: number) => `${String(Math.round(h * 100) / 100).replace('.', ',')} óra`;
+  const billText = (a: TaskAssignee) => `${hoursText(Number(a.bill_hours ?? 0))} · ${Number(a.bill_callouts ?? 0)} kiszállás`;
+
   const markDone = async () => {
     if (busy) return;
     const mineIds = doneMineIds();
     const others = doneOthers();
+    const people = donePeople();
     const note = doneNote.trim() || null;
+    if (itemsMode && itemsSum <= 0) { notify('Hiányzik az idő', 'Írd be, melyik munka mennyi ideig tartott (elég azoknál, amiket te csináltál).'); return; }
+    if (myWorkerId && people.some((a) => a.worker_id === myWorkerId) && billOf(myWorkerId).hours <= 0) { notify('Hiányzik a munkaóra', 'Add meg, hány órát dolgoztál ezen a feladaton.'); return; }
+    if (longWork() && (note ?? '').length < 20) {
+      notify('Részletes leírás kell', '4 óránál hosszabb munkánál írd le részletesen: mit csináltál pontosan, és miért tartott ennyi ideig.');
+      return;
+    }
     // csak azok munkaideje áll le, akiknek a része most kész lesz (a fiókkal rendelkező embereim dolgozhatnak tovább)
     if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
     for (const s of crewOpenSessions) if (mineIds.has(s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
     const t = nowISO();
-    queueRpc('worker_task_action', { p_id: task.id, p_action: 'done', p_reason: note }, [
-      ...assignees.filter((a) => mineIds.has(a.worker_id) && !a.done_at).map((a) => ({ table: 'task_assignees' as const, id: a.id, patch: { done_at: t, done_note: note } })),
+    const parts = people.map((a) => ({
+      worker_id: a.worker_id, ...billOf(a.worker_id),
+      ...(itemsMode && a.worker_id === myWorkerId ? { items: myItems } : {}),
+    }));
+    queueRpc('worker_task_action', { p_id: task.id, p_action: 'done', p_reason: note, p_parts: parts }, [
+      ...people.map((a) => {
+        const p = parts.find((x) => x.worker_id === a.worker_id)!;
+        return { table: 'task_assignees' as const, id: a.id, patch: { done_at: t, done_note: note, bill_hours: p.hours, bill_callouts: p.callouts, bill_items: (p as any).items ?? null, bill_confirmed_at: t } };
+      }),
       ...(others.length ? [] : [{ table: 'worker_tasks' as const, id: task.id, patch: { status: 'done', done_at: t } }]),
     ]);
-    setDoneAsk(false); setDoneNote('');
+    closeDone();
     if (others.length) { notify('A te részed kész ✔', 'A feladat akkor zárul le, ha mindenki készre jelentette.'); smartBack(); }
+  };
+  // vezető: a jóváhagyott (vagy még ki nem töltött) elszámolási számok javítása
+  const saveBillEdit = () => {
+    if (!billEdit) return;
+    updateRow('task_assignees', billEdit.id, { bill_hours: startedHours(parseHours(billEdit.hours)), bill_callouts: Math.min(99, Math.round(parseHours(billEdit.callouts))) });
+    setBillEdit(null);
   };
 
   const submitFail = async () => {
@@ -895,6 +966,7 @@ Biztosan leveszed?`, 'Levétel', true);
             ) : task.done_at ? <Sub>✔ Készre jelentve: {hdt(task.done_at)}</Sub>
               : myAssignment?.done_at ? <Sub>✔ A te részed kész: {hdt(myAssignment.done_at)} — a többiek még dolgoznak rajta.</Sub> : null}
             {myAssignment?.done_note ? <Sub>💬 Megjegyzésed: {myAssignment.done_note}</Sub> : null}
+            {myAssignment?.bill_confirmed_at ? <Sub>🧾 Elszámolásra megadtad: {billText(myAssignment)}</Sub> : null}
           </>
         ) : (
           <>
@@ -906,8 +978,44 @@ Biztosan leveszed?`, 'Levétel', true);
         <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
         <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.done_at && isActiveTask(task) ? '✔ kész' : a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
         {assignees.filter((a) => a.done_note).map((a) => (
-          <Sub key={a.id}>💬 {workerName(a.worker_id)}, miért tartott ennyi ideig: {a.done_note}</Sub>
+          <Sub key={a.id}>💬 {workerName(a.worker_id)}, mit csinált / miért tartott ennyi ideig: {a.done_note}</Sub>
         ))}
+        {assignees.length > 0 ? (
+          <View style={{ borderWidth: 1, borderColor: C.border, borderRadius: S.radiusSm, padding: S.sm, gap: 4 }}>
+            <Body style={{ fontWeight: '800' }}>🧾 Elszámolás az ügyfél felé</Body>
+            {assignees.map((a) => {
+              const d = billingDefaults(task.id, a.worker_id, allSessions);
+              const editing = billEdit?.id === a.id;
+              return (
+                <View key={a.id} style={{ gap: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: C.border }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Body>{workerName(a.worker_id)}: {a.bill_hours != null ? billText(a) : `${hoursText(d.hours)} · ${d.callouts} kiszállás`}</Body>
+                      <Sub>{a.bill_confirmed_at ? `a munkavállaló megadta: ${hdt(a.bill_confirmed_at)}` : a.bill_hours != null ? 'vezető állította be' : 'még nem adta meg — az Excel a mért időből számol'}
+                        {` · mért idő: ${fmtHours(d.actual)}`}</Sub>
+                    </View>
+                    {partnerEdit && !editing ? <Btn title="✏️" kind="ghost" small
+                      onPress={() => setBillEdit({ id: a.id, hours: String(a.bill_hours ?? d.hours).replace('.', ','), callouts: String(a.bill_callouts ?? d.callouts) })} /> : null}
+                  </View>
+                  {(a.bill_items ?? []).map((it, i) => <Sub key={i}>   ↳ {it.label}: {hoursText(Number(it.hours))}</Sub>)}
+                  {editing && billEdit ? (
+                    <View style={{ gap: S.sm }}>
+                      <View style={{ flexDirection: 'row', gap: S.sm }}>
+                        <View style={{ flex: 1 }}><Input label="Munkaóra" value={billEdit.hours} onChangeText={(v) => setBillEdit({ ...billEdit, hours: v })} keyboardType="numeric" /></View>
+                        <View style={{ flex: 1 }}><Input label="Kiszállás (alkalom)" value={billEdit.callouts} onChangeText={(v) => setBillEdit({ ...billEdit, callouts: v })} keyboardType="numeric" /></View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: S.sm }}>
+                        <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" small onPress={() => setBillEdit(null)} /></View>
+                        <View style={{ flex: 1 }}><Btn title="Mentés" small onPress={saveBillEdit} /></View>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+            <Sub>Az „Elszámolás az ügyfél felé” Excel ezekkel a számokkal készül. A munkavállaló bérét ez nem érinti.</Sub>
+          </View>
+        ) : null}
         {partlyDone ? <Sub>✔ kész = a saját részét készre jelentette — a feladat akkor lesz kész, ha mindenki készre jelentette (vagy te lezárod).</Sub> : null}
         {assignees.some((a) => !a.acknowledged_at) ? <Sub>{isQuoteTask ? '⏳ = ajánlatra várunk · ✓ = elfogadott ajánlat' : '⏳ = még nem fogadta el · ✓ = elfogadta'}</Sub> : null}
         {active ? <KV k="Határidő" v={task.due_date ? hd(task.due_date) : 'nincs'} /> : null}
@@ -1049,21 +1157,75 @@ Biztosan leveszed?`, 'Levétel', true);
             ? <Btn title="⏹ Munka befejezése most" kind="danger" onPress={() => stopWork()} />
             : <Btn title="▶ Munka megkezdése most" kind="secondary" onPress={() => void startWork()} />
         ) : null}
-              {startedByMe && !doneAsk ? <Btn title="Kész ✔" onPress={() => setDoneAsk(true)} /> : null}
-              {startedByMe && doneAsk ? (
-                <View style={{ gap: S.sm, borderWidth: 2, borderColor: C.success, borderRadius: S.radiusSm, padding: S.sm }}>
-                  <Body style={{ fontWeight: '800' }}>{doneOthers().length ? 'A te részed kész' : 'Feladat kész'}</Body>
-                  <Sub>{doneOthers().length
-                    ? `A feladat akkor lesz kész, ha ${doneOthers().map((a) => workerName(a.worker_id)).join(', ')} is készre jelentette.`
-                    : 'Késznek jelölöd a feladatot?'}</Sub>
-                  <Input label="Miért tartott ennyi ideig? (nem kötelező)" value={doneNote} onChangeText={setDoneNote} multiline
-                    placeholder="pl. plusz munka jött elő, anyagra kellett várni, nehéz hozzáférés" />
+              {startedByMe && !doneAsk ? <Btn title="Kész ✔" onPress={openDone} /> : null}
+              {startedByMe && doneAsk ? (() => {
+                const people = donePeople();
+                const mineIds = doneMineIds();
+                const myMats = materials.filter((m) => m.worker_id && mineIds.has(m.worker_id));
+                const mustExplain = longWork();
+                return (
+                <View style={{ gap: S.md, borderWidth: 2, borderColor: C.success, borderRadius: S.radiusSm, padding: S.sm }}>
+                  <Body style={{ fontWeight: '800', fontSize: 17 }}>{doneOthers().length ? 'A te részed kész' : 'Feladat kész'} — elszámolás</Body>
+                  <Sub>Nézd át, és javítsd, ha nem stimmel. Ezekkel a számokkal megy az elszámolás az ügyfélnek.
+                    {doneOthers().length ? ` A feladat akkor lesz kész, ha ${doneOthers().map((a) => workerName(a.worker_id)).join(', ')} is készre jelentette.` : ''}</Sub>
+
+                  {people.map((a) => {
+                    const isMe = a.worker_id === myWorkerId;
+                    const d = billingDefaults(task.id, a.worker_id, allSessions);
+                    const b = bill[a.worker_id] ?? { hours: '', callouts: '' };
+                    const setB = (patch: Partial<{ hours: string; callouts: string }>) => setBill((x) => ({ ...x, [a.worker_id]: { ...b, ...patch } }));
+                    return (
+                      <View key={a.id} style={{ gap: S.sm, borderTopWidth: 1, borderTopColor: C.border, paddingTop: S.sm }}>
+                        {people.length > 1 ? <Body style={{ fontWeight: '800' }}>{isMe ? 'Én' : workerName(a.worker_id)}</Body> : null}
+                        <Sub>Az app által mért idő: {fmtHours(d.actual)}{d.hours ? ` (megkezdett órákkal: ${d.hours} óra)` : ''}</Sub>
+                        {isMe && itemsMode ? (
+                          <View style={{ gap: S.sm }}>
+                            <Body style={{ fontWeight: '700' }}>⏱ Ez a feladat több külön munkából áll. Írd be, melyik mennyi ideig tartott:</Body>
+                            {listItems.map((label, i) => (
+                              <View key={i} style={{ gap: 4, backgroundColor: C.bg, borderRadius: S.radiusSm, padding: S.sm }}>
+                                <Body>{i + 1}. {label}</Body>
+                                <NumStep value={itemHours[i] ?? ''} onChange={(v) => setItemHours((x) => ({ ...x, [i]: v }))} step={0.5} unit="óra" />
+                              </View>
+                            ))}
+                            <View style={{ gap: 4, backgroundColor: C.bg, borderRadius: S.radiusSm, padding: S.sm }}>
+                              <Body>Egyéb munka (ami nincs a listában)</Body>
+                              <NumStep value={otherHours} onChange={setOtherHours} step={0.5} unit="óra" />
+                            </View>
+                            <Body style={{ fontWeight: '800' }}>Munkaóra összesen: {hoursText(itemsSum)}{startedHours(itemsSum) !== itemsSum ? ` → elszámolva ${startedHours(itemsSum)} óra` : ''}</Body>
+                            <Sub>Amit nem te csináltál, azt hagyd üresen. Minden megkezdett óra egész órának számít.</Sub>
+                          </View>
+                        ) : (
+                          <NumStep label="⏱ Munkaóra" value={b.hours} onChange={(v) => setB({ hours: v })} unit="óra" />
+                        )}
+                        <NumStep label="🚗 Kiszállás" value={b.callouts} onChange={(v) => setB({ callouts: v })} unit="alkalom" />
+                      </View>
+                    );
+                  })}
+
+                  <View style={{ gap: 4, borderTopWidth: 1, borderTopColor: C.border, paddingTop: S.sm }}>
+                    <Body style={{ fontWeight: '700' }}>📦 Anyag, amit vettél</Body>
+                    {myMats.length === 0 ? <Sub>Nem rögzítettél anyagköltséget ehhez a feladathoz.</Sub> : null}
+                    {myMats.map((m) => (
+                      <View key={m.id} style={{ flexDirection: 'row', gap: S.sm }}>
+                        <Body style={{ flex: 1 }}>• {m.note?.trim() || 'Anyag'} — {qtyLabel(m)}</Body>
+                        <Body style={{ fontWeight: '700' }}>{ft(Number(m.amount))}</Body>
+                      </View>
+                    ))}
+                    {myMats.length > 1 ? <Body style={{ fontWeight: '800', textAlign: 'right' }}>Összesen: {ft(myMats.reduce((x, m) => x + Number(m.amount), 0))}</Body> : null}
+                    <Btn title={myMats.length ? '📦 Hiányzik valami? Anyag rögzítése' : '📦 Vettem anyagot — rögzítem'} kind="ghost" small
+                      onPress={() => { setDoneAsk(false); setMatOpen(true); setOpenSig((x) => ({ ...x, mat: x.mat + 1 })); }} />
+                  </View>
+
+                  <Input label={mustExplain ? 'Mit csináltál pontosan, és miért tartott ennyi ideig? * (4 óránál hosszabb munkánál kötelező)' : 'Mit csináltál / miért tartott ennyi ideig? (nem kötelező)'}
+                    value={doneNote} onChangeText={setDoneNote} multiline
+                    placeholder="pl. kicseréltem a csaptelepet és a szifont; a régi csavarok be voltak rozsdásodva, anyagért is el kellett menni" />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
-                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={() => { setDoneAsk(false); setDoneNote(''); }} /></View>
-                    <View style={{ flex: 2 }}><Btn title="Kész ✔" onPress={() => void markDone()} disabled={busy} /></View>
+                    <View style={{ flex: 1 }}><Btn title="Mégse" kind="ghost" onPress={closeDone} /></View>
+                    <View style={{ flex: 2 }}><Btn title="Rendben, kész ✔" onPress={() => void markDone()} disabled={busy} /></View>
                   </View>
                 </View>
-              ) : null}
+                );
+              })() : null}
               {!failOpen ? (
                 <Btn title="Nem tudom megcsinálni ⚠️" kind="ghost" small onPress={() => setFailOpen(true)} />
               ) : (

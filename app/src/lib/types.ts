@@ -496,6 +496,12 @@ export interface TaskAssignee {
   done_at?: string | null;
   /** a munkavállaló megjegyzése a készre jelentéskor (pl. miért tartott ennyi ideig) */
   done_note?: string | null;
+  /** elszámolás az ügyfél felé: a készre jelentéskor jóváhagyott munkaóra és kiszállások száma (a bért nem érinti) */
+  bill_hours?: number | null;
+  bill_callouts?: number | null;
+  bill_confirmed_at?: string | null;
+  /** tételes bontás, ha a feladat több külön munkát sorol fel: melyik mennyi ideig tartott (óra) */
+  bill_items?: { label: string; hours: number }[] | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

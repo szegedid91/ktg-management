@@ -144,6 +144,59 @@ export function fmtHours(h: number): string {
   return hh > 0 ? `${hh} ó ${mm} p` : `${mm} p`;
 }
 
+/** Az ügyfél felé elszámolandó adatok ELŐTÖLTÉSE egy munkavállalóra egy feladaton, a mért munkaidőből:
+ *  - hours: megkezdett órák, NAPONKÉNT felfelé kerekítve (Daniel szabálya);
+ *  - actual: a ténylegesen ledolgozott idő (óra), kerekítés nélkül;
+ *  - callouts: ahány napon aznap azon a helyszínen ez volt az első feladata (egy kiszállás / nap / helyszín).
+ *  `workerSessions`: a munkavállaló ÖSSZES munkamenete (más feladatoké is — a „nap első feladata” ebből derül ki). */
+export function billingDefaults(taskId: string, workerId: string, workerSessions: WorkSession[], now = Date.now()): { hours: number; actual: number; callouts: number } {
+  const mine = workerSessions.filter((s) => s.worker_id === workerId && !(s as any).deleted_at);
+  const onTask = mine.filter((s) => s.task_id === taskId);
+  const days = new Map<string, WorkSession[]>();
+  for (const s of onTask) { const d = localDateISO(s.started_at); days.set(d, [...(days.get(d) ?? []), s]); }
+  let hours = 0; let actual = 0; let callouts = 0;
+  for (const [d, list] of days) {
+    const h = unionHours(list, now);
+    if (h <= 0) continue;
+    actual += h;
+    hours += Math.ceil(Math.round(h * 1e4) / 1e4);
+    const siteId = list[0].site_id;
+    const first = mine.filter((s) => s.site_id === siteId && localDateISO(s.started_at) === d)
+      .sort((a, b) => a.started_at.localeCompare(b.started_at))[0];
+    if (first && first.task_id === taskId) callouts += 1;
+  }
+  return { hours, actual, callouts };
+}
+
+/** A feladat szövegében FELSOROLT külön munkák (gondolatjeles / pontozott lista), pl.
+ *  „Sziasztok, - szegőléc feljött - lámpa leszakadt - lefolyó szétesett” → 3 tétel.
+ *  Legalább két elválasztó kell (egyetlen „A - B” cím nem felsorolás); ha nincs felsorolás, üres tömb —
+ *  ilyenkor a feladat egy egységként számol el. A bevezető („Sziasztok,”, „…az alábbiakat kérem:”) nem tétel. */
+export function taskListItems(title: string, details?: string | null): string[] {
+  const src = [title ?? '', details ?? ''].filter((x) => x.trim()).join('\n');
+  // sor eleji gondolatjel / pont → egységes elválasztó; sortörés, tabulátor → szóköz
+  const split = (x: string) => (' ' + x.replace(/(^|[\r\n])[ \t]*[–—•*·][ \t]*/g, '$1 - ').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim())
+    .split(/\s[-•]\s+|\s-(?=[A-ZÁÉÍÓÖŐÚÜŰ])/);
+  const parts = split(src);
+  if (parts.length < 3) return [];
+  const clean = (x: string) => x.trim().replace(/^[\s.,;:–—-]+|[\s.,;:–—-]+$/g, '').trim();
+  const head = parts[0].trim();
+  // a cím önmagában (ha a felsorolás a részletekben van) fejléc, nem tétel
+  const titleIsHeading = !!(details ?? '').trim() && split(title ?? '').length === 1;
+  const headIsIntro = titleIsHeading || head.length < 12 || /[:,]$/.test(head) || /alábbi|következő|felsorolt|sziasztok|kedves|tisztelt|üdv/i.test(head);
+  const items = (headIsIntro ? parts.slice(1) : parts).map(clean).filter((x) => x.length >= 4)
+    .map((x) => (x.length > 140 ? x.slice(0, 139).trimEnd() + '…' : x));
+  return items.length >= 2 ? items.slice(0, 20) : [];
+}
+
+/** óraszám beviteli mezőből („1,5”, „2”, „ 3 óra”) — hibás / üres érték 0 */
+export function parseHours(v: string): number {
+  const n = Number(String(v ?? '').replace(',', '.').replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 999) : 0;
+}
+/** megkezdett óra: minden megkezdett óra teljes óra */
+export const startedHours = (h: number) => (h > 0 ? Math.ceil(Math.round(h * 1e4) / 1e4) : 0);
+
 /** Nem órabéres (pl. napi díjas) tételnél a ledolgozott idő szövege, ha a szerver rögzítette: „ · 3 ó 45 p munkaidő”.
  *  Csak tájékoztatás — a bér napi díj marad. */
 export function workedSuffix(a: { pay_basis: string; worked_hours?: number | null }): string {

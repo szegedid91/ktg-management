@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
-import { router } from 'expo-router';
 import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
@@ -192,7 +191,6 @@ function ExportScreenInner() {
           ) : (
             <Sub style={{ color: C.warning, fontWeight: '700' }}>Még nincs megadva, milyen órabéren számolsz el az ügyfél felé. Add meg egyszer a Beállítások › Díjak részben.</Sub>
           )}
-          <Btn title="⚙️ Díjak módosítása" kind="ghost" small onPress={() => router.push('/settings?open=rates' as any)} />
         </View>
         <Btn title={busy === 'settlement-xlsx' ? 'Készül…' : '🧾 Elszámolás Excelbe'} onPress={() => void doExport('xlsx', 'settlement')} disabled={!!busy} />
       </Card>

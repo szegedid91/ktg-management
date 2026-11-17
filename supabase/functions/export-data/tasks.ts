@@ -77,7 +77,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const [sites, workers, assignees, sessions, attendance, materials, pricing, finance, quotedTasks] = await Promise.all([
     fetchAll(() => supabase.from('sites').select('id, name, address')),
     fetchAll(() => supabase.from('workers').select('id, name')),
-    idList.length ? inChunks((c) => supabase.from('task_assignees').select('id, task_id, worker_id, done_note').is('deleted_at', null).in('task_id', c)) : [],
+    idList.length ? inChunks((c) => supabase.from('task_assignees').select('id, task_id, worker_id, done_note, bill_hours, bill_callouts, bill_items').is('deleted_at', null).in('task_id', c)) : [],
     workerIds.length && fromTs && toTs
       ? fetchAll(() => supabase.from('work_sessions').select('id, task_id, worker_id, site_id, started_at, ended_at').is('deleted_at', null).not('ended_at', 'is', null).in('worker_id', workerIds).gte('started_at', fromTs).lte('started_at', toTs))
       : [],
@@ -182,6 +182,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     wid: string; calloutCount: number; mats: any[];
     /** megkezdett órák (munkavállalónként és naponként felfelé kerekítve) — az ügyfél felé ezt számlázzuk */
     startedHours: number;
+    /** a készre jelentéskor jóváhagyott (vagy a vezető által beállított) elszámolási adatok — ha megvannak,
+     *  az ügyfél felé ezek mennek a mért értékek helyett */
+    billHours: number | null; billCallouts: number | null; billItems: { label: string; hours: number }[];
   };
   const rows: Row[] = list.flatMap((t) => {
     const s = siteOf.get(t.site_id) ?? { name: '— helyszín nélkül —', address: '' };
@@ -231,9 +234,15 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
       const cost = wage + callout + matCost;
       taskCost += cost;
       // a munkavállaló megjegyzése a készre jelentéskor („miért tartott ennyi ideig”)
-      const doneNote = wid ? String((assBy.get(t.id) ?? []).find((a: any) => a.worker_id === wid)?.done_note ?? '') : '';
+      const myAss = wid ? (assBy.get(t.id) ?? []).find((a: any) => a.worker_id === wid) : null;
+      const doneNote = String(myAss?.done_note ?? '');
+      const billItems = (Array.isArray(myAss?.bill_items) ? myAss.bill_items : [])
+        .map((x: any) => ({ label: String(x?.label ?? '').slice(0, 200), hours: Number(x?.hours) }))
+        .filter((x: any) => x.label && Number.isFinite(x.hours) && x.hours > 0);
       return { ...base, first, worker: wid ? nameOf(wid) : '', hours, wage, callout, matCost, cost, doneNote,
         wid: wid ?? '', calloutCount: myAtt.filter((x) => x.callout > 0).length, mats: myMats, startedHours,
+        billHours: myAss?.bill_hours != null ? Number(myAss.bill_hours) : null,
+        billCallouts: myAss?.bill_callouts != null ? Number(myAss.bill_callouts) : null, billItems,
         matResale: first ? matResale : 0, invoice: first ? invoice : null, profit: null };
     });
     if (invoice != null) out[0].profit = invoice + matResale - taskCost;
@@ -247,6 +256,9 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     'Munkaóra': r.hours, 'Munkabér (Ft)': r.wage, 'Kiszállás (Ft)': r.callout, 'Anyagköltség (Ft)': r.matCost, 'Összes költség (Ft)': r.cost,
     'Anyag továbbszámlázva (Ft)': r.first ? r.matResale : '', 'Kiszámlázott (Ft)': r.invoice ?? '', 'Haszon (Ft)': r.profit ?? '',
     'Kiadva': r.created, 'Elkészült': r.done, 'Miért tartott ennyi ideig': r.doneNote,
+    'Ügyfélnek: munkaóra': r.billHours ?? r.startedHours, 'Ügyfélnek: kiszállás (alkalom)': r.billCallouts ?? r.calloutCount,
+    'Munkavállaló megadta': r.billHours != null ? 'igen' : 'nem',
+    'Tételes bontás': r.billItems.map((x) => `${x.label}: ${String(x.hours).replace('.', ',')} óra`).join('; '),
   }));
   const sum = (f: (r: Row) => number, rs: Row[] = rows) => rs.reduce((s, r) => s + f(r), 0);
   const taskCount = new Set(rows.map((r) => r.taskId)).size;
@@ -255,6 +267,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     'Munkaóra': r2(sum((r) => r.hours)), 'Munkabér (Ft)': sum((r) => r.wage), 'Kiszállás (Ft)': sum((r) => r.callout),
     'Anyagköltség (Ft)': sum((r) => r.matCost), 'Összes költség (Ft)': sum((r) => r.cost), 'Anyag továbbszámlázva (Ft)': sum((r) => r.matResale),
     'Kiszámlázott (Ft)': sum((r) => r.invoice ?? 0), 'Haszon (Ft)': sum((r) => r.profit ?? 0), 'Kiadva': '', 'Elkészült': '', 'Miért tartott ennyi ideig': '',
+    'Ügyfélnek: munkaóra': sum((r) => r.billHours ?? r.startedHours), 'Ügyfélnek: kiszállás (alkalom)': sum((r) => r.billCallouts ?? r.calloutCount),
+    'Munkavállaló megadta': '', 'Tételes bontás': '',
   });
 
   // helyszínenként: a csatolt feladatkódok és az összegek
@@ -291,7 +305,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
 
   const wb = XLSX.utils.book_new();
   const s1 = XLSX.utils.json_to_sheet(taskSheet);
-  s1['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
+  s1['!cols'] = [{ wch: 12 }, { wch: 26 }, { wch: 28 }, { wch: 32 }, { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 60 }];
   const s2 = XLSX.utils.json_to_sheet(siteSheet);
   s2['!cols'] = [{ wch: 26 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
   const s3 = XLSX.utils.json_to_sheet(daySheet);
@@ -314,7 +328,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
 /** Elszámolás az ügyfél felé („Heti elszámolás” minta): feladatonként egy tömb — Munka sorszáma, megnevezés,
  *  majd Megnevezés / Mennyiség / Egység / Árak/Díjak / Összesen sorok: Munkaóra (megkezdett óra × kimenő órabér),
  *  Kiszállás (alkalom × kimenő kiszállási díj), anyagok (a rögzített tétel, 1 db, a továbbszámlázott ár —
- *  ha nincs beárazva, a bekerülési összeg), végül Összesen; a lap alján Mindösszesen. Az összegek képletek,
+ *  ha nincs beárazva, a bekerülési összeg), végül Összesen; a lap alján Mindösszesen. A munkaóra és a kiszállás
+ *  a készre jelentéskor jóváhagyott szám (task_assignees.bill_*), ennek hiányában a mért érték. Az összegek képletek,
  *  így a mennyiség vagy az ár átírása után az Excel újraszámol. */
 function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
   const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
@@ -330,8 +345,12 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
   for (const rs of byTask.values()) {
     const t = rs[0];
     // az ügyfél felé a megkezdett órák mennek (minden megkezdett óra teljes óra)
-    const hours = rs.reduce((a, r) => a + (r.startedHours ?? Math.ceil(r.hours)), 0);
-    const calloutN = rs.reduce((a, r) => a + r.calloutCount, 0);
+    // ha a munkavállaló a készre jelentéskor jóváhagyta (vagy a vezető beállította) a számokat, azok mennek
+    const hours = rs.reduce((a, r) => a + (r.billHours ?? r.startedHours ?? Math.ceil(r.hours)), 0);
+    const calloutN = rs.reduce((a, r) => a + (r.billCallouts ?? r.calloutCount), 0);
+    // tételes bontás (több külön munka egy sorszám alatt): azonos tételek óráit összeadjuk
+    const itemHours = new Map<string, number>();
+    for (const r of rs) for (const it of (r.billItems ?? [])) itemHours.set(it.label, (itemHours.get(it.label) ?? 0) + it.hours);
     const seen = new Set<string>();
     const mats = rs.flatMap((r) => r.mats).filter((m: any) => (seen.has(m.id) ? false : (seen.add(m.id), true)))
       .sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
@@ -350,6 +369,10 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
       blockSum += Math.round(qty * price);
     };
     line('Munkaóra', hours, 'óra', hourly);
+    // tájékoztató sorok a Munkaóra alatt: melyik munka mennyi ideig tartott (ár és összeg nélkül — nem adódik hozzá)
+    for (const [label, h] of itemHours) {
+      aoa.push([`   – ${label}`, { t: 'n', v: h, z: Number.isInteger(h) ? '#,##0' : '#,##0.00' }, 'óra']);
+    }
     line('Kiszállás', calloutN, 'alkalom', callout);
     // anyag: mennyiség × egységár (egységár = továbbszámlázott / bekerülési összeg osztva a mennyiséggel)
     for (const m of mats) {
