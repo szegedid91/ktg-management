@@ -1,7 +1,7 @@
 // Pénzösszeg felismerése szabad szövegben („kb 100000ft”, „25 ezer”, „12.500,-”, „80e”) — arra, hogy
 // figyelmeztessünk, ha valaki megjegyzésbe írja az anyag árát ahelyett, hogy anyagköltségként rögzítené.
 // Szándékosan óvatos: a pénznemmel (Ft, forint, HUF, „,-”) vagy ezres jelöléssel (ezer, e, k, millió) álló
-// számot, illetve a pénznem nélküli KEREK, legalább négyjegyű számot („250000 faanyag”) tekinti összegnek —
+// számot, illetve a pénznem nélküli, legalább négyjegyű számot („250000 faanyag”, „126789 fa anyag”) tekinti összegnek —
 // a „300as üst”, „2 db”, „3 kg”, „12:30”, telefonszám, évszám, „1500 mm” nem az.
 
 const RE = /(\d{1,3}(?:[ . ]\d{3})+|\d+)(?:,(\d{1,2}))?\s*(millió|ezer|e(?![a-záéíóöőúüű])|k(?![a-záéíóöőúüű]))?\s*(ft(?![a-záéíóöőúüű])|forint|huf(?![a-záéíóöőúüű])|,-|\.-)?/gi;
@@ -32,9 +32,10 @@ export function moneyInText(text: string | null | undefined): number | null {
 const LETTER = /^[a-záéíóöőúüű°%]/i;
 const UNIT_AFTER = /^\s*(mm|cm|m|km|kg|g|db|w|kw|v|a|l|liter|méter|fok|bar|x|óra|perc|nap)(?![a-záéíóöőúüű])/i;
 
-/** Pénznem nélküli szám („250000 faanyag”, „250 000 lett”): csak a kerek (százasra végződő), 1 000 és
- *  9 999 999 közti számot vesszük összegnek, ha nem évszám, nem számsor része (telefonszám, dátum, kód),
- *  és nem áll mögötte mértékegység vagy rag („1500 mm”, „3000K”, „1000es”). */
+/** Pénznem nélküli szám („250000 faanyag”, „126789 fa anyag”, „250 000 lett”): a legalább négyjegyű számot
+ *  összegnek vesszük, ha nem évszám, nem számsor része (telefonszám, dátum), nem hétjegyű nem kerek szám
+ *  (feladatkód), nem áll mögötte mértékegység vagy rag („1500 mm”, „3000K”, „1000es”, „2314-es”), és nem
+ *  irányítószám („1135 Budapest”). Inkább kérdezzünk egyszer feleslegesen, mint hogy kimaradjon egy anyagköltség. */
 function bareAmount(text: string): number | null {
   const re = /\d{1,3}(?:[ \u00a0.]\d{3})+|\d+/g;
   let m: RegExpExecArray | null;
@@ -42,11 +43,16 @@ function bareAmount(text: string): number | null {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length < 4 || digits.length > 7) continue;
     const n = Number(digits);
-    if (n % 100 !== 0 || (n >= 1900 && n <= 2100)) continue;
+    if (n >= 1900 && n <= 2100) continue;
+    const round = n % 100 === 0;
+    // hétjegyű nem kerek szám jellemzően feladatkód (pl. 1548324), nem összeg
+    if (digits.length === 7 && !round) continue;
     const before = text.slice(Math.max(0, m.index - 2), m.index);
     if (/\d[ .\u00a0:/-]?$/.test(before)) continue;
     const after = text.slice(m.index + m[0].length, m.index + m[0].length + 14);
-    if (LETTER.test(after) || /^[ .\u00a0:/-]?\d/.test(after) || UNIT_AFTER.test(after)) continue;
+    if (LETTER.test(after) || /^-[a-záéíóöőúüű]/i.test(after) || /^[ .\u00a0:/-]?\d/.test(after) || UNIT_AFTER.test(after)) continue;
+    // nem kerek szám + nagybetűs szó: jellemzően irányítószám és helységnév („1135 Budapest”)
+    if (!round && /^\s+[A-ZÁÉÍÓÖŐÚÜŰ]/.test(after)) continue;
     return n;
   }
   return null;

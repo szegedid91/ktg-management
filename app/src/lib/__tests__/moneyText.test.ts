@@ -21,13 +21,20 @@ describe('összeg felismerése szövegben', () => {
     expect(moneyInText('csaptelep 12500')).toBe(12500);
     expect(moneyInText('a panel 85.000 volt')).toBe(85000);
   });
+  it('pénznem nélküli NEM kerek szám is összeg (az éles teszt: „126789 fa anyag”)', () => {
+    expect(moneyInText('126789 fa anyag')).toBe(126789);
+    expect(moneyInText('3490 volt a csap')).toBe(3490);
+    expect(moneyInText('csavarok 12 345')).toBe(12345);
+  });
   it('pénznem nélküli szám, ami nem összeg', () => {
     expect(moneyInText('1500 mm cső kellett, 2000 W-os fűtőszál')).toBeNull();
     expect(moneyInText('3000K fényű neon, 1000es csiszoló')).toBeNull();
     expect(moneyInText('2026.11.05-én voltam, 2025 óta rossz')).toBeNull();
     expect(moneyInText('hívd: 06 30 123 4500 vagy 0630 1234500')).toBeNull();
     expect(moneyInText('lásd az 1192032 és 1548324 feladatot')).toBeNull();
-    expect(moneyInText('3490 volt')).toBeNull(); // nem kerek: nem tudjuk, hogy pénz-e
+    expect(moneyInText('cím: 1135 Budapest, Kerekes u. 8.')).toBeNull();   // irányítószám
+    expect(moneyInText('a 2314-es teremben, 1245-ben nyit')).toBeNull();     // ragozott szám
+    expect(moneyInText('kapukód 123, 3. emelet 12. ajtó')).toBeNull();
   });
   it('ami nem összeg', () => {
     expect(moneyInText('A 300as üstnél thermóelem és fúvóka csere volt és működik. Az 500as panel cserés!!!')).toBeNull();
