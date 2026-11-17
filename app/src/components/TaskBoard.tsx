@@ -7,6 +7,7 @@ import { View, Text, Pressable } from 'react-native';
 import { Sub, Btn, Input, Picker, Segmented } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
+import { usePref, setPref } from '../lib/prefs';
 import { isActiveTask, isFailedOpen, wname, openQuotes, isOverdue } from '../lib/tasks';
 import { todayISO, localDateISO, addDaysISO } from '../lib/format';
 import { TaskRow, STATUS_COLOR, UNASSIGNED_COLOR } from './TaskRow';
@@ -50,7 +51,9 @@ export function TaskBoard({ tasks, includeClosed = false, initialFilter = 'activ
   const setFilter = (f: Filter) => { setFilterRaw(f); setQ(''); };
   const [siteId, setSiteId] = useState<string | null>(null);
   const [workerId, setWorkerId] = useState<string | null>(null);
-  const [view, setView] = useState<'list' | 'site'>('list');
+  // Lista / Helyszín szerint: az utoljára használt elrendezés megmarad (készüléken, fiókonként)
+  const view: 'list' | 'site' = usePref('taskboard:view') === 'site' ? 'site' : 'list';
+  const setView = (v: 'list' | 'site') => setPref('taskboard:view', v);
   // időszak-szűrő: a kész / nem sikerült feladatnál a lezárás, egyébként a kiadás napja szerint (helyi nap)
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
