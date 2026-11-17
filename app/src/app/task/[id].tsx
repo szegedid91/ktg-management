@@ -34,6 +34,7 @@ import { todayISO } from '../../lib/format';
 import { sectionState, ViewSectionKey } from '../../lib/taskViews';
 import { useTaskViews } from '../../lib/taskViewState';
 import { TaskViewPicker } from '../../components/TaskViewPicker';
+import { UnitPicker } from '../../components/UnitPicker';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
 /** plain: mindig nyitva, összecsukó nyíl és összegzés nélkül (munkavállalói, egyszerű nézet) */
@@ -872,7 +873,7 @@ Biztosan leveszed?`, 'Levétel', true);
                   <Input label="Mi ez?" value={matEdit.note} onChangeText={(v) => setMatEdit({ ...matEdit, note: v })} />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
                     <View style={{ flex: 1 }}><Input label="Mennyiség" value={matEdit.qty} onChangeText={(v) => setMatEdit({ ...matEdit, qty: v })} keyboardType="numeric" placeholder="1" /></View>
-                    <View style={{ flex: 1 }}><Input label="Egység" value={matEdit.unit} onChangeText={(v) => setMatEdit({ ...matEdit, unit: v })} placeholder="db" autoCapitalize="none" /></View>
+                    <View style={{ flex: 1 }}><UnitPicker value={matEdit.unit} onChange={(v) => setMatEdit({ ...matEdit, unit: v })} placeholder="db" /></View>
                   </View>
                   <Input label="Miért ennyibe került? (nem kötelező)" value={matEdit.reason} onChangeText={(v) => setMatEdit({ ...matEdit, reason: v })} />
                   <View style={{ flexDirection: 'row', gap: S.sm }}>
@@ -921,7 +922,7 @@ Biztosan leveszed?`, 'Levétel', true);
               <Input label="Mi ez?" value={matNote} onChangeText={setMatNote} placeholder="pl. csemperagasztó" />
               <View style={{ flexDirection: 'row', gap: S.sm }}>
                 <View style={{ flex: 1 }}><Input label="Mennyiség" value={matQty} onChangeText={setMatQty} keyboardType="numeric" placeholder="pl. 2" /></View>
-                <View style={{ flex: 1 }}><Input label="Egység" value={matUnit} onChangeText={setMatUnit} placeholder="db / méter / zsák" autoCapitalize="none" /></View>
+                <View style={{ flex: 1 }}><UnitPicker value={matUnit} onChange={setMatUnit} placeholder="db / méter / zsák" /></View>
               </View>
               <Input label="Miért ennyibe került? (nem kötelező)" value={matReason} onChangeText={setMatReason} placeholder="pl. csak a drágább volt kapható, sürgős volt" />
               <Sub>{isWorker ? 'Számla / blokk fotója — 100 000 Ft felett kötelező; több kép is csatolható:' : 'Számla / blokk fotója (vezetőnél nem kötelező):'}</Sub>

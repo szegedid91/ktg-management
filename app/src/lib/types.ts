@@ -126,6 +126,11 @@ export interface SiteContact extends BaseRow {
   position: number;
 }
 
+/** Saját mennyiségi egység az anyagköltséghez — a felhasználó vette fel; ő látja, és ha vállalkozó, az emberei is */
+export interface MaterialUnit extends BaseRow {
+  name: string;
+}
+
 /** Sablon nézet a feladat oldalához (fiókonként; lásd lib/taskViews.ts) */
 export interface TaskViewPreset extends BaseRow {
   name: string;
@@ -636,7 +641,7 @@ export const SYNC_TABLES = [
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
   'item_codes', 'task_events', 'site_contacts', 'chat_messages', 'chat_reactions', 'chat_reads',
-  'task_view_presets',
+  'task_view_presets', 'material_units',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];
