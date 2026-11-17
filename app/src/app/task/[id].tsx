@@ -35,6 +35,7 @@ import { sectionState, ViewSectionKey } from '../../lib/taskViews';
 import { useTaskViews } from '../../lib/taskViewState';
 import { TaskViewPicker } from '../../components/TaskViewPicker';
 import { UnitPicker } from '../../components/UnitPicker';
+import { moneyInText } from '../../lib/moneyText';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
 /** plain: mindig nyitva, összecsukó nyíl és összegzés nélkül (munkavállalói, egyszerű nézet) */
@@ -133,7 +134,8 @@ export default function TaskDetail() {
   // a műveletsáv gombjai kinyitják a megfelelő szakaszt
   const [openSig, setOpenSig] = useState({ time: 0, mat: 0 });
   // utólagos rögzítés (a munka már megtörtént): munkaidő felvitele, készre állítás
-  const noteCount = useTable<TaskNote>('task_notes').filter((n) => n.task_id === id).length;
+  const taskNotes = useTable<TaskNote>('task_notes').filter((n) => n.task_id === id);
+  const noteCount = taskNotes.length;
   const appSettings = useTable<AppSettings>('app_settings')[0] ?? null;
   const [retroOpen, setRetroOpen] = useState(false);
   const [retroWorker, setRetroWorker] = useState<string | null>(null);
@@ -421,6 +423,17 @@ Biztosan leveszed?`, 'Levétel', true);
     if (longWork() && (note ?? '').length < 20) {
       notify('Részletes leírás kell', '4 óránál hosszabb munkánál írd le részletesen: mit csináltál pontosan, és miért tartott ennyi ideig.');
       return;
+    }
+    // összeg a leírásban vagy a saját megjegyzésben, de nincs rögzített anyagköltség: rákérdezünk, mielőtt kész lesz
+    if (!materials.some((m) => m.worker_id && mineIds.has(m.worker_id))) {
+      const amount = moneyInText(note) ?? taskNotes.filter((n) => n.created_by === me).map((n) => moneyInText(n.body)).find((x) => x != null) ?? null;
+      if (amount != null && await confirmDialog('Anyagköltség hiányzik?',
+        `${moneyInText(note) != null ? 'A leírásban' : 'A megjegyzésedben'} összeg szerepel (${ft(amount)}), de anyagköltséget nem rögzítettél ehhez a feladathoz. Ha te vetted az anyagot, előbb rögzítsd — csak úgy kerül be az elszámolásba.`,
+        '📦 Anyagköltséget rögzítek', false, 'Nem én vettem — kész')) {
+        setDoneAsk(false); setMatOpen(true); setOpenSig((x) => ({ ...x, mat: x.mat + 1 }));
+        if (!matAmount) setMatAmount(String(amount));
+        return;
+      }
     }
     // csak azok munkaideje áll le, akiknek a része most kész lesz (a fiókkal rendelkező embereim dolgozhatnak tovább)
     if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
@@ -829,7 +842,8 @@ Biztosan leveszed?`, 'Levétel', true);
   const notesView = vs('notes', isWorker || noteCount > 0);
   const notesBlock = (isWorker && (!acked || (!active && noteCount === 0))) || notesView.hidden ? null : (
       <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={notesView.open} viewKey={notesView.viewKey} plain={isWorker}>
-        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : !readOnly} />
+        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : !readOnly}
+          onMoneyHint={isWorker && !!myAssignment && active ? (amount) => { setMatOpen(true); if (!matAmount) setMatAmount(String(amount)); } : undefined} />
       </Section>
       );
   // a rejtett szakasz is megjelenik, ha a műveletsáv „+ Anyag” gombjával épp rögzíteni akar

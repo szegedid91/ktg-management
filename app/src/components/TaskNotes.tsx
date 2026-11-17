@@ -8,7 +8,8 @@ import { Sub, Body, Input, Btn, Badge, Check } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable } from '../lib/hooks';
 import { insertRow, updateRow, softDeleteRow, getCurrentUserId } from '../lib/repo';
-import { hdt } from '../lib/format';
+import { hdt, ft } from '../lib/format';
+import { moneyInText } from '../lib/moneyText';
 import { notify, confirmDialog } from '../lib/dialogs';
 import { TaskNote, Profile } from '../lib/types';
 
@@ -17,7 +18,11 @@ const CONFIRM_BODY = 'Ezt a megjegyzést a feladatra kiosztott munkavállaló(k)
 
 /** canWrite: munkavállalónál akkor igaz, ha a feladat rá van kiosztva — ekkor
  *  ő is írhat (mindig látható) megjegyzést, és a sajátját szerkeszti/törli. */
-export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: string; isWorker: boolean; canWrite?: boolean }) {
+/** onMoneyHint: ha a munkavállaló összeget ír a megjegyzésbe, megkérdezzük, nem anyagköltség-e — igen esetén
+ *  a megjegyzés mentése után a hívó megnyitja az anyagköltség űrlapját az összeggel előtöltve. */
+export function TaskNotes({ taskId, isWorker, canWrite = !isWorker, onMoneyHint }: {
+  taskId: string; isWorker: boolean; canWrite?: boolean; onMoneyHint?: (amount: number) => void;
+}) {
   const notes = useTable<TaskNote>('task_notes').filter((n) => n.task_id === taskId).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const profiles = useTable<Profile>('profiles');
   const me = getCurrentUserId();
@@ -31,8 +36,14 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
     const body = text.trim();
     if (!body) return;
     if (!isWorker && toWorkers && !await confirmDialog(CONFIRM_TITLE, CONFIRM_BODY, 'Igen, rögzítem')) return;
+    // összeg a megjegyzésben: az anyag ára csak anyagköltségként rögzítve kerül be az elszámolásba
+    const amount = isWorker && onMoneyHint ? moneyInText(body) : null;
+    const asMaterial = amount != null && await confirmDialog('Ez anyagköltség?',
+      `Összeget írtál a megjegyzésbe (${ft(amount)}). Ha te vetted az anyagot, rögzítsd anyagköltségként is — csak úgy kerül be az elszámolásba. A megjegyzésed így is megmarad.`,
+      '📦 Rögzítem anyagköltségként', false, 'Nem én vettem');
     insertRow('task_notes', { task_id: taskId, body, visible_to_workers: isWorker ? true : toWorkers });
     setText(''); setToWorkers(false);
+    if (asMaterial && amount != null) onMoneyHint!(amount);
   };
   const startEdit = (n: TaskNote) => { setEditId(n.id); setEditText(n.body); setEditVis(n.visible_to_workers); };
   const saveEdit = async (n: TaskNote) => {
