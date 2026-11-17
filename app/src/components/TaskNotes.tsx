@@ -40,7 +40,7 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker, onMoneyHint 
     const amount = isWorker && onMoneyHint ? moneyInText(body) : null;
     const asMaterial = amount != null && await confirmDialog('Ez anyagköltség?',
       `Összeget írtál a megjegyzésbe (${ft(amount)}). Ha te vetted az anyagot, rögzítsd anyagköltségként is — csak úgy kerül be az elszámolásba. A megjegyzésed így is megmarad.`,
-      '📦 Rögzítem anyagköltségként', false, 'Nem én vettem');
+      '📦 Rögzítem anyagköltségként', false, 'Nem költség');
     insertRow('task_notes', { task_id: taskId, body, visible_to_workers: isWorker ? true : toWorkers });
     setText(''); setToWorkers(false);
     if (asMaterial && amount != null) onMoneyHint!(amount);

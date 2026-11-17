@@ -431,7 +431,7 @@ Biztosan leveszed?`, 'Levétel', true);
       const amount = fromNote ?? uncoveredAmount(taskNotes.filter((n) => n.created_by === me).map((n) => n.body), mineMats);
       if (amount != null && await confirmDialog('Anyagköltség hiányzik?',
         `${fromNote != null ? 'A leírásban' : 'A megjegyzésedben'} összeg szerepel (${ft(amount)}), ${mineMats.length ? 'ami nincs a rögzített anyagköltségeid között' : 'de anyagköltséget nem rögzítettél ehhez a feladathoz'}. Ha te vetted az anyagot, előbb rögzítsd — csak úgy kerül be az elszámolásba.`,
-        '📦 Anyagköltséget rögzítek', false, 'Nincs mit rögzíteni — kész')) {
+        '📦 Anyagköltséget rögzítek', false, 'Nem költség — kész')) {
         setDoneAsk(false); setMatOpen(true); setOpenSig((x) => ({ ...x, mat: x.mat + 1 }));
         if (!matAmount) setMatAmount(String(amount));
         return;

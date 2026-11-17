@@ -26,27 +26,29 @@ export function DialogHost() {
           {current.message ? (
             <Text style={{ fontSize: 15, color: C.text, lineHeight: 21 }}>{current.message}</Text>
           ) : null}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
-            {!current.alertOnly ? (
-              <Pressable
-                onPress={() => close(false)}
-                style={({ pressed }) => ({ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 8, opacity: pressed ? 0.6 : 1 })}
-              >
-                <Text style={{ fontWeight: '700', color: C.sub, fontSize: 15 }}>{current.cancelLabel ?? 'Mégse'}</Text>
-              </Pressable>
-            ) : null}
+          {/* Gombok: jobbra zárva egy sorban; ha a feliratok hosszúak (telefonon), a sor megtörik — ilyenkor a fő
+              gomb kerül felülre, a másik alá, és egyik sem lóg ki a képernyőről. (row-reverse: a DOM-ban a fő gomb az első.) */}
+          <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 10, marginTop: 6 }}>
             <Pressable
               onPress={() => close(true)}
               style={({ pressed }) => ({
-                paddingVertical: 9, paddingHorizontal: 16, borderRadius: 8,
+                paddingVertical: 9, paddingHorizontal: 16, borderRadius: 8, maxWidth: '100%',
                 backgroundColor: current.destructive ? C.danger : C.primary,
                 opacity: pressed ? 0.6 : 1,
               })}
             >
-              <Text style={{ fontWeight: '700', color: '#fff', fontSize: 15 }}>
+              <Text style={{ fontWeight: '700', color: '#fff', fontSize: 15, textAlign: 'center' }}>
                 {current.alertOnly ? 'OK' : current.okLabel}
               </Text>
             </Pressable>
+            {!current.alertOnly ? (
+              <Pressable
+                onPress={() => close(false)}
+                style={({ pressed }) => ({ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 8, maxWidth: '100%', opacity: pressed ? 0.6 : 1 })}
+              >
+                <Text style={{ fontWeight: '700', color: C.sub, fontSize: 15, textAlign: 'center' }}>{current.cancelLabel ?? 'Mégse'}</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </View>
