@@ -1293,7 +1293,11 @@ Biztosan leveszed?`, 'Levétel', true);
           <>
             <KV k="Kezdés" v={hdt(timing.startedAt)} />
             <KV k={timing.running ? 'Eddig (fut)' : 'Ledolgozott idő'} v={`${fmtHours(timing.hours)} · ${timing.days} nap`} />
-            {timing.finishedAt ? <KV k="Befejezés" v={hdt(timing.finishedAt)} strong /> : null}
+            {/* a munka vége az utolsó munkamenet vége — a készre jelentés ettől független, gyakran későbbi időpont */}
+            {!timing.running && sessions.some((x) => x.ended_at) ? (
+              <KV k="Munka vége" v={hdt(sessions.reduce((mx, x) => (x.ended_at && x.ended_at > mx ? x.ended_at : mx), ''))} strong />
+            ) : null}
+            {timing.finishedAt ? <KV k="Készre jelentve" v={hdt(timing.finishedAt)} /> : null}
           </>
         ) : <Sub>Még nem kezdték el.</Sub>}
         {sessions.length > 0 ? (
