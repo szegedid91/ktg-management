@@ -264,7 +264,11 @@ Biztosan leveszed?`, 'Levétel', true);
   const doneCount = assignees.filter((a) => a.done_at).length;
   const partlyDone = isActiveTask(task) && assignees.length > 1 && doneCount > 0 && doneCount < assignees.length;
   // a vezető lezárt (kész / nem sikerült) feladathoz is rögzíthet utólag anyagköltséget, munkaidőt és fotót
-  const partnerEdit = !isWorker && task.status !== 'cancelled';
+  // sablon nézet „szerkesztés nélkül”: a vezető csak megtekint — nincs műveletsáv, szerkesztés, törlés, rögzítés
+  const readOnly = !isWorker && !taskView.editable;
+  const partnerEdit = !isWorker && task.status !== 'cancelled' && !readOnly;
+  /** vezetői műveletek a nyitott feladaton (ajánlat elfogadása, szerkesztés, visszavonás…) */
+  const canAct = active && !readOnly;
   // ajánlatok: a napló sorai; munkavállalónál a saját legutóbbi sora számít
   const quoteLog = quotesOf(task.id, allQuotes);
   const mine = myQuote(task.id, myWorkerId, allQuotes);
@@ -583,7 +587,7 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   const materialPhotos = (m: TaskMaterial) => (m.photo_paths?.length ? m.photo_paths : m.photo_path ? [m.photo_path] : []);
-  const canEditMaterial = (m: TaskMaterial) => !isWorker || (active && m.worker_id === myWorkerId);
+  const canEditMaterial = (m: TaskMaterial) => (isWorker ? active && m.worker_id === myWorkerId : !readOnly);
 
   // ---------- részfeladatok ----------
   const toggleSub = async (s: TaskSubtask) => {
@@ -753,7 +757,7 @@ Biztosan leveszed?`, 'Levétel', true);
               <Sub>Kérés: {hdt(q.requested_at)}{q.requested_by ? ` · ${profiles.find((p) => p.id === q.requested_by)?.display_name ?? ''}` : ''}</Sub>
               {q.submitted_at ? <Body>Ajánlat: <Text style={{ fontWeight: '800' }}>{ft(q.amount ?? 0)}</Text>{q.note ? ` — ${q.note}` : ''} <Text style={{ color: C.sub, fontSize: 12 }}>({hdt(q.submitted_at)})</Text></Body> : null}
               {q.decided_at ? <Sub>{q.status === 'accepted' ? '✅ Elfogadva' : q.status === 'declined' ? '✋ Nem vállalja' : '✖ Elutasítva'} {hdt(q.decided_at)}{q.decision_note ? ` — ${q.decision_note}` : ''}{q.decided_by && q.status !== 'declined' ? ` · ${profiles.find((p) => p.id === q.decided_by)?.display_name ?? ''}` : ''}</Sub> : null}
-              {q.status === 'submitted' && active ? (
+              {q.status === 'submitted' && canAct ? (
                 rejectFor === q.id ? (
                   <View style={{ gap: S.sm }}>
                     <Input label="Indok (opcionális, a munkavállaló látja)" value={rejectReason} onChangeText={setRejectReason} placeholder="pl. túl drága" />
@@ -769,15 +773,15 @@ Biztosan leveszed?`, 'Levétel', true);
                   </View>
                 )
               ) : null}
-              {q.status === 'requested' && active ? (
+              {q.status === 'requested' && canAct ? (
                 <Btn title="Kérés visszavonása" kind="ghost" small onPress={() => { setRejectReason(''); rejectQuote(q); }} />
               ) : null}
-              {(q.status === 'declined' || q.status === 'rejected') && active && !task.quote_accepted_at && !openQuotes(task.id, allQuotes).some((o) => o.worker_id === q.worker_id) ? (
+              {(q.status === 'declined' || q.status === 'rejected') && canAct && !task.quote_accepted_at && !openQuotes(task.id, allQuotes).some((o) => o.worker_id === q.worker_id) ? (
                 <Btn title={`↻ Új ajánlatkérés: ${workerName(q.worker_id)}`} kind="secondary" small onPress={() => void requestQuote(q.worker_id)} />
               ) : null}
             </View>
           ))}
-          {active && !task.quote_accepted_at ? (
+          {canAct && !task.quote_accepted_at ? (
             <View style={{ gap: S.sm, paddingTop: 4 }}>
               <Sub>Új ajánlatkérés — bárkitől, akár ugyanattól az embertől is:</Sub>
               <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
@@ -795,13 +799,13 @@ Biztosan leveszed?`, 'Levétel', true);
   const notesView = vs('notes', isWorker || noteCount > 0);
   const notesBlock = (isWorker && (!acked || (!active && noteCount === 0))) || notesView.hidden ? null : (
       <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={notesView.open} viewKey={notesView.viewKey} plain={isWorker}>
-        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : true} />
+        <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : !readOnly} />
       </Section>
       );
   // a rejtett szakasz is megjelenik, ha a műveletsáv „+ Anyag” gombjával épp rögzíteni akar
   const matView = vs('materials', isWorker);
-  const materialsBlock = (isWorker && (!acked || (!active && materials.length === 0 && workPhotos.length === 0))) || (matView.hidden && !matOpen) ? null : (
-      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={matView.open || (matView.hidden && matOpen)} viewKey={matView.viewKey} plain={isWorker} openSignal={openSig.mat}
+  const materialsBlock = (isWorker && (!acked || (!active && materials.length === 0 && workPhotos.length === 0))) || (matView.hidden && !(matOpen && partnerEdit)) ? null : (
+      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={matView.open || (matView.hidden && matOpen && partnerEdit)} viewKey={matView.viewKey} plain={isWorker} openSignal={openSig.mat}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
         {(['before', 'after'] as const).map((kind) => {
@@ -825,7 +829,7 @@ Biztosan leveszed?`, 'Levétel', true);
           <View key={m.id} style={{ gap: 4, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Body style={{ fontWeight: '700' }}>{ft(m.amount)}{m.note ? ` — ${m.note}` : ''} · {qtyLabel(m)}</Body>
-              {!isWorker ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
+              {!isWorker && !readOnly ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
             {m.reason ? <Sub>💬 Miért ennyi: {m.reason}</Sub> : null}
             <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={canEditMaterial(m) ? (ph) => void removeMaterialPhoto(m, ph) : undefined} />
@@ -853,7 +857,11 @@ Biztosan leveszed?`, 'Levétel', true);
                 <Btn title="✏️ Összeg / megjegyzés módosítása" kind="ghost" small onPress={() => setMatEdit({ id: m.id, amount: String(m.amount), note: m.note ?? '', reason: m.reason ?? '', qty: m.quantity != null ? String(Number(m.quantity)) : '', unit: m.unit ?? '' })} />
               )
             ) : null}
-            {!isWorker ? (
+            {readOnly ? (
+              <Sub>{mat.priceOf(m)
+                ? <>Továbbszámlázva: <Text style={{ fontWeight: '700', color: C.text }}>{ft(mat.priceOf(m)!.resale_net)}</Text> · haszon {ft(Number(mat.priceOf(m)!.resale_net) - Number(m.amount))}</>
+                : 'Továbbszámlázás: még nincs beárazva'}</Sub>
+            ) : !isWorker ? (
               mat.priceOf(m) && resaleDraft[m.id] === undefined ? (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Sub>Továbbszámlázva: <Text style={{ fontWeight: '700', color: C.text }}>{ft(mat.priceOf(m)!.resale_net)}</Text> · haszon {ft(Number(mat.priceOf(m)!.resale_net) - Number(m.amount))}</Sub>
@@ -919,7 +927,7 @@ Biztosan leveszed?`, 'Levétel', true);
           {task.quote_accepted_at && !isWorker ? <Badge text={`ajánlat ${ft(task.quote_amount ?? 0)}`} color={C.success} /> : null}
           {task.due_date && active ? <Badge text={isOverdue(task, todayISO()) ? `⏰ lejárt: ${hd(task.due_date)}` : `📅 ${hd(task.due_date)}`} color={isOverdue(task, todayISO()) ? C.danger : C.sub} /> : null}
         </View>
-        {edit ? (
+        {edit && !readOnly ? (
           <View style={{ gap: S.sm }}>
             <Input label="Feladat címe *" value={edit.title} onChangeText={(v) => setEdit({ ...edit, title: v })} />
             <Input label="Kód (hibakód / feladatkód)" value={edit.code} onChangeText={(v) => setEdit({ ...edit, code: v })} autoCapitalize="none" />
@@ -1014,7 +1022,7 @@ Biztosan leveszed?`, 'Levétel', true);
             <Body style={{ fontWeight: '800' }}>🧾 Elszámolás az ügyfél felé</Body>
             {assignees.map((a) => {
               const d = billingDefaults(task.id, a.worker_id, allSessions);
-              const editing = billEdit?.id === a.id;
+              const editing = !readOnly && billEdit?.id === a.id;
               return (
                 <View key={a.id} style={{ gap: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: C.border }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
@@ -1050,17 +1058,17 @@ Biztosan leveszed?`, 'Levétel', true);
         <KV k="Kiadta" v={`${creator} · ${hdt(task.created_at)}`} />
         {task.done_at ? <KV k={task.status === 'failed' ? (task.closed_at ? '⛔ Nem sikerült — lezárva' : '⚠️ Nem sikerült (a munkavállalónak nyitva marad, folytathatja)') : '✔ Készre jelentve'} v={hdt(task.done_at)} strong /> : null}
         {task.closed_at ? <KV k="Lezárva (nem tudták megoldani)" v={hdt(task.closed_at)} /> : null}
-        {active && !edit ? (
+        {canAct && !edit ? (
           <Btn title="✏️ Szerkesztés" kind="ghost" small
             onPress={() => setEdit({ title: task.title, code: task.code ?? '', details: task.details ?? '', site_id: task.site_id ?? null, sos: task.priority > 0, due: task.due_date ?? '', item_code_id: task.item_code_id ?? null })} />
         ) : null}
           </>
         )}
-        {(task.photo_paths ?? []).length > 0 || !isWorker ? (
+        {(task.photo_paths ?? []).length > 0 || (!isWorker && !readOnly) ? (
           <View style={{ gap: 4 }}>
             <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
             <PhotoThumbs paths={task.photo_paths ?? []}
-              onRemoveRemote={!isWorker && active ? (ph) => void removeTaskPhoto(ph) : undefined} />
+              onRemoveRemote={!isWorker && canAct ? (ph) => void removeTaskPhoto(ph) : undefined} />
           </View>
         ) : null}
         {task.status === 'failed' && task.fail_reason ? (
@@ -1073,7 +1081,7 @@ Biztosan leveszed?`, 'Levétel', true);
       </Card>
 
       {/* ---------- vezető: műveletsáv ---------- */}
-      {partnerEdit ? (
+      {partnerEdit && !vs('actions', true).hidden ? (
         <Card style={{ borderColor: active ? C.success : C.border, gap: S.sm }}>
           {active ? <Btn title="✔ Feladat lezárása — kész" onPress={() => void markDoneByPartner()} /> : null}
           {task.status === 'failed' && !task.closed_at ? (
@@ -1278,8 +1286,8 @@ Biztosan leveszed?`, 'Levétel', true);
         </Card>
       ) : null}
 
-      {(isWorker && (!acked || !timing?.startedAt)) || (vs('time', isWorker).hidden && !retroOpen) ? null : (
-      <Section title="⏱ Munkaidő" defaultOpen={vs('time', isWorker).open || (vs('time', isWorker).hidden && retroOpen)} viewKey={vs('time', isWorker).viewKey} plain={isWorker} openSignal={openSig.time}
+      {(isWorker && (!acked || !timing?.startedAt)) || (vs('time', isWorker).hidden && !(retroOpen && partnerEdit)) ? null : (
+      <Section title="⏱ Munkaidő" defaultOpen={vs('time', isWorker).open || (vs('time', isWorker).hidden && retroOpen && partnerEdit)} viewKey={vs('time', isWorker).viewKey} plain={isWorker} openSignal={openSig.time}
         summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
         {timing?.startedAt ? (
           <>
@@ -1291,7 +1299,7 @@ Biztosan leveszed?`, 'Levétel', true);
         {sessions.length > 0 ? (
           <View style={{ gap: 2 }}>
             {[...sessions].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 10).map((s) => (
-              <SessionEditor key={s.id} session={s} label={workerName(s.worker_id)} editable={!isWorker} />
+              <SessionEditor key={s.id} session={s} label={workerName(s.worker_id)} editable={!isWorker && !readOnly} />
             ))}
           </View>
         ) : null}
@@ -1440,10 +1448,10 @@ Biztosan leveszed?`, 'Levétel', true);
           <KV k="Anyag beszerzés" v={ft(mat.cost)} />
           <KV k="Anyag továbbszámlázva" v={mat.unpriced.length ? `${ft(mat.resale)} (+${mat.unpriced.length} beárazandó)` : ft(mat.resale)} />
           <Divider />
-          {invoiceStr === null ? (
+          {invoiceStr === null || readOnly ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Body>Kiszámlázott érték: <Text style={{ fontWeight: '800' }}>{finance?.invoice_net != null ? ft(finance.invoice_net) : '— nincs megadva'}</Text></Body>
-              <Btn title={finance?.invoice_net != null ? 'Módosít' : 'Megad'} kind="ghost" small onPress={() => setInvoiceStr(finance?.invoice_net != null ? String(finance.invoice_net) : '')} />
+              {readOnly ? null : <Btn title={finance?.invoice_net != null ? 'Módosít' : 'Megad'} kind="ghost" small onPress={() => setInvoiceStr(finance?.invoice_net != null ? String(finance.invoice_net) : '')} />}
             </View>
           ) : (
             <View style={{ flexDirection: 'row', gap: S.sm, alignItems: 'flex-end' }}>
@@ -1463,11 +1471,11 @@ Biztosan leveszed?`, 'Levétel', true);
 
       {/* ---------- vezető: ritka műveletek ---------- */}
       {!isWorker && !vs('more', false).hidden ? (
-        <Section title="⋯ További műveletek" defaultOpen={vs('more', false).open} viewKey={vs('more', false).viewKey} summary={active ? 'export · visszavonás · törlés' : 'export · törlés'}>
+        <Section title="⋯ További műveletek" defaultOpen={vs('more', false).open} viewKey={vs('more', false).viewKey} summary={readOnly ? 'export' : active ? 'export · visszavonás · törlés' : 'export · törlés'}>
           <Btn title={xlsBusy ? 'Készül…' : '📊 Összefoglaló Excelbe'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary()} />
           <Btn title={xlsBusy ? 'Készül…' : '🧾 Elszámolás az ügyfél felé (Excel)'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary('settlement')} />
-          {active ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
-          <Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} />
+          {canAct ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
+          {readOnly ? null : <Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} />}
         </Section>
       ) : null}
     </Screen>

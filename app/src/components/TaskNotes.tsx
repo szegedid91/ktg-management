@@ -52,7 +52,7 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
       {notes.length === 0 && !isWorker ? <Sub>Még nincs megjegyzés.</Sub> : null}
       {notes.map((n) => (
         <View key={n.id} style={{ gap: 4, borderLeftWidth: 3, borderLeftColor: n.visible_to_workers ? C.primary : C.border, paddingLeft: S.sm, paddingVertical: 2 }}>
-          {editId === n.id ? (
+          {editId === n.id && canWrite ? (
             <View style={{ gap: S.sm }}>
               <Input value={editText} onChangeText={setEditText} multiline />
               {!isWorker ? <Check checked={editVis} onToggle={() => setEditVis(!editVis)} label="A munkavállaló is lássa" /> : null}
@@ -67,8 +67,8 @@ export function TaskNotes({ taskId, isWorker, canWrite = !isWorker }: { taskId: 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, flexWrap: 'wrap' }}>
                 {!isWorker ? <Badge text={n.visible_to_workers ? '👷 munkavállaló is látja' : '🔒 csak vezetők'} color={n.visible_to_workers ? C.primary : C.sub} /> : null}
                 <Sub style={{ fontSize: 11, flex: 1 }}>{n.created_by === me ? 'én' : ((n as any).author_name ?? profiles.find((p) => p.id === n.created_by)?.display_name ?? '?')} · {hdt(n.updated_at !== n.created_at ? n.updated_at : n.created_at)}{n.updated_at !== n.created_at ? ' (szerk.)' : ''}</Sub>
-                {!isWorker || (canWrite && n.created_by === me) ? <Btn title="✏️" kind="ghost" small onPress={() => startEdit(n)} /> : null}
-                {!isWorker || (canWrite && n.created_by === me) ? <Btn title="🗑️" kind="ghost" small onPress={() => void remove(n)} /> : null}
+                {(isWorker ? canWrite && n.created_by === me : canWrite) ? <Btn title="✏️" kind="ghost" small onPress={() => startEdit(n)} /> : null}
+                {(isWorker ? canWrite && n.created_by === me : canWrite) ? <Btn title="🗑️" kind="ghost" small onPress={() => void remove(n)} /> : null}
               </View>
             </>
           )}

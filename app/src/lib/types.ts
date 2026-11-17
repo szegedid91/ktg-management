@@ -133,6 +133,8 @@ export interface TaskViewPreset extends BaseRow {
   builtin: string | null;
   /** szakasz → 'open' | 'closed' | 'hidden' (hiányzó kulcs = automatikus) */
   sections: Record<string, string>;
+  /** hamis: a sablon használatakor a feladat oldala csak megtekinthető (nincs szerkesztés) */
+  editable?: boolean;
   position: number;
 }
 

@@ -16,6 +16,27 @@ describe('sablon nézetek', () => {
     expect(v[1].sections.site).toBe('closed');
     expect(v[1].sections.finance).toBe('closed');
     expect(v[1].sections.time).toBe('open');
+    // az Elszámoláshoz gyárilag csak megtekintés: nincs szerkesztés, nincs műveletsáv
+    expect(v[0].editable).toBe(true);
+    expect(v[1].editable).toBe(false);
+    expect(v[1].sections.actions).toBe('hidden');
+  });
+
+  it('szerkesztési lehetőség: a tárolt sor értéke érvényes; hiányzó érték = van szerkesztés', () => {
+    const v = resolveViews([
+      row({ id: 'ov', builtin: 'settlement', sections: { site: 'closed' }, editable: true }),
+      row({ id: 'c1', name: 'Csak nézem', editable: false, position: 1 }),
+      row({ id: 'c2', name: 'Régi sor', position: 2 }),
+    ], 'u1');
+    expect(v[1].editable).toBe(true);
+    expect(v[2].editable).toBe(false);
+    expect(v[3].editable).toBe(true);
+  });
+
+  it('a műveletsáv csak látszik / rejtve lehet', () => {
+    expect(sanitizeSections({ actions: 'closed' })).toEqual({});
+    expect(sanitizeSections({ actions: 'open' })).toEqual({});
+    expect(sanitizeSections({ actions: 'hidden' })).toEqual({ actions: 'hidden' });
   });
 
   it('a beépített sablon átállítása felülírja a gyári beállítást; a legfrissebb érvényes', () => {

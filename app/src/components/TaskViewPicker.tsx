@@ -16,7 +16,7 @@ export function TaskViewPicker() {
       {views.map((v) => (
         <Pressable key={v.id} onPress={() => setActiveTaskViewId(v.id)} accessibilityRole="button" accessibilityLabel={`Nézet: ${v.name}`}
           style={[st.chip, active.id === v.id && { backgroundColor: C.primary }]}>
-          <Text style={{ color: active.id === v.id ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>{v.name}</Text>
+          <Text style={{ color: active.id === v.id ? '#fff' : C.text, fontSize: 13, fontWeight: '600' }}>{v.name}{v.editable ? '' : ' 🔒'}</Text>
         </Pressable>
       ))}
       <Pressable onPress={() => router.push('/task-views')} accessibilityRole="button" accessibilityLabel="Sablon nézetek szerkesztése" style={st.chip}>

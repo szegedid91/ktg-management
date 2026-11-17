@@ -5,6 +5,8 @@
 -- saját változata itt tárolódik (builtin = a beépített sablon kulcsa). Az egyedi sablonoknál builtin üres.
 -- A sablonok FIÓKHOZ kötöttek: mindenki csak a sajátját látja és írja; minden készülékén ugyanazok.
 -- sections: {"site": "closed", "finance": "closed", "time": "open", ...} — hiányzó kulcs = automatikus.
+-- editable: a sablon használatakor van-e szerkesztési lehetőség a feladat oldalán (hamis = csak megtekintés:
+-- nincs műveletsáv, szerkesztés, törlés, rögzítés — az exportok megmaradnak).
 
 create table if not exists public.task_view_presets (
   id uuid primary key default gen_random_uuid(),
@@ -12,6 +14,7 @@ create table if not exists public.task_view_presets (
   builtin text check (builtin is null or char_length(builtin) between 1 and 40),
   sections jsonb not null default '{}'::jsonb
     check (jsonb_typeof(sections) = 'object' and length(sections::text) <= 2000),
+  editable boolean not null default true,
   position integer not null default 0,
   created_by uuid not null default auth.uid() references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
