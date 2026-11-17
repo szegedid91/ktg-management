@@ -1,5 +1,5 @@
-// Munkavállalói kezdőlap — kompakt: egysoros munkaidő-sáv, kompakt
-// feladatlista szűrőkkel, összecsukható „Napjaim”.
+// Munkavállalói kezdőlap — kompakt: egysoros munkaidő-sáv és a feladatok.
+// (A heti / havi munkaidő és a napok listája külön oldalon van: Munkaidőm.)
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
@@ -57,11 +57,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   const schedule = useTable<ScheduleEntry>('schedule_entries')
     .filter((e) => myIds.has(e.worker_id) && e.work_date >= todayISO() && e.work_date <= addDaysISO(todayISO(), 7))
     .sort((a, b) => a.work_date.localeCompare(b.work_date));
-  const [periodMode, setPeriodMode] = useState<'week' | 'month'>('week');
   // melyik emberhez van nyitva a személyre szóló meghívó
   const [inviteFor, setInviteFor] = useState<string | null>(null);
-  const [daysOpen, setDaysOpen] = useState(false);
-  const [daysLimit, setDaysLimit] = useState(7);
   // bejelentkezés egy építkezésen (feladat nélkül): helyszínt kell választani,
   // mert a bér a munkaidő alapján, építkezésenként számolódik
   const [startOpen, setStartOpen] = useState(false);
@@ -148,35 +145,8 @@ export function WorkerHome({ profile }: { profile: Profile }) {
     return unionHours(sessions.filter((s) => localDateISO(s.started_at) === today));
   }, [sessions]);
 
-  const days = [...attendance].sort((a, b) => b.work_date.localeCompare(a.work_date));
-  // munkaidő-áttekintés hetekre / hónapokra bontva. Nincs beküldés: a bér a
-  // munkaidőből automatikusan képződik, ez csak az áttekintést szolgálja.
-  const todayIso = todayISO();
-  const thisWeek = weekStartISO(todayIso);
+  // a kezdés-panel választója: én + az embereim
   const people = [{ id: wid, name: 'Én' }, ...crew.map((c) => ({ id: c.id, name: c.name }))];
-  const periodKeys: { key: string; label: string; match: (d: string) => boolean }[] = [];
-  if (periodMode === 'week') {
-    for (let i = 0; i < 8; i++) {
-      const d = new Date(`${thisWeek}T12:00:00`); d.setDate(d.getDate() - 7 * i);
-      const week = localDateISO(d);
-      periodKeys.push({ key: week, label: `${hd(week)} hete${week === thisWeek ? ' (folyó)' : ''}`, match: (x) => weekStartISO(x) === week });
-    }
-  } else {
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(`${todayIso.slice(0, 7)}-15T12:00:00`); d.setMonth(d.getMonth() - i);
-      const ym = localDateISO(d).slice(0, 7);
-      periodKeys.push({ key: ym, label: `${ym.replace('-', '. ')}.${ym === todayIso.slice(0, 7) ? ' (folyó)' : ''}`, match: (x) => x.slice(0, 7) === ym });
-    }
-  }
-  const periods = periodKeys.map((k) => people.map((p) => {
-    const own = allSessions.filter((s) => s.worker_id === p.id && s.ended_at && k.match(localDateISO(s.started_at)));
-    const hours = unionHours(own);
-    const rows = allAttendance.filter((a) => a.worker_id === p.id && k.match(a.work_date));
-    const amount = rows.filter((a) => a.pay_basis !== 'presence').reduce((sum, a) => sum + Number(a.amount) - Number(a.commission_amount), 0);
-    return { key: k.key, label: k.label, person: p, hours, amount, days: new Set(rows.map((a) => a.work_date)).size };
-  })).flat().filter((w) => w.hours > 0 || w.days > 0);
-  const unpaid = days.filter((a) => a.pay_basis !== 'presence' && !a.paid_at)
-    .reduce((s, a) => s + Number(a.amount) - Number(a.commission_amount), 0);
 
   return (
     <Screen>
@@ -335,53 +305,7 @@ export function WorkerHome({ profile }: { profile: Profile }) {
         </Pressable>
       ) : null}
 
-      {periods.length > 0 ? (
-        <Card style={{ paddingVertical: S.sm, gap: 6 }}>
-          <Text style={{ fontWeight: '800', fontSize: 16, color: C.text }}>🗓️ Munkaidőm</Text>
-          <Segmented options={[{ value: 'week', label: 'Hetek' }, { value: 'month', label: 'Hónapok' }]} value={periodMode} onChange={setPeriodMode} />
-          {periods.map((w) => (
-            <View key={`${w.key}-${w.person.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontWeight: '600' }}>{w.label}{isContractor && crew.length ? ` · ${w.person.name}` : ''}</Text>
-                <Sub>{fmtHours(w.hours)} · {w.days} nap</Sub>
-              </View>
-              {hidePay ? null : <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{ft(w.amount)}</Text>}
-            </View>
-          ))}
-        </Card>
-      ) : null}
-
-      <Card style={{ paddingVertical: S.sm }}>
-        <Pressable onPress={() => setDaysOpen(!daysOpen)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-          <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>📅 Napjaim</Text>
-          <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }} numberOfLines={1}>
-            {days.length === 0 ? 'nincs rögzített nap' : `${days.length} nap · utolsó ${hd(days[0].work_date)}${unpaid > 0 && !hidePay ? ` · függő ${ft(unpaid)}` : ''}`}
-          </Text>
-          <Text style={{ color: C.sub, fontSize: 16 }}>{daysOpen ? '▾' : '▸'}</Text>
-        </Pressable>
-        {daysOpen ? (
-          <View style={{ gap: 4, paddingTop: 4 }}>
-            {days.length === 0 ? <Empty text="Még nincs rögzített napod." /> : null}
-            {days.slice(0, daysLimit).map((a) => (
-              <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: C.border }}>
-                <Text style={{ color: C.text, fontWeight: '600', flex: 1 }} numberOfLines={1}>
-                  {hd(a.work_date)} · {sites.find((s) => s.id === a.site_id)?.name ?? '—'}
-                </Text>
-                {a.source === 'session' || a.source === 'task' ? <Text style={{ fontSize: 11, color: C.sub }}>{a.source === 'task' ? '💬' : '⏱'}</Text> : null}
-                {a.pay_basis === 'hourly' && Number(a.hours ?? 0) > 0 ? <Text style={{ color: C.text, fontWeight: '700' }}>{String(Number(a.hours)).replace('.', ',')} ó</Text> : null}
-                {a.pay_basis !== 'hourly' && a.pay_basis !== 'presence' && Number(a.worked_hours ?? 0) > 0 ? <Text style={{ color: C.text, fontWeight: '700' }}>{fmtHours(Number(a.worked_hours))}</Text> : null}
-                {hidePay ? null : a.pay_basis !== 'presence' ? (
-                  <>
-                    <Text style={{ color: C.text, fontWeight: '700' }}>{ft(Number(a.amount) - Number(a.commission_amount))}</Text>
-                    <Badge text={a.paid_at ? 'kifizetve' : 'függő'} color={a.paid_at ? C.success : C.warning} />
-                  </>
-                ) : <Badge text="jelenlét" color={C.sub} />}
-              </View>
-            ))}
-            {days.length > daysLimit ? <Btn title={`Több (${days.length - daysLimit})`} kind="ghost" small onPress={() => setDaysLimit(daysLimit + 30)} /> : null}
-          </View>
-        ) : null}
-      </Card>
+      {/* a heti / havi munkaidő és a „Napjaim” külön oldalon van: alsó menü › Munkaidőm (app/worktime.tsx) */}
 
       <Text style={{ fontSize: 11, color: C.sub, textAlign: 'center' }}>
         {profile.display_name} · {wname(workers.find((w) => w.id === wid))}

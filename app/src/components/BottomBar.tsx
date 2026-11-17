@@ -14,7 +14,7 @@ import { useChatSeen } from '../lib/chatSeen';
 /** Fül-váltás: a navigációs verem kiürül, és a választott oldal lesz az egyetlen képernyő. Korábban minden
  *  koppintás ÚJ képernyőt tett a verem tetejére — a régiek a háttérben tovább éltek (és minden adatváltozásra
  *  újraszámoltak), egy hosszú munkamenet végére az app belassult, a gombok nem reagáltak. */
-function goTab(path: '/' | '/finance' | '/tasks' | '/chat' | '/more') {
+function goTab(path: '/' | '/finance' | '/tasks' | '/chat' | '/more' | '/worktime') {
   try { if (router.canDismiss()) router.dismissAll(); } catch { /* nincs mit bezárni */ }
   router.replace(path);
 }
@@ -24,6 +24,8 @@ const ITEMS: { icon: string; label: string; action: () => void; activePrefix?: s
   { icon: '💸', label: '+ Költség', action: () => router.push('/expense/new') },
   { icon: '💰', label: 'Pénzügy', action: () => goTab('/finance'), activePrefix: '/finance' },
   { icon: '🛠️', label: 'Feladatok', action: () => goTab('/tasks'), activePrefix: '/tasks' },
+  // csak munkavállalónak: a saját munkaideje (hetek / hónapok, napok)
+  { icon: '🗓️', label: 'Munkaidőm', action: () => goTab('/worktime'), activePrefix: '/worktime' },
   { icon: '💬', label: 'Chat', action: () => goTab('/chat'), activePrefix: '/chat' },
   { icon: '☰', label: 'Több', action: () => goTab('/more'), activePrefix: '/more' },
 ];
@@ -35,9 +37,9 @@ export function BottomBar() {
   const chat = useTable<ChatMessage>('chat_messages');
   const seen = useChatSeen();
   if (!session) return null;
-  // munkavállalói fiók: kezdőlap + feladatok + chat + Több (kijelentkezés)
+  // munkavállalói fiók: kezdőlap + feladatok + munkaidőm + chat + Több (kijelentkezés)
   const isWorker = !!profiles.find((p) => p.id === session.user.id)?.worker_id;
-  const items = isWorker ? ITEMS.filter((i) => ['Kezdőlap', 'Feladatok', 'Chat', 'Több'].includes(i.label)) : ITEMS;
+  const items = isWorker ? ITEMS.filter((i) => ['Kezdőlap', 'Feladatok', 'Munkaidőm', 'Chat', 'Több'].includes(i.label)) : ITEMS.filter((i) => i.label !== 'Munkaidőm');
   // olvasatlan chat-üzenetek: a chat utolsó megnyitása óta mások által írtak
   const unreadChat = chat.filter((m) => m.created_by !== session.user.id && m.created_at > seen).length;
 
