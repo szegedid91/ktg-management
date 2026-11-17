@@ -35,7 +35,7 @@ import { sectionState, ViewSectionKey } from '../../lib/taskViews';
 import { useTaskViews } from '../../lib/taskViewState';
 import { TaskViewPicker } from '../../components/TaskViewPicker';
 import { UnitPicker } from '../../components/UnitPicker';
-import { moneyInText } from '../../lib/moneyText';
+import { uncoveredAmount } from '../../lib/moneyText';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
 /** plain: mindig nyitva, összecsukó nyíl és összegzés nélkül (munkavállalói, egyszerű nézet) */
@@ -424,12 +424,14 @@ Biztosan leveszed?`, 'Levétel', true);
       notify('Részletes leírás kell', '4 óránál hosszabb munkánál írd le részletesen: mit csináltál pontosan, és miért tartott ennyi ideig.');
       return;
     }
-    // összeg a leírásban vagy a saját megjegyzésben, de nincs rögzített anyagköltség: rákérdezünk, mielőtt kész lesz
-    if (!materials.some((m) => m.worker_id && mineIds.has(m.worker_id))) {
-      const amount = moneyInText(note) ?? taskNotes.filter((n) => n.created_by === me).map((n) => moneyInText(n.body)).find((x) => x != null) ?? null;
+    // összeg a leírásban vagy a saját megjegyzésben, amit a rögzített anyagköltség nem fed le: rákérdezünk, mielőtt kész lesz
+    {
+      const mineMats = materials.filter((m) => m.worker_id && mineIds.has(m.worker_id)).map((m) => Number(m.amount));
+      const fromNote = uncoveredAmount([note], mineMats);
+      const amount = fromNote ?? uncoveredAmount(taskNotes.filter((n) => n.created_by === me).map((n) => n.body), mineMats);
       if (amount != null && await confirmDialog('Anyagköltség hiányzik?',
-        `${moneyInText(note) != null ? 'A leírásban' : 'A megjegyzésedben'} összeg szerepel (${ft(amount)}), de anyagköltséget nem rögzítettél ehhez a feladathoz. Ha te vetted az anyagot, előbb rögzítsd — csak úgy kerül be az elszámolásba.`,
-        '📦 Anyagköltséget rögzítek', false, 'Nem én vettem — kész')) {
+        `${fromNote != null ? 'A leírásban' : 'A megjegyzésedben'} összeg szerepel (${ft(amount)}), ${mineMats.length ? 'ami nincs a rögzített anyagköltségeid között' : 'de anyagköltséget nem rögzítettél ehhez a feladathoz'}. Ha te vetted az anyagot, előbb rögzítsd — csak úgy kerül be az elszámolásba.`,
+        '📦 Anyagköltséget rögzítek', false, 'Nincs mit rögzíteni — kész')) {
         setDoneAsk(false); setMatOpen(true); setOpenSig((x) => ({ ...x, mat: x.mat + 1 }));
         if (!matAmount) setMatAmount(String(amount));
         return;
@@ -437,7 +439,11 @@ Biztosan leveszed?`, 'Levétel', true);
     }
     // csak azok munkaideje áll le, akiknek a része most kész lesz (a fiókkal rendelkező embereim dolgozhatnak tovább)
     if (openSession) updateRow('work_sessions', openSession.id, { ended_at: nowISO() });
-    for (const s of crewOpenSessions) if (mineIds.has(s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
+    // …és azoké az embereimé is, akik nincsenek a feladatra kiosztva (nekik nincs külön „kész” gombjuk ezen a
+    // feladaton): különben a munkaidejük a kész feladaton futva maradna
+    for (const s of crewOpenSessions) {
+      if (mineIds.has(s.worker_id) || !others.some((a) => a.worker_id === s.worker_id)) updateRow('work_sessions', s.id, { ended_at: nowISO() });
+    }
     const t = nowISO();
     const parts = people.map((a) => ({
       worker_id: a.worker_id, ...billOf(a.worker_id),

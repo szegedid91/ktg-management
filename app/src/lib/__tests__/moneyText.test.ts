@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { moneyInText } from '../moneyText';
+import { moneyInText, uncoveredAmount } from '../moneyText';
 
 describe('összeg felismerése szövegben', () => {
   it('a valós eset: „Ez kb 100000ft”', () => {
@@ -15,6 +15,20 @@ describe('összeg felismerése szövegben', () => {
     expect(moneyInText('3490 HUF')).toBe(3490);
     expect(moneyInText('Összesen: 45 000 forintba került')).toBe(45000);
   });
+  it('pénznem nélküli kerek szám (az éles teszt: „250000 faanyag test”)', () => {
+    expect(moneyInText('250000 faanyag test')).toBe(250000);
+    expect(moneyInText('faanyag 250 000 lett')).toBe(250000);
+    expect(moneyInText('csaptelep 12500')).toBe(12500);
+    expect(moneyInText('a panel 85.000 volt')).toBe(85000);
+  });
+  it('pénznem nélküli szám, ami nem összeg', () => {
+    expect(moneyInText('1500 mm cső kellett, 2000 W-os fűtőszál')).toBeNull();
+    expect(moneyInText('3000K fényű neon, 1000es csiszoló')).toBeNull();
+    expect(moneyInText('2026.11.05-én voltam, 2025 óta rossz')).toBeNull();
+    expect(moneyInText('hívd: 06 30 123 4500 vagy 0630 1234500')).toBeNull();
+    expect(moneyInText('lásd az 1192032 és 1548324 feladatot')).toBeNull();
+    expect(moneyInText('3490 volt')).toBeNull(); // nem kerek: nem tudjuk, hogy pénz-e
+  });
   it('ami nem összeg', () => {
     expect(moneyInText('A 300as üstnél thermóelem és fúvóka csere volt és működik. Az 500as panel cserés!!!')).toBeNull();
     expect(moneyInText('2 db csap, 3 kg ragasztó, 5 km kiszállás')).toBeNull();
@@ -23,5 +37,12 @@ describe('összeg felismerése szövegben', () => {
     expect(moneyInText('2 emelet, 4 elem cserélve')).toBeNull();
     expect(moneyInText('')).toBeNull();
     expect(moneyInText(null)).toBeNull();
+  });
+  it('le nem fedett összeg: ha nincs hozzá közeli anyagköltség, szólunk', () => {
+    expect(uncoveredAmount(['Megjegyzes', '250000 faanyag test'], [100000])).toBe(250000);
+    expect(uncoveredAmount(['Ez kb 100000ft'], [])).toBe(100000);
+    expect(uncoveredAmount(['Ez kb 100000ft'], [98500])).toBeNull();           // közeli tétel
+    expect(uncoveredAmount(['összesen 100 ezer'], [60000, 45000])).toBeNull(); // a tételek összege közeli
+    expect(uncoveredAmount(['nincs benne szám', null], [5000])).toBeNull();
   });
 });
