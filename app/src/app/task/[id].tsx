@@ -2,7 +2,7 @@
 // haszon, ajánlat elfogadása) és munkavállalónak (visszaigazolás, ajánlat,
 // munkaidő, kész / nem sikerült indokkal+fotóval, anyagköltség fotóval).
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Linking, Pressable } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Screen, Card, H2, Sub, Body, Btn, Input, KV, Divider, Badge, Empty, Picker, Check } from '../../ui/kit';
@@ -31,15 +31,26 @@ import {
 import { isOverdue, sessionHours, billingDefaults, taskListItems, parseHours, startedHours } from '../../lib/tasks';
 import { ContactLine } from '../../components/SiteContacts';
 import { todayISO } from '../../lib/format';
+import { sectionState, ViewSectionKey } from '../../lib/taskViews';
+import { useTaskViews } from '../../lib/taskViewState';
+import { TaskViewPicker } from '../../components/TaskViewPicker';
 
 /** Összecsukható kártya: a fejlécben egysoros összefoglaló, a részletek koppintásra. */
 /** plain: mindig nyitva, összecsukó nyíl és összegzés nélkül (munkavállalói, egyszerű nézet) */
-function Section({ title, summary, defaultOpen = false, accent, plain, openSignal, children }: {
-  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; plain?: boolean; openSignal?: number; children: React.ReactNode;
+/** viewKey: a sablon nézet jele — ha változik (másik nézet, átállított sablon), a szakasz a sablon szerinti állapotba áll */
+/** inline: nem külön kártya, hanem egy kártyán belüli összecsukható rész (nyitva az összegzés nem látszik) */
+function Section({ title, summary, defaultOpen = false, accent, plain, openSignal, viewKey, inline, children }: {
+  title: string; summary?: string; defaultOpen?: boolean; accent?: boolean; plain?: boolean; openSignal?: number; viewKey?: string; inline?: boolean; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   // a műveletsáv gombja kinyitja a szakaszt (a jel számlálója változik)
   useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    setOpen(defaultOpen);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewKey]);
   if (plain) {
     return (
       <Card style={accent ? { borderColor: C.primary } : undefined}>
@@ -48,13 +59,17 @@ function Section({ title, summary, defaultOpen = false, accent, plain, openSigna
       </Card>
     );
   }
+  const head = (
+    <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+      <Text style={{ fontWeight: '800', fontSize: inline ? 14 : 15, color: C.text }}>{title}</Text>
+      <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }} numberOfLines={1}>{inline && open ? '' : summary ?? ''}</Text>
+      <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
+    </Pressable>
+  );
+  if (inline) return <View style={{ gap: 6 }}>{head}{open ? children : null}</View>;
   return (
     <Card style={accent ? { borderColor: C.primary } : undefined}>
-      <Pressable onPress={() => setOpen(!open)} style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-        <Text style={{ fontWeight: '800', fontSize: 15, color: C.text }}>{title}</Text>
-        <Text style={{ flex: 1, color: C.sub, fontSize: 13, textAlign: 'right' }} numberOfLines={1}>{summary ?? ''}</Text>
-        <Text style={{ color: C.sub, fontSize: 16 }}>{open ? '▾' : '▸'}</Text>
-      </Pressable>
+      {head}
       {open ? children : null}
     </Card>
   );
@@ -153,6 +168,9 @@ Biztosan leveszed?`, 'Levétel', true);
   const myProfile = profiles.find((p) => p.id === me);
   const myWorkerId = myProfile?.worker_id ?? null;
   const isWorker = !!myWorkerId;
+  // sablon nézet (csak vezetőnek): melyik szakasz legyen nyitva / csukva / rejtve; a munkavállaló nézete változatlan
+  const { active: taskView } = useTaskViews();
+  const vs = (key: ViewSectionKey, autoOpen: boolean) => sectionState(isWorker ? null : taskView, key, autoOpen);
 
   // percenként frissülő „most” a futó munkaidőhöz
   const [now, setNow] = useState(Date.now());
@@ -718,9 +736,10 @@ Biztosan leveszed?`, 'Levétel', true);
   };
 
   // szakaszok (a sorrend szerep szerint más: a munkavállalónál megjegyzések → fotók/anyag, a vezetőnél anyag → megjegyzések → ajánlatok)
-  const quotesPartnerBlock = !isWorker && (isQuoteTask || active) ? (
+  const quotesView = vs('quotes', isQuoteTask && !task.quote_accepted_at);
+  const quotesPartnerBlock = !isWorker && (isQuoteTask || active) && !quotesView.hidden ? (
         <Section title="💬 Ajánlatok" accent={openQuotes(task.id, allQuotes).length > 0}
-          defaultOpen={isQuoteTask && !task.quote_accepted_at}
+          defaultOpen={quotesView.open} viewKey={quotesView.viewKey}
           summary={task.quote_accepted_at ? `elfogadva ${ft(task.quote_amount ?? 0)}`
             : openQuotes(task.id, allQuotes).length ? `${openQuotes(task.id, allQuotes).filter((q) => q.status === 'submitted').length} ajánlat · ${openQuotes(task.id, allQuotes).filter((q) => q.status === 'requested').length} kérés nyitva`
             : quoteLog.length ? 'nincs nyitott kérés' : 'nem ajánlatkérős'}>
@@ -773,13 +792,16 @@ Biztosan leveszed?`, 'Levétel', true);
         </Section>
       ) : null;
   // kész (csak olvasható) feladatnál a munkavállalónak az üres részek nem jelennek meg
-  const notesBlock = isWorker && (!acked || (!active && noteCount === 0)) ? null : (
-      <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={isWorker || noteCount > 0} plain={isWorker}>
+  const notesView = vs('notes', isWorker || noteCount > 0);
+  const notesBlock = (isWorker && (!acked || (!active && noteCount === 0))) || notesView.hidden ? null : (
+      <Section title="📝 Megjegyzések" summary={noteCount ? `${noteCount} db` : 'nincs'} defaultOpen={notesView.open} viewKey={notesView.viewKey} plain={isWorker}>
         <TaskNotes taskId={task.id} isWorker={isWorker} canWrite={isWorker ? !!myAssignment && acked && active : true} />
       </Section>
       );
-  const materialsBlock = isWorker && (!acked || (!active && materials.length === 0 && workPhotos.length === 0)) ? null : (
-      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={isWorker} plain={isWorker} openSignal={openSig.mat}
+  // a rejtett szakasz is megjelenik, ha a műveletsáv „+ Anyag” gombjával épp rögzíteni akar
+  const matView = vs('materials', isWorker);
+  const materialsBlock = (isWorker && (!acked || (!active && materials.length === 0 && workPhotos.length === 0))) || (matView.hidden && !matOpen) ? null : (
+      <Section title={isWorker ? '📷 Fotók és anyagköltség' : '📦 Anyagköltség és munkafotók'} defaultOpen={matView.open || (matView.hidden && matOpen)} viewKey={matView.viewKey} plain={isWorker} openSignal={openSig.mat}
         summary={materials.length ? `${materials.length} tétel · ${ft(mat.cost)}${!isWorker && mat.unpriced.length ? ` · ${mat.unpriced.length} beárazandó` : ''}` : 'nincs'}>
         {/* munkafotók: előtte / utána — ugyanitt, külön menüpont nélkül */}
         {(['before', 'after'] as const).map((kind) => {
@@ -884,6 +906,8 @@ Biztosan leveszed?`, 'Levétel', true);
     <Screen>
       <Stack.Screen options={{ title: task.code ? `${task.code} · ${task.title}` : task.title }} />
 
+      {!isWorker ? <TaskViewPicker /> : null}
+
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
           {active && assignees.length === 0
@@ -970,11 +994,16 @@ Biztosan leveszed?`, 'Levétel', true);
           </>
         ) : (
           <>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-          <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
-          {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
-        </View>
-        {siteContacts.map((c) => <ContactLine key={c.id} c={c} showVisibility />)}
+        {vs('site', true).hidden ? null : (
+          <Section inline title="📍 Helyszín és kontakt" defaultOpen={vs('site', true).open} viewKey={vs('site', true).viewKey}
+            summary={site ? `${site.name}${siteContacts.length ? ` · ${siteContacts.length} elérhetőség` : ''}` : 'nincs helyszín'}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+              <View style={{ flex: 1 }}><KV k="Helyszín" v={site ? `${site.name}${site.address ? ` · ${site.address}` : ''}` : '—'} /></View>
+              {site?.address ? <Btn title="🚗" kind="ghost" small onPress={() => void openDirections(site.address)} /> : null}
+            </View>
+            {siteContacts.map((c) => <ContactLine key={c.id} c={c} showVisibility />)}
+          </Section>
+        )}
         <KV k="Cikktörzs-kód" v={task.item_code_id && itemCodes.find((c) => c.id === task.item_code_id) ? itemCodeLabel(itemCodes.find((c) => c.id === task.item_code_id)!) : '—'} />
         <KV k="Kiosztva" v={assignees.map((a) => `${workerName(a.worker_id)} ${a.done_at && isActiveTask(task) ? '✔ kész' : a.acknowledged_at ? '✓' : '⏳'}`).join(', ') || '— még senkinek'} />
         {assignees.filter((a) => a.done_note).map((a) => (
@@ -1104,8 +1133,10 @@ Biztosan leveszed?`, 'Levétel', true);
         // azonos időbélyegnél (egy műveletsorban) a logikai sorrend: nem sikerült → kész → lezárva
         const rank = (t: string) => (t.startsWith('⚠️') ? 0 : t.startsWith('✔') ? 1 : t.startsWith('⛔') ? 2 : 0);
         items.sort((a, b) => a.at.localeCompare(b.at) || rank(a.text) - rank(b.text));
+        const tl = vs('timeline', true);
+        if (tl.hidden) return null;
         return (
-          <Section title="🧭 Folyamat" defaultOpen summary={`${items.length} esemény`}>
+          <Section title="🧭 Folyamat" defaultOpen={tl.open} viewKey={tl.viewKey} summary={`${items.length} esemény`}>
             {items.length === 0 ? <Sub>Még nincs esemény.</Sub> : null}
             {items.map((it, i) => (
               <View key={i} style={{ flexDirection: 'row', gap: S.sm, paddingVertical: 3, borderTopWidth: i ? 1 : 0, borderTopColor: C.border }}>
@@ -1247,8 +1278,8 @@ Biztosan leveszed?`, 'Levétel', true);
         </Card>
       ) : null}
 
-      {isWorker && (!acked || !timing?.startedAt) ? null : (
-      <Section title="⏱ Munkaidő" defaultOpen={isWorker} plain={isWorker} openSignal={openSig.time}
+      {(isWorker && (!acked || !timing?.startedAt)) || (vs('time', isWorker).hidden && !retroOpen) ? null : (
+      <Section title="⏱ Munkaidő" defaultOpen={vs('time', isWorker).open || (vs('time', isWorker).hidden && retroOpen)} viewKey={vs('time', isWorker).viewKey} plain={isWorker} openSignal={openSig.time}
         summary={timing?.startedAt ? `${fmtHours(timing.hours)}${timing.running ? ' · ● fut' : timing.finishedAt ? ' · kész' : ''}` : 'még nem kezdték el'}>
         {timing?.startedAt ? (
           <>
@@ -1372,8 +1403,8 @@ Biztosan leveszed?`, 'Levétel', true);
       {isWorker ? <>{notesBlock}{materialsBlock}</> : <>{materialsBlock}{notesBlock}{quotesPartnerBlock}</>}
 
       {/* ---------- partner: pénzügy ---------- */}
-      {!isWorker && wage ? (
-        <Section title="💰 Pénzügy" accent defaultOpen={finance?.invoice_net == null}
+      {!isWorker && wage && !vs('finance', true).hidden ? (
+        <Section title="💰 Pénzügy" accent defaultOpen={vs('finance', finance?.invoice_net == null).open} viewKey={vs('finance', true).viewKey}
           summary={profit == null ? `bér ${ft(wageTotal)} · nincs kiszámlázott érték` : `haszon ${ft(profit)}`}>
           {task.quote_amount != null && task.quote_accepted_at ? (
             <KV k="Bérköltség (elfogadott ajánlat)" v={ft(wageTotal)} strong />
@@ -1431,8 +1462,8 @@ Biztosan leveszed?`, 'Levétel', true);
       ) : null}
 
       {/* ---------- vezető: ritka műveletek ---------- */}
-      {!isWorker ? (
-        <Section title="⋯ További műveletek" summary={active ? 'export · visszavonás · törlés' : 'export · törlés'}>
+      {!isWorker && !vs('more', false).hidden ? (
+        <Section title="⋯ További műveletek" defaultOpen={vs('more', false).open} viewKey={vs('more', false).viewKey} summary={active ? 'export · visszavonás · törlés' : 'export · törlés'}>
           <Btn title={xlsBusy ? 'Készül…' : '📊 Összefoglaló Excelbe'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary()} />
           <Btn title={xlsBusy ? 'Készül…' : '🧾 Elszámolás az ügyfél felé (Excel)'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary('settlement')} />
           {active ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}

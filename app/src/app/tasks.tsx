@@ -9,6 +9,7 @@ import { useTable } from '../lib/hooks';
 import { getCurrentUserId } from '../lib/repo';
 import { WorkerTaskList } from '../components/WorkerTaskList';
 import { TaskBoard, BoardFilter } from '../components/TaskBoard';
+import { TaskViewPicker } from '../components/TaskViewPicker';
 import { WorkerTask, TaskAssignee, Profile } from '../lib/types';
 
 export default function Tasks() {
@@ -36,6 +37,7 @@ export default function Tasks() {
         <Sub>Szűrj állapotra, helyszínre, emberre — vagy keress.</Sub>
         <Btn title="+ Feladat" kind="secondary" small onPress={() => router.push('/task/new')} />
       </View>
+      <TaskViewPicker />
       <TaskBoard tasks={tasks} includeClosed initialFilter={(filter as BoardFilter) || 'active'} />
     </Screen>
   );

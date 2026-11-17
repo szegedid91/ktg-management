@@ -126,6 +126,16 @@ export interface SiteContact extends BaseRow {
   position: number;
 }
 
+/** Sablon nézet a feladat oldalához (fiókonként; lásd lib/taskViews.ts) */
+export interface TaskViewPreset extends BaseRow {
+  name: string;
+  /** a beépített sablon kulcsa, ha ez annak az átállított változata; egyedi sablonnál null */
+  builtin: string | null;
+  /** szakasz → 'open' | 'closed' | 'hidden' (hiányzó kulcs = automatikus) */
+  sections: Record<string, string>;
+  position: number;
+}
+
 export interface ExternalPerson extends BaseRow {
   name: string;
   phone: string | null;
@@ -624,6 +634,7 @@ export const SYNC_TABLES = [
   'task_finance', 'task_material_pricing', 'notification_queue', 'task_quotes',
   'task_subtasks', 'task_templates', 'timesheets', 'task_notes', 'schedule_entries', 'task_photos',
   'item_codes', 'task_events', 'site_contacts', 'chat_messages', 'chat_reactions', 'chat_reads',
+  'task_view_presets',
 ] as const;
 
 export type SyncTable = typeof SYNC_TABLES[number];

@@ -95,6 +95,7 @@ export default function RootLayout() {
         <Stack.Screen name="errors" options={{ title: 'Hibanapló' }} />
         <Stack.Screen name="map" options={{ title: 'Térkép' }} />
         <Stack.Screen name="export" options={{ title: 'Exportálás' }} />
+        <Stack.Screen name="task-views" options={{ title: 'Sablon nézetek' }} />
       </Stack>
       </ErrorBoundary>
       <WorkerApprovalGate />
