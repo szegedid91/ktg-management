@@ -16,7 +16,7 @@ import { TaskNotes } from '../../components/TaskNotes';
 import { openDirections } from '../../lib/maps';
 import { ft, hd, hdt, parseAmount } from '../../lib/format';
 import { notify, confirmDialog } from '../../lib/dialogs';
-import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, PickedPhoto } from '../../lib/photo';
+import { pickPhoto, pickPhotos, uploadTaskPhoto, taskPhotoUrl, removeStoragePaths, rotateTaskPhoto, PickedPhoto } from '../../lib/photo';
 import { PhotoThumbs } from '../../components/PhotoThumbs';
 import { supabase } from '../../lib/supabase';
 import { downloadExport } from '../../lib/exportfile';
@@ -703,6 +703,35 @@ Biztosan leveszed?`, 'Levétel', true);
     void removeStoragePaths('tasks', [path]);
   };
 
+  // ---------- feltöltött fotók forgatása (90°): az elforgatott kép új fájlként megy fel, a rekordban kicseréljük ----------
+  const rotateWorkPhoto = async (path: string, clockwise: boolean) => {
+    const row = workPhotos.find((p) => p.path === path);
+    if (!row) return;
+    const np = await rotateTaskPhoto(path, clockwise);
+    if (isWorker) {
+      // a munkavállaló a fotó útvonalát nem írhatja át (szerveroldali őr) — új sor + a régi törlése
+      insertRow('task_photos', { task_id: task.id, worker_id: myWorkerId, kind: row.kind, path: np });
+      softDeleteRow('task_photos', row.id);
+    } else {
+      updateRow('task_photos', row.id, { path: np });
+    }
+    void removeStoragePaths('tasks', [path]);
+    return np;
+  };
+  const rotateMaterialPhoto = async (m: TaskMaterial, path: string, clockwise: boolean) => {
+    const np = await rotateTaskPhoto(path, clockwise);
+    const list = materialPhotos(m).map((p) => (p === path ? np : p));
+    updateRow('task_materials', m.id, { photo_paths: list, photo_path: list[0] ?? null });
+    void removeStoragePaths('tasks', [path]);
+    return np;
+  };
+  const rotateBriefPhoto = async (path: string, clockwise: boolean) => {
+    const np = await rotateTaskPhoto(path, clockwise);
+    updateRow('worker_tasks', task.id, { photo_paths: (task.photo_paths ?? []).map((p) => (p === path ? np : p)) });
+    void removeStoragePaths('tasks', [path]);
+    return np;
+  };
+
   // anyagköltség egy fotójának törlése (vezető): a tétel megmarad, csak a kép kerül ki
   const removeMaterialPhoto = async (m: TaskMaterial, path: string) => {
     const rest = materialPhotos(m).filter((p) => p !== path);
@@ -816,7 +845,8 @@ Biztosan leveszed?`, 'Levétel', true);
             <View key={kind} style={{ gap: 4 }}>
               <Text style={{ fontWeight: '700', color: C.text }}>{kind === 'before' ? '📷 Előtte' : '📷 Utána'}{list.length ? ` (${list.length})` : ''}</Text>
               <PhotoThumbs paths={list.map((p) => p.path)}
-                onRemoveRemote={(isWorker ? active && list.every((p) => p.worker_id === myWorkerId) : partnerEdit) ? (ph) => void removeWorkPhoto(ph) : undefined} />
+                onRemoveRemote={(isWorker ? active && list.every((p) => p.worker_id === myWorkerId) : partnerEdit) ? (ph) => void removeWorkPhoto(ph) : undefined}
+                onRotateRemote={(isWorker ? active && list.every((p) => p.worker_id === myWorkerId) : true) ? rotateWorkPhoto : undefined} />
               {canAdd ? <Btn title={photoBusy === kind ? 'Feltöltés…' : kind === 'before' ? '📷 Előtte fotó feltöltése' : '📷 Utána fotó feltöltése'}
                 kind="secondary" small={!isWorker} disabled={photoBusy !== null} onPress={() => void addWorkPhotos(kind)} /> : null}
             </View>
@@ -832,7 +862,8 @@ Biztosan leveszed?`, 'Levétel', true);
               {!isWorker && !readOnly ? <Btn title="🗑️" kind="ghost" small onPress={() => void deleteMaterial(m)} /> : null}
             </View>
             {m.reason ? <Sub>💬 Miért ennyi: {m.reason}</Sub> : null}
-            <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={canEditMaterial(m) ? (ph) => void removeMaterialPhoto(m, ph) : undefined} />
+            <PhotoThumbs paths={materialPhotos(m)} onRemoveRemote={canEditMaterial(m) ? (ph) => void removeMaterialPhoto(m, ph) : undefined}
+              onRotateRemote={(isWorker ? canEditMaterial(m) : true) ? (ph, cw) => rotateMaterialPhoto(m, ph, cw) : undefined} />
             <Sub>{m.worker_id ? workerName(m.worker_id) : creator} · {hdt(m.created_at)}</Sub>
             {isWorker && canEditMaterial(m) ? (
               matEdit?.id === m.id ? (
@@ -1068,7 +1099,8 @@ Biztosan leveszed?`, 'Levétel', true);
           <View style={{ gap: 4 }}>
             <Sub>📷 Fotók a feladathoz{(task.photo_paths ?? []).length ? ` (${task.photo_paths.length})` : ''}</Sub>
             <PhotoThumbs paths={task.photo_paths ?? []}
-              onRemoveRemote={!isWorker && canAct ? (ph) => void removeTaskPhoto(ph) : undefined} />
+              onRemoveRemote={!isWorker && canAct ? (ph) => void removeTaskPhoto(ph) : undefined}
+              onRotateRemote={!isWorker ? rotateBriefPhoto : undefined} />
           </View>
         ) : null}
         {task.status === 'failed' && task.fail_reason ? (

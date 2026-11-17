@@ -80,6 +80,43 @@ export async function uploadTaskPhoto(base64: string, folder: string): Promise<s
   return path;
 }
 
+/** Forgatni ott lehet, ahol van vászon (web) — a natív appban ehhez külön képkezelő modul kellene. */
+export const canRotatePhotos = typeof document !== 'undefined';
+
+/** Feltöltött fotó elforgatása 90°-kal: letöltjük, vásznon elforgatjuk, és ÚJ útvonalra töltjük fel
+ *  (ugyanabba a mappába) — az új útvonal miatt a bélyegkép és a böngésző gyorsítótára is biztosan frissül.
+ *  A visszaadott útvonalat a hívó írja be a rekordba a régi helyére, és ő törli a régi fájlt.
+ *  Internet kell hozzá; hiba esetén kivételt dob, a régi kép érintetlen marad. */
+export async function rotateTaskPhoto(path: string, clockwise = true): Promise<string> {
+  if (!canRotatePhotos) throw new Error('A forgatás ezen a készüléken nem érhető el.');
+  await ensureFreshSession();
+  const { data: blob, error } = await supabase.storage.from('tasks').download(path);
+  if (error || !blob) throw error ?? new Error('a kép nem tölthető le');
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('kép betöltése'));
+      el.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalHeight; canvas.height = img.naturalWidth;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('vászon');
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((clockwise ? 1 : -1) * Math.PI / 2);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    // a már tömörített képet magasabb minőséggel mentjük vissza, hogy a többszöri forgatás se rontsa láthatóan
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    if (!base64) throw new Error('kép mentése');
+    return await uploadTaskPhoto(base64, path.split('/').slice(0, -1).join('/'));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function taskPhotoUrl(path: string): Promise<string | null> {
   const { data } = await supabase.storage.from('tasks').createSignedUrl(path, 3600);
   return data?.signedUrl ?? null;
