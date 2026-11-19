@@ -17,13 +17,26 @@ export interface TaskFilter {
   layout?: 'summary' | 'settlement';
   /** csak ennek a munkavállalónak a sorai (elszámolásnál) */
   workerId?: string | null;
-  /** feladatkód részlete (elszámolásnál) */
+  /** feladatkód(ok) (elszámolásnál): egy vagy több sorszám vesszővel, szóközzel vagy új sorban — részlet is elég.
+   *  Ha meg van adva, az időszak nem szűr (a megadott sorszámok kellenek, bármikor készültek). */
   code?: string | null;
   /** kimenő (ügyfélnek számlázott) órabér és kiszállási díj — a tömbök „Árak/Díjak” oszlopa */
   billHourly?: number; billCallout?: number;
 }
 /** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
 const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
+
+/** A beírt / bemásolt sorszám-lista szétszedése: vessző, pontosvessző, szóköz, új sor választ el; ismétlődés
+ *  (kis- / nagybetűtől függetlenül) és a LIKE-helyettesítők nélkül. Az összevetés kisbetűsítve történik. */
+export function parseCodes(raw: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const part of String(raw ?? '').split(/[\s,;]+/)) {
+    const c = part.replace(/[%_\\]/g, '').trim();
+    if (c && !out.some((x) => x.toLowerCase() === c.toLowerCase())) out.push(c);
+    if (out.length >= 500) break;
+  }
+  return out;
+}
 
 /** Teljes lekérés lapozva: a PostgREST alapból 1000 sornál csendben csonkol. */
 export async function fetchAll(build: () => any, page = 1000): Promise<any[]> {
@@ -38,13 +51,15 @@ export async function fetchAll(build: () => any, page = 1000): Promise<any[]> {
 }
 
 export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknown, s?: number) => Response) {
+  const codes = parseCodes(f.code).map((k) => k.toLowerCase());
   const taskQuery = () => {
     let tq = supabase.from('worker_tasks')
       .select('id, code, title, status, site_id, created_at, done_at, closed_at, quote_amount, quote_accepted_at, item_code_id, item_codes(code, name)')
       .is('deleted_at', null);
     if (f.taskId) tq = tq.eq('id', f.taskId);
     if (f.siteId) tq = tq.eq('site_id', f.siteId);
-    if (f.code) tq = tq.ilike('code', `%${f.code.replace(/[%_\\]/g, '')}%`);
+    // egy sorszámnál az adatbázis szűr; többnél a letöltött listát szűrjük (lásd lent)
+    if (codes.length === 1) tq = tq.ilike('code', `%${codes[0]}%`);
     if (f.status === 'done') tq = tq.eq('status', 'done');
     else if (f.status === 'failed') tq = tq.eq('status', 'failed');
     // „folyamatban”: a kiadott / elfogadott, és a nyitva hagyott „nem sikerült” (a munkavállalónál még él)
@@ -56,6 +71,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   const byDone = f.status === 'done' || f.status === 'failed';
   const list = (tasksAll as any[]).filter((t) => {
     if (f.taskId) return true;
+    // megadott sorszám(ok): csak ezek kellenek, az időszaktól függetlenül
+    if (codes.length) { const c = String(t.code ?? '').toLowerCase(); return codes.some((k) => c.includes(k)); }
     const d = budDay((byDone && (t.closed_at ?? t.done_at)) || t.created_at);
     return d >= f.from && d <= f.to;
   });
@@ -333,8 +350,15 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
  *  így a mennyiség vagy az ár átírása után az Excel újraszámol. */
 function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
   const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
+  const codes = parseCodes(f.code);
+  const has = (r: any, k: string) => String(r.code ?? '').toLowerCase().includes(k.toLowerCase());
+  const codeIdx = (r: any) => { const i = codes.findIndex((k) => has(r, k)); return i < 0 ? codes.length : i; };
+  // megadott sorszám-listánál a tömbök a lista sorrendjében követik egymást (könnyebb összevetni)
+  const ordered = codes.length > 1 ? rows.map((r, i) => ({ r, i })).sort((a, b) => codeIdx(a.r) - codeIdx(b.r) || a.i - b.i).map((x) => x.r) : rows;
+  // amelyik megadott sorszámhoz nincs találat (elírás, más állapot / terület / ember)
+  const missing = codes.filter((k) => !rows.some((r) => has(r, k)));
   const byTask = new Map<string, any[]>();
-  for (const r of rows) byTask.set(r.taskId, [...(byTask.get(r.taskId) ?? []), r]);
+  for (const r of ordered) byTask.set(r.taskId, [...(byTask.get(r.taskId) ?? []), r]);
   const hourly = Number(f.billHourly ?? 0), callout = Number(f.billCallout ?? 0);
   const aoa: any[][] = [];
   const merges: any[] = [];
@@ -399,8 +423,10 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
   const wb = XLSX.utils.book_new();
   (wb as any).Workbook = { CalcPr: { fullCalcOnLoad: true } };
   XLSX.utils.book_append_sheet(wb, ws, 'Elszámolás');
-  const one = f.taskId && rows[0] ? `elszamolas_${(rows[0].code || 'feladat').replace(/[^\w-]+/g, '_')}` : `elszamolas_${f.from}_${f.to}`;
+  const one = (f.taskId || codes.length === 1) && rows[0] ? `elszamolas_${(rows[0].code || 'feladat').replace(/[^\w-]+/g, '_')}`
+    : codes.length ? `elszamolas_${byTask.size}_sorszam` : `elszamolas_${f.from}_${f.to}`;
   return json({
+    missing,
     filename: `${one}.xlsx`,
     mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     base64: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }),

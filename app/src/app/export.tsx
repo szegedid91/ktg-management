@@ -44,6 +44,8 @@ function ExportScreenInner() {
   const [sSite, setSSite] = useState<string | null>(null);
   const [sWorker, setSWorker] = useState<string | null>(null);
   const [sCode, setSCode] = useState('');
+  // a beírt / bemásolt sorszámok (új sor, vessző, pontosvessző vagy szóköz választja el)
+  const sCodes = [...new Set(sCode.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean))];
   // az ügyfél felé számlázott órabér és kiszállási díj egy helyen van megadva: Beállítások › Díjak (a szerver is onnan veszi)
   const outHourly = Number(settings?.out_hourly_rate ?? 0);
   const outCallout = Number(settings?.out_callout_fee ?? 0);
@@ -61,13 +63,16 @@ function ExportScreenInner() {
     }
     setBusy(`${mode}-${format}`);
     try {
-      await downloadExport(
+      const res = await downloadExport(
         mode === 'wages' ? { mode, month, worker_id: workerId, format }
           : mode === 'tasks' ? { mode, status: tStatus, from: wFrom.trim() || undefined, to: wTo.trim() || undefined, site_id: wSite }
           : mode === 'settlement' ? { mode: 'tasks', layout: 'settlement', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
-              site_id: sSite, worker_id: sWorker, code: sCode.trim() || undefined }
+              site_id: sSite, worker_id: sWorker, code: sCodes.join(',') || undefined }
           : { from, to, site_id: site, format },
       );
+      if (mode === 'settlement' && res.missing.length > 0) {
+        notify('Nem minden sorszám került bele', `${res.missing.length} megadott sorszámhoz nincs találat (elírás, vagy más az állapota / területe / embere):\n${res.missing.join(', ')}`);
+      }
     } catch (e: any) {
       notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
     } finally {
@@ -180,7 +185,11 @@ function ExportScreenInner() {
           allowNull nullLabel="— minden terület —" />
         <Picker label="Ember (munkavállaló)" items={[...workers].sort((a, b) => a.name.localeCompare(b.name, 'hu'))} selectedId={sWorker} getId={(w) => w.id}
           getLabel={(w) => w.name} onSelect={setSWorker} allowNull nullLabel="— mindenki —" />
-        <Input label="Munka sorszáma (feladatkód, részlet is elég)" value={sCode} onChangeText={setSCode} placeholder="pl. 1502209" autoCapitalize="none" />
+        <Input label="Munka sorszáma — több is megadható (új sorban, vesszővel vagy szóközzel; részlet is elég)" value={sCode} onChangeText={setSCode}
+          placeholder={'pl. 1502209\nvagy egy bemásolt lista, soronként egy sorszám'} autoCapitalize="none" multiline />
+        {sCodes.length > 0 ? (
+          <Sub>{sCodes.length} sorszám megadva — ilyenkor az időszak nem számít: a megadott sorszámok kerülnek az elszámolásba (az állapot, a terület és az ember szűrése érvényes marad), a lista sorrendjében.</Sub>
+        ) : null}
         <View style={{ borderWidth: 1, borderColor: outHourly > 0 ? C.border : C.warning, borderRadius: S.radiusSm, padding: S.sm, gap: 4 }}>
           {outHourly > 0 ? (
             <>

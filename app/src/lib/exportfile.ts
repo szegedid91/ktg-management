@@ -7,10 +7,13 @@ import * as Sharing from 'expo-sharing';
 import { supabase } from './supabase';
 import { confirmDialog } from './dialogs';
 
-export async function downloadExport(body: Record<string, unknown>): Promise<void> {
+/** Letölti az exportot. Visszaadja a szerver kísérő adatait (pl. `missing`: a megadott sorszámok közül melyikhez
+ *  nem volt találat). */
+export async function downloadExport(body: Record<string, unknown>): Promise<{ missing: string[] }> {
   const { data, error } = await supabase.functions.invoke('export-data', { body });
   if (error) throw error;
   if (data.error) throw new Error(data.error);
+  const info = { missing: Array.isArray(data.missing) ? data.missing.map(String) : [] };
 
   if (Platform.OS === 'web') {
     const bytes = Uint8Array.from(atob(data.base64), (c) => c.charCodeAt(0));
@@ -26,10 +29,10 @@ export async function downloadExport(body: Record<string, unknown>): Promise<voi
       const file = new File([blob], data.filename, { type: data.mime });
       const canShare = typeof nav.canShare === 'function' && nav.canShare({ files: [file] });
       const ok = await confirmDialog('Elkészült a fájl', data.filename, canShare ? '📤 Megosztás / mentés' : '📂 Megnyitás', false, 'Mégse');
-      if (!ok) return;
+      if (!ok) return info;
       if (canShare) {
-        try { await nav.share({ files: [file], title: data.filename }); return; } catch (e: any) {
-          if (String(e?.name) === 'AbortError') return; // a megosztó-lapot bezárta
+        try { await nav.share({ files: [file], title: data.filename }); return info; } catch (e: any) {
+          if (String(e?.name) === 'AbortError') return info; // a megosztó-lapot bezárta
         }
       }
       const url = URL.createObjectURL(blob);
@@ -38,7 +41,7 @@ export async function downloadExport(body: Record<string, unknown>): Promise<voi
         const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.click();
       }
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      return;
+      return info;
     }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -55,4 +58,5 @@ export async function downloadExport(body: Record<string, unknown>): Promise<voi
       await Sharing.shareAsync(path, { mimeType: data.mime, dialogTitle: data.filename });
     }
   }
+  return info;
 }

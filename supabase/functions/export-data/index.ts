@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
       if (body.layout === 'settlement') {
         // elszámolás az ügyfél felé: kimenő órabér / kiszállási díj a kérésből, különben a Beállításokból
         const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
-        const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().slice(0, 40) : null;
+        const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().slice(0, 8000) : null; // több sorszám is jöhet (vessző / szóköz / új sor)
         const num = (v: unknown) => (typeof v === 'number' && isFinite(v) && v >= 0 ? v : null);
         let billHourly = num(body.bill_hourly_rate), billCallout = num(body.bill_callout_fee);
         if (billHourly == null || billCallout == null) {
