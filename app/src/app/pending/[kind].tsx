@@ -150,7 +150,10 @@ function PendingScreenInner() {
   // ember-szűrő: üres kiválasztás = mindenki látszik
   const [personFilter, setPersonFilter] = useState<Set<string>>(new Set());
   // egyszerre csak egy ember napjai vannak nyitva; másik kinyitása bezárja az előzőt
+  // (kivéve, ha a lista egyetlen emberre szűkül — akkor minden nyitva van, lásd `single`)
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // egy emberre szűrt listában a kézzel becsukott sorok
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // a pipa csak kijelöl — a kifizetés a "Kijelöltek kifizetése" gombbal történik;
   // a kijelölés 5 percig visszatölthető (lásd selectionCache)
   const cacheKey = isWages ? 'wages' : 'commissions';
@@ -226,7 +229,15 @@ function PendingScreenInner() {
   // közvetítői díjnál egyszerre több közvetítő / építkezés tétele is kijelölhető és kifizethető;
   // bérnél marad az egy emberes kifizetés (a nyitva lévő ember tételei)
   const allVisibleItems = useMemo(() => visibleGroups.flatMap((g) => g.persons.flatMap((p) => p.items.map((it) => ({ ...it, personKey: p.key, personName: p.name })))), [visibleGroups]);
-  const payableItems = isWages ? (openPerson?.items ?? []) : allVisibleItems;
+  // ha a lista egyetlen emberre szól (ember-szűrő, keresés, vagy csak neki van függő tétele): minden
+  // építkezésnél nyitva vannak a napjai, és egyszerre az összes kijelölhető / kifizethető
+  const single = useMemo(() => {
+    const keys = new Set(allVisibleItems.map((i) => i.personKey));
+    return keys.size === 1 ? { key: allVisibleItems[0].personKey, name: allVisibleItems[0].personName } : null;
+  }, [allVisibleItems]);
+  const singleKey = single?.key ?? null;
+  useEffect(() => { setCollapsed(new Set()); }, [singleKey]);
+  const payableItems = isWages ? (single ? allVisibleItems : (openPerson?.items ?? [])) : allVisibleItems;
   const payableIds = new Set(payableItems.map((i) => i.id));
   const selectedIds = [...selected].filter((id) => payableIds.has(id));
   const amountById = new Map(payableItems.map((i) => [i.id, i.amount]));
@@ -259,7 +270,7 @@ function PendingScreenInner() {
     }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontWeight: '700', fontSize: 14, color: C.text, flex: 1 }} numberOfLines={2}>
-          {isWages ? `${openPerson?.name}: ` : selectedPersons.length === 1 ? `${selectedPersons[0]}: ` : `${selectedPersons.length} közvetítő · `}{selectedIds.length} tétel · {ft(selectedTotal)}
+          {isWages ? `${single?.name ?? openPerson?.name}: ` : selectedPersons.length === 1 ? `${selectedPersons[0]}: ` : `${selectedPersons.length} közvetítő · `}{selectedIds.length} tétel · {ft(selectedTotal)}
         </Text>
         <Text
           onPress={() => setSelected((prev) => {
@@ -335,10 +346,13 @@ function PendingScreenInner() {
           v={ft(grandTotal)}
           strong
         />
-        <Sub>{isWages ? 'A pipa kijelöli a tételeket — a kifizetést az alul megjelenő sáv gombja rögzíti.'
-          : 'A pipa kijelöli a tételeket — több közvetítő és építkezés is egyszerre; a kifizetést az alul megjelenő sáv gombja rögzíti.'}</Sub>
-        {!isWages && allVisibleItems.length > 0 ? (
-          <Btn title={allVisibleItems.every((i) => selected.has(i.id)) ? 'Kijelölés törlése' : `Mind kijelölése${isFiltered ? ' (szűrt)' : ''} — ${ft(grandTotal)}`}
+        <Sub>{!isWages ? 'A pipa kijelöli a tételeket — több közvetítő és építkezés is egyszerre; a kifizetést az alul megjelenő sáv gombja rögzíti.'
+          : single ? `${single.name} minden tétele nyitva van — a „Mind kijelölése” gombbal egyszerre kijelölhető; a kifizetést az alul megjelenő sáv gombja rögzíti.`
+          : 'A pipa kijelöli a tételeket — a kifizetést az alul megjelenő sáv gombja rögzíti. Ha egy munkavállalóra szűrsz, minden tétele egyszerre kijelölhető.'}</Sub>
+        {(!isWages || single) && allVisibleItems.length > 0 ? (
+          <Btn title={allVisibleItems.every((i) => selected.has(i.id)) ? 'Kijelölés törlése'
+            : isWages ? `Mind kijelölése — ${allVisibleItems.length} tétel · ${ft(grandTotal)}`
+            : `Mind kijelölése${isFiltered ? ' (szűrt)' : ''} — ${ft(grandTotal)}`}
             kind="secondary" small onPress={() => toggleMany(allVisibleItems.map((i) => i.id))} />
         ) : null}
       </Card>
@@ -368,11 +382,11 @@ function PendingScreenInner() {
           <Divider />
           {g.persons.map((p) => {
             const expKey = `${g.siteId}:${p.key}`;
-            const isOpen = expandedKey === expKey;
+            const isOpen = single ? !collapsed.has(expKey) : expandedKey === expKey;
             return (
               <View key={p.key} style={{ gap: 4, paddingVertical: 6 }}>
                 <Pressable
-                  onPress={() => setExpandedKey(isOpen ? null : expKey)}
+                  onPress={() => (single ? toggleIn(collapsed, setCollapsed, expKey) : setExpandedKey(isOpen ? null : expKey))}
                   style={({ pressed }) => ({
                     flexDirection: 'row', alignItems: 'center', gap: S.sm,
                     opacity: pressed ? 0.7 : 1,
@@ -392,7 +406,7 @@ function PendingScreenInner() {
                     {isWages ? '👷' : '🤝'} {p.name}
                   </Text>
                   <Badge text={`${p.items.length} nap`} />
-                  {!isWages && !isOpen && p.items.some((i) => selected.has(i.id)) ? <Text style={{ fontSize: 12, color: C.primary, fontWeight: '700' }}>{p.items.filter((i) => selected.has(i.id)).length} kijelölve</Text> : null}
+                  {(!isWages || single) && !isOpen && p.items.some((i) => selected.has(i.id)) ? <Text style={{ fontSize: 12, color: C.primary, fontWeight: '700' }}>{p.items.filter((i) => selected.has(i.id)).length} kijelölve</Text> : null}
                   {isOpen ? <Text style={{ fontWeight: '700' }}>{ft(p.total)}</Text> : null}
                 </Pressable>
                 {isOpen ? (
