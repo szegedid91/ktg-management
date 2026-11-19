@@ -28,6 +28,28 @@ function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () 
   );
 }
 
+/** a terület-szűrő egy sora: pipa, építkezés neve, jobbra a függő összeg */
+function SiteRow({ label, amount, on, onPress }: { label: string; amount: number; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={`Terület: ${label}`}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', gap: S.sm,
+        paddingHorizontal: S.md, paddingVertical: 10, minHeight: 42,
+        borderBottomWidth: 1, borderBottomColor: C.border,
+        backgroundColor: on ? C.chipBg : 'transparent', opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Text style={{ width: 18, color: C.primary, fontSize: 15, fontWeight: '800' }}>{on ? '✓' : ''}</Text>
+      <Text style={{ flex: 1, color: C.text, fontSize: 14, fontWeight: on ? '700' : '500' }} numberOfLines={1}>{label}</Text>
+      <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>{ft(amount)}</Text>
+    </Pressable>
+  );
+}
+
 interface Item {
   id: string;
   date: string;
@@ -301,20 +323,20 @@ function PendingScreenInner() {
           <Input value={search} onChangeText={setSearch} placeholder="🔍 Keresés: név, építkezés…" />
           {groups.length > 1 ? (
             <>
-              <Sub>Terület:</Sub>
-              {/* sok építkezésnél a szűrő saját, kb. 3 sor magas görgethető dobozban — ne tolja le a listát */}
-              <ScrollView nestedScrollEnabled style={{ maxHeight: 132 }}>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
-                  <Chip label="Mind" on={siteFilter.size === 0} onPress={() => setSiteFilter(new Set())} />
-                  {groups.map((g) => (
-                    <Chip
-                      key={g.siteId}
-                      label={`${g.siteName} · ${ft(g.total)}`}
-                      on={siteFilter.has(g.siteId)}
-                      onPress={() => toggleIn(siteFilter, setSiteFilter, g.siteId)}
-                    />
-                  ))}
-                </View>
+              <Sub>Terület{siteFilter.size > 0 ? ` (${siteFilter.size} kiválasztva)` : ''}:</Sub>
+              {/* görgethető lista, soronként egy építkezés (név + függő összeg) — kb. 4,5 sor látszik,
+                  hogy sok építkezésnél se tolja le a tételeket, és látsszon, hogy lejjebb is van */}
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 190, borderWidth: 1, borderColor: C.border, borderRadius: 10 }}>
+                <SiteRow label="Mind" amount={groups.reduce((s, g) => s + g.total, 0)} on={siteFilter.size === 0} onPress={() => setSiteFilter(new Set())} />
+                {groups.map((g) => (
+                  <SiteRow
+                    key={g.siteId}
+                    label={g.siteName}
+                    amount={g.total}
+                    on={siteFilter.has(g.siteId)}
+                    onPress={() => toggleIn(siteFilter, setSiteFilter, g.siteId)}
+                  />
+                ))}
               </ScrollView>
             </>
           ) : null}
