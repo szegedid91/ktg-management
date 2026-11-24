@@ -26,6 +26,22 @@ export interface TaskFilter {
 /** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
 const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
 
+/** ISO-hét (hétfőtől vasárnapig; az év első hete az, amelyikben az első csütörtök van) — ugyanaz, mint az appban
+ *  (lib/format.ts isoWeek) és az Excel ISO.HÉT.SZÁMA függvénye. */
+function isoWeek(day: string): { year: number; week: number } {
+  const d = new Date(day.slice(0, 10) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 4 - ((d.getUTCDay() + 6) % 7 + 1));
+  const year = d.getUTCFullYear();
+  return { year, week: Math.ceil(((d.getTime() - Date.UTC(year, 0, 1)) / 86400000 + 1) / 7) };
+}
+/** az ISO-hét hétfője és vasárnapja (ÉÉÉÉ-HH-NN) */
+function isoWeekRange(year: number, week: number): { from: string; to: string } {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const mon = new Date(jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86400000 + (week - 1) * 7 * 86400000);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { from: iso(mon), to: iso(new Date(mon.getTime() + 6 * 86400000)) };
+}
+
 /** A beírt / bemásolt sorszám-lista szétszedése: vessző, pontosvessző, szóköz, új sor választ el; ismétlődés
  *  (kis- / nagybetűtől függetlenül) és a LIKE-helyettesítők nélkül. Az összevetés kisbetűsítve történik. */
 export function parseCodes(raw: string | null | undefined): string[] {
@@ -195,7 +211,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   type Row = {
     taskId: string; first: boolean; site: string; code: string; item: string; title: string; status: string; worker: string; hours: number;
     wage: number; callout: number; matCost: number; cost: number; matResale: number; invoice: number | null; profit: number | null;
-    created: string; done: string; siteId: string; doneNote: string;
+    created: string; done: string; siteId: string; doneNote: string; periodDay: string;
     wid: string; calloutCount: number; mats: any[];
     /** megkezdett órák (munkavállalónként és naponként felfelé kerekítve) — az ügyfél felé ezt számlázzuk */
     startedHours: number;
@@ -220,6 +236,8 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     if (wids.length === 0) wids.push(null);
     const base = {
       taskId: t.id, site: s.name, code: t.code ?? '', item: t.item_codes ? `${t.item_codes.code} ${t.item_codes.name}` : '', title: t.title,
+      // az időszak-szűrés napja (kész / nem sikerült: lezárás, egyébként kiadás) — ez dönti el, melyik hét lapjára kerül
+      periodDay: budDay((byDone && (t.closed_at ?? t.done_at)) || t.created_at),
       status: t.status === 'failed' ? (t.closed_at ? 'nem sikerült (lezárva)' : 'nem sikerült (nyitva)') : (STATUS[t.status] ?? t.status), created: hd(t.created_at), done: hd(t.done_at), siteId: t.site_id ?? '',
     };
     let taskCost = 0;
@@ -342,31 +360,20 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
   });
 }
 
-/** Elszámolás az ügyfél felé („Heti elszámolás” minta): feladatonként egy tömb — Munka sorszáma, megnevezés,
- *  majd Megnevezés / Mennyiség / Egység / Árak/Díjak / Összesen sorok: Munkaóra (megkezdett óra × kimenő órabér),
- *  Kiszállás (alkalom × kimenő kiszállási díj), anyagok (a rögzített tétel, 1 db, a továbbszámlázott ár —
- *  ha nincs beárazva, a bekerülési összeg), végül Összesen; a lap alján Mindösszesen. A munkaóra és a kiszállás
- *  a készre jelentéskor jóváhagyott szám (task_assignees.bill_*), ennek hiányában a mért érték. Az összegek képletek,
- *  így a mennyiség vagy az ár átírása után az Excel újraszámol. */
-function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
-  const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
-  const codes = parseCodes(f.code);
-  const has = (r: any, k: string) => String(r.code ?? '').toLowerCase().includes(k.toLowerCase());
-  const codeIdx = (r: any) => { const i = codes.findIndex((k) => has(r, k)); return i < 0 ? codes.length : i; };
-  // megadott sorszám-listánál a tömbök a lista sorrendjében követik egymást (könnyebb összevetni)
-  const ordered = codes.length > 1 ? rows.map((r, i) => ({ r, i })).sort((a, b) => codeIdx(a.r) - codeIdx(b.r) || a.i - b.i).map((x) => x.r) : rows;
-  // amelyik megadott sorszámhoz nincs találat (elírás, más állapot / terület / ember)
-  const missing = codes.filter((k) => !rows.some((r) => has(r, k)));
-  const byTask = new Map<string, any[]>();
-  for (const r of ordered) byTask.set(r.taskId, [...(byTask.get(r.taskId) ?? []), r]);
-  const hourly = Number(f.billHourly ?? 0), callout = Number(f.billCallout ?? 0);
+/** Egy elszámolás-lap: feladatonként egy tömb — Munka sorszáma, megnevezés, majd Megnevezés / Mennyiség / Egység /
+ *  Árak/Díjak / Összesen sorok: Munkaóra (megkezdett óra × kimenő órabér), Kiszállás (alkalom × kimenő kiszállási díj),
+ *  anyagok (a rögzített tétel, a továbbszámlázott ár — ha nincs beárazva, a bekerülési összeg), végül Összesen; a lap
+ *  alján Mindösszesen. A munkaóra és a kiszállás a készre jelentéskor jóváhagyott szám (task_assignees.bill_*), ennek
+ *  hiányában a mért érték. Az összegek képletek, így a mennyiség vagy az ár átírása után az Excel újraszámol.
+ *  Visszaadja a lapot, a végösszeget és a végösszeg celláját (az összesítő lap erre hivatkozik). */
+function settlementSheet(groups: any[][], hourly: number, callout: number, resaleOf: Map<string, number>) {
   const aoa: any[][] = [];
   const merges: any[] = [];
   const totals: string[] = [];
   let grand = 0;
   const num = (v: number) => ({ t: 'n', v, z: '#,##0' });
   const formula = (fx: string, v: number) => ({ t: 'n', f: fx, v, z: '#,##0' });
-  for (const rs of byTask.values()) {
+  for (const rs of groups) {
     const t = rs[0];
     // az ügyfél felé a megkezdett órák mennek (minden megkezdett óra teljes óra)
     // ha a munkavállaló a készre jelentéskor jóváhagyta (vagy a vezető beállította) a számokat, azok mennek
@@ -411,18 +418,76 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
     totals.push(`E${totalRow}`); grand += sum;
     aoa.push([]); aoa.push([]);
   }
-  if (byTask.size === 0) aoa.push(['Nincs a szűrésnek megfelelő feladat.']);
+  let totalCell: string | null = totals.length === 1 ? totals[0] : null;
+  if (groups.length === 0) aoa.push(['Nincs a szűrésnek megfelelő feladat.']);
   if (totals.length > 1) {
     const n = aoa.length + 1;
     aoa.push(['Mindösszesen:', null, null, null, formula(totals.join('+'), grand)]);
     merges.push({ s: { r: n - 1, c: 0 }, e: { r: n - 1, c: 3 } });
+    totalCell = `E${n}`;
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges'] = merges;
   ws['!cols'] = [{ wch: 44 }, { wch: 11 }, { wch: 10 }, { wch: 13 }, { wch: 14 }];
+  return { ws, grand, totalCell, count: groups.length };
+}
+
+/** Elszámolás az ügyfél felé („Heti elszámolás” minta). Időszak szerinti szűrésnél MINDEN HÉT KÜLÖN LAPRA kerül
+ *  („47. hét”, „48. hét” … — a feladat a készre jelentés / kiadás napjának ISO-hete szerint), és több hétnél elöl
+ *  egy „Összesítő” lap mutatja hetenként az időszakot, a munkák számát és a végösszeget (képlettel a hetek lapjaira
+ *  hivatkozva). Egy feladatra vagy megadott sorszám-listára egyetlen „Elszámolás” lap készül, mint eddig. */
+function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
+  const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
+  const codes = parseCodes(f.code);
+  const has = (r: any, k: string) => String(r.code ?? '').toLowerCase().includes(k.toLowerCase());
+  const codeIdx = (r: any) => { const i = codes.findIndex((k) => has(r, k)); return i < 0 ? codes.length : i; };
+  // megadott sorszám-listánál a tömbök a lista sorrendjében követik egymást (könnyebb összevetni)
+  const ordered = codes.length > 1 ? rows.map((r, i) => ({ r, i })).sort((a, b) => codeIdx(a.r) - codeIdx(b.r) || a.i - b.i).map((x) => x.r) : rows;
+  // amelyik megadott sorszámhoz nincs találat (elírás, más állapot / terület / ember)
+  const missing = codes.filter((k) => !rows.some((r) => has(r, k)));
+  const byTask = new Map<string, any[]>();
+  for (const r of ordered) byTask.set(r.taskId, [...(byTask.get(r.taskId) ?? []), r]);
+  const hourly = Number(f.billHourly ?? 0), callout = Number(f.billCallout ?? 0);
   const wb = XLSX.utils.book_new();
   (wb as any).Workbook = { CalcPr: { fullCalcOnLoad: true } };
-  XLSX.utils.book_append_sheet(wb, ws, 'Elszámolás');
+  const hd2 = (d: string) => d.replace(/-/g, '.') + '.';
+  const weekly = !f.taskId && codes.length === 0;
+  if (!weekly) {
+    XLSX.utils.book_append_sheet(wb, settlementSheet([...byTask.values()], hourly, callout, resaleOf).ws, 'Elszámolás');
+  } else {
+    // hetenként külön lap, időrendben
+    const weeks = new Map<string, { year: number; week: number; groups: any[][] }>();
+    for (const rs of byTask.values()) {
+      const w = isoWeek(rs[0].periodDay);
+      const key = `${w.year}-${String(w.week).padStart(2, '0')}`;
+      const e = weeks.get(key) ?? { ...w, groups: [] };
+      e.groups.push(rs); weeks.set(key, e);
+    }
+    const list = [...weeks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v);
+    const multiYear = new Set(list.map((w) => w.year)).size > 1;
+    const sheets = list.map((w) => {
+      const name = multiYear ? `${w.year}. ${w.week}. hét` : `${w.week}. hét`;
+      return { ...w, name, ...settlementSheet(w.groups, hourly, callout, resaleOf), range: isoWeekRange(w.year, w.week) };
+    });
+    if (sheets.length === 0) XLSX.utils.book_append_sheet(wb, settlementSheet([], hourly, callout, resaleOf).ws, 'Elszámolás');
+    if (sheets.length > 1) {
+      // összesítő: hetenként egy sor, a végösszeg képlettel a hét lapjáról (ha ott átírnak valamit, itt is követi)
+      const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen']];
+      let grand = 0;
+      for (const s of sheets) {
+        const ref = s.totalCell ? `'${s.name.replace(/'/g, "''")}'!${s.totalCell}` : null;
+        aoa.push([s.name, `${hd2(s.range.from)} – ${hd2(s.range.to)}`, s.count, ref ? { t: 'n', f: ref, v: s.grand, z: '#,##0' } : { t: 'n', v: s.grand, z: '#,##0' }]);
+        grand += s.grand;
+      }
+      const n = aoa.length + 1;
+      aoa.push(['Mindösszesen:', null, { t: 'n', f: `SUM(C4:C${n - 1})`, v: sheets.reduce((a, s) => a + s.count, 0), z: '#,##0' }, { t: 'n', f: `SUM(D4:D${n - 1})`, v: grand, z: '#,##0' }]);
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+      ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Összesítő');
+    }
+    for (const s of sheets) XLSX.utils.book_append_sheet(wb, s.ws, s.name);
+  }
   const one = (f.taskId || codes.length === 1) && rows[0] ? `elszamolas_${(rows[0].code || 'feladat').replace(/[^\w-]+/g, '_')}`
     : codes.length ? `elszamolas_${byTask.size}_sorszam` : `elszamolas_${f.from}_${f.to}`;
   return json({
