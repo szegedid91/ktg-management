@@ -5,6 +5,7 @@
 // szűrhető: kész / nem sikerült feladatnál a lezárás dátuma, egyébként a kiadás dátuma szerint.
 
 import * as XLSX from 'npm:xlsx@0.18.5';
+import JSZip from 'npm:jszip@3.10.1';
 
 const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : '');
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -284,7 +285,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     return out;
   }).sort((a, b) => a.site.localeCompare(b.site, 'hu') || a.code.localeCompare(b.code, 'hu') || a.taskId.localeCompare(b.taskId) || (a.first ? -1 : b.first ? 1 : 0));
 
-  if (f.layout === 'settlement') return settlementWorkbook(rows, f, resaleOf, json);
+  if (f.layout === 'settlement') return await settlementWorkbook(rows, f, resaleOf, json);
 
   const taskSheet = rows.map((r) => ({
     'Feladat kód': r.code, 'Helyszín': r.site, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállaló': r.worker,
@@ -432,11 +433,11 @@ function settlementSheet(groups: any[][], hourly: number, callout: number, resal
   return { ws, grand, totalCell, count: groups.length };
 }
 
-/** Elszámolás az ügyfél felé („Heti elszámolás” minta). Időszak szerinti szűrésnél MINDEN HÉT KÜLÖN LAPRA kerül
- *  („47. hét”, „48. hét” … — a feladat a készre jelentés / kiadás napjának ISO-hete szerint), és több hétnél elöl
- *  egy „Összesítő” lap mutatja hetenként az időszakot, a munkák számát és a végösszeget (képlettel a hetek lapjaira
- *  hivatkozva). Egy feladatra vagy megadott sorszám-listára egyetlen „Elszámolás” lap készül, mint eddig. */
-function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
+/** Elszámolás az ügyfél felé („Heti elszámolás” minta). Időszak szerinti szűrésnél MINDEN HÉT KÜLÖN FÁJLBA kerül
+ *  („elszamolas_2026_47_het_….xlsx” — a feladat a készre jelentés / kiadás napjának ISO-hete szerint); több hétnél a
+ *  fájlok egy ZIP-ben jönnek, benne egy „osszesito.xlsx” is (hetenként az időszak, a munkák száma, a végösszeg). Egy hétnél
+ *  a heti Excel jön közvetlenül. Egy feladatra vagy megadott sorszám-listára egyetlen „Elszámolás” lap készül, mint eddig. */
+async function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
   const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
   const codes = parseCodes(f.code);
   const has = (r: any, k: string) => String(r.code ?? '').toLowerCase().includes(k.toLowerCase());
@@ -448,52 +449,50 @@ function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string,
   const byTask = new Map<string, any[]>();
   for (const r of ordered) byTask.set(r.taskId, [...(byTask.get(r.taskId) ?? []), r]);
   const hourly = Number(f.billHourly ?? 0), callout = Number(f.billCallout ?? 0);
-  const wb = XLSX.utils.book_new();
-  (wb as any).Workbook = { CalcPr: { fullCalcOnLoad: true } };
+  const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const book = (ws: any, sheetName: string) => {
+    const wb = XLSX.utils.book_new();
+    (wb as any).Workbook = { CalcPr: { fullCalcOnLoad: true } };
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    return XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }) as string;
+  };
   const hd2 = (d: string) => d.replace(/-/g, '.') + '.';
   const weekly = !f.taskId && codes.length === 0;
   if (!weekly) {
-    XLSX.utils.book_append_sheet(wb, settlementSheet([...byTask.values()], hourly, callout, resaleOf).ws, 'Elszámolás');
-  } else {
-    // hetenként külön lap, időrendben
-    const weeks = new Map<string, { year: number; week: number; groups: any[][] }>();
-    for (const rs of byTask.values()) {
-      const w = isoWeek(rs[0].periodDay);
-      const key = `${w.year}-${String(w.week).padStart(2, '0')}`;
-      const e = weeks.get(key) ?? { ...w, groups: [] };
-      e.groups.push(rs); weeks.set(key, e);
-    }
-    const list = [...weeks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v);
-    const multiYear = new Set(list.map((w) => w.year)).size > 1;
-    const sheets = list.map((w) => {
-      const name = multiYear ? `${w.year}. ${w.week}. hét` : `${w.week}. hét`;
-      return { ...w, name, ...settlementSheet(w.groups, hourly, callout, resaleOf), range: isoWeekRange(w.year, w.week) };
-    });
-    if (sheets.length === 0) XLSX.utils.book_append_sheet(wb, settlementSheet([], hourly, callout, resaleOf).ws, 'Elszámolás');
-    if (sheets.length > 1) {
-      // összesítő: hetenként egy sor, a végösszeg képlettel a hét lapjáról (ha ott átírnak valamit, itt is követi)
-      const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen']];
-      let grand = 0;
-      for (const s of sheets) {
-        const ref = s.totalCell ? `'${s.name.replace(/'/g, "''")}'!${s.totalCell}` : null;
-        aoa.push([s.name, `${hd2(s.range.from)} – ${hd2(s.range.to)}`, s.count, ref ? { t: 'n', f: ref, v: s.grand, z: '#,##0' } : { t: 'n', v: s.grand, z: '#,##0' }]);
-        grand += s.grand;
-      }
-      const n = aoa.length + 1;
-      aoa.push(['Mindösszesen:', null, { t: 'n', f: `SUM(C4:C${n - 1})`, v: sheets.reduce((a, s) => a + s.count, 0), z: '#,##0' }, { t: 'n', f: `SUM(D4:D${n - 1})`, v: grand, z: '#,##0' }]);
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-      ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 16 }];
-      XLSX.utils.book_append_sheet(wb, ws, 'Összesítő');
-    }
-    for (const s of sheets) XLSX.utils.book_append_sheet(wb, s.ws, s.name);
+    const one = (f.taskId || codes.length === 1) && rows[0] ? `elszamolas_${(rows[0].code || 'feladat').replace(/[^\w-]+/g, '_')}` : `elszamolas_${byTask.size}_sorszam`;
+    return json({ missing, filename: `${one}.xlsx`, mime: XLSX_MIME, base64: book(settlementSheet([...byTask.values()], hourly, callout, resaleOf).ws, 'Elszámolás') });
   }
-  const one = (f.taskId || codes.length === 1) && rows[0] ? `elszamolas_${(rows[0].code || 'feladat').replace(/[^\w-]+/g, '_')}`
-    : codes.length ? `elszamolas_${byTask.size}_sorszam` : `elszamolas_${f.from}_${f.to}`;
+  // hetenként külön fájl, időrendben
+  const weeks = new Map<string, { year: number; week: number; groups: any[][] }>();
+  for (const rs of byTask.values()) {
+    const w = isoWeek(rs[0].periodDay);
+    const key = `${w.year}-${String(w.week).padStart(2, '0')}`;
+    const e = weeks.get(key) ?? { ...w, groups: [] };
+    e.groups.push(rs); weeks.set(key, e);
+  }
+  const list = [...weeks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v);
+  const files = list.map((w) => {
+    const range = isoWeekRange(w.year, w.week);
+    const sheet = settlementSheet(w.groups, hourly, callout, resaleOf);
+    return { ...w, range, name: `${w.week}. hét`, filename: `elszamolas_${w.year}_${String(w.week).padStart(2, '0')}_het_${range.from}_${range.to}.xlsx`, base64: book(sheet.ws, `${w.week}. hét`), grand: sheet.grand, count: sheet.count };
+  });
+  if (files.length === 0) return json({ missing, filename: `elszamolas_${f.from}_${f.to}.xlsx`, mime: XLSX_MIME, base64: book(settlementSheet([], hourly, callout, resaleOf).ws, 'Elszámolás') });
+  if (files.length === 1) return json({ missing, filename: files[0].filename, mime: XLSX_MIME, base64: files[0].base64 });
+  // több hét: ZIP — hetenként egy Excel + összesítő
+  const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen', 'Fájl']];
+  for (const w of files) aoa.push([w.name, `${hd2(w.range.from)} – ${hd2(w.range.to)}`, w.count, { t: 'n', v: w.grand, z: '#,##0' }, w.filename]);
+  const n = aoa.length + 1;
+  aoa.push(['Mindösszesen:', null, { t: 'n', f: `SUM(C4:C${n - 1})`, v: files.reduce((a, w) => a + w.count, 0), z: '#,##0' }, { t: 'n', f: `SUM(D4:D${n - 1})`, v: files.reduce((a, w) => a + w.grand, 0), z: '#,##0' }]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
+  ws['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 52 }];
+  const zip = new JSZip();
+  zip.file('osszesito.xlsx', book(ws, 'Összesítő'), { base64: true });
+  for (const w of files) zip.file(w.filename, w.base64, { base64: true });
   return json({
-    missing,
-    filename: `${one}.xlsx`,
-    mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    base64: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }),
+    missing, weeks: files.length,
+    filename: `elszamolas_${f.from}_${f.to}_hetenkent.zip`,
+    mime: 'application/zip',
+    base64: await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' }),
   });
 }

@@ -167,7 +167,7 @@ function ExportScreenInner() {
 
       <Card>
         <H2>Elszámolás az ügyfél felé</H2>
-        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható.</Sub>
+        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható. Minden hét külön Excel-fájlba kerül (a készre jelentés napja szerint); több hétnél a fájlok egy ZIP-ben jönnek, egy összesítővel együtt.</Sub>
         <Segmented label="Melyik feladatok" value={sStatus} onChange={setSStatus}
           options={[{ value: 'done', label: 'Kész' }, { value: 'open', label: 'Folyamatban' }, { value: 'all', label: 'Minden' }]} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
