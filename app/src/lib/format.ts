@@ -38,6 +38,26 @@ export function hdt(ts: string | null | undefined): string {
   return `${hd(d)} ${hh}:${mm}`;
 }
 
+/** ISO-hét (hétfőtől vasárnapig; az év első hete az, amelyikben az első csütörtök van) — a hét sorszáma és a
+ *  hét éve (ami december végén / január elején eltérhet a naptári évtől). */
+export function isoWeek(iso: string): { year: number; week: number } {
+  const d = new Date(iso.slice(0, 10) + 'T00:00:00Z');
+  // a hét csütörtökjére ugrunk: az dönti el, melyik évhez tartozik a hét
+  d.setUTCDate(d.getUTCDate() + 4 - ((d.getUTCDay() + 6) % 7 + 1));
+  const year = d.getUTCFullYear();
+  const jan1 = Date.UTC(year, 0, 1);
+  return { year, week: Math.ceil(((d.getTime() - jan1) / 86400000 + 1) / 7) };
+}
+
+/** Egy időszak hete / hetei, kiírva: „47. hét”, „46–47. hét”, évfordulón „2026/53 – 2027/1. hét”. */
+export function weekRangeLabel(from: string, to: string): string {
+  const a = from ? isoWeek(from) : null, b = isoWeek(to);
+  if (!a) return `${b.week}. hétig`;
+  if (a.year === b.year && a.week === b.week) return `${a.week}. hét`;
+  if (a.year === b.year) return `${a.week}–${b.week}. hét`;
+  return `${a.year}/${a.week} – ${b.year}/${b.week}. hét`;
+}
+
 /** Mai nap ISO formában (lokális idő szerint): "2026-08-26" */
 export function todayISO(): string {
   const d = new Date();

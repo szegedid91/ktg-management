@@ -4,7 +4,7 @@ import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented, Empty } from '../
 import { C, S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
 import { downloadExport } from '../lib/exportfile';
-import { todayISO, ft } from '../lib/format';
+import { todayISO, ft, weekRangeLabel } from '../lib/format';
 import { Site, Worker, AppSettings } from '../lib/types';
 import { notify } from '../lib/dialogs';
 
@@ -54,6 +54,7 @@ function ExportScreenInner() {
     const first = d.toISOString().slice(0, 10); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0);
     setSFrom(first); setSTo(d.toISOString().slice(0, 10));
   };
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
   const shiftSWeek = (n: number) => { const m = addDays(mondayOf(sFrom.trim() || todayISO()), 7 * n); setSFrom(m); setSTo(addDays(m, 6)); };
 
   const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'settlement' = 'books') => {
@@ -171,7 +172,13 @@ function ExportScreenInner() {
           options={[{ value: 'done', label: 'Kész' }, { value: 'open', label: 'Folyamatban' }, { value: 'all', label: 'Minden' }]} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
           <Btn title="‹" kind="ghost" small onPress={() => shiftSWeek(-1)} />
-          <H2 style={{ flex: 1, textAlign: 'center' }}>{sFrom.trim() ? `${sFrom.replace(/-/g, '.')}.` : 'kezdettől'} – {sTo.replace(/-/g, '.')}.</H2>
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <H2 style={{ textAlign: 'center' }}>{sFrom.trim() ? `${sFrom.replace(/-/g, '.')}.` : 'kezdettől'} – {sTo.replace(/-/g, '.')}.</H2>
+            {/* hanyadik hét az évben (ISO-hét: hétfőtől vasárnapig) — az ügyfél elszámolása hetenként megy */}
+            {ISO_DATE.test(sTo.trim()) && (!sFrom.trim() || ISO_DATE.test(sFrom.trim())) ? (
+              <Sub style={{ textAlign: 'center' }}>{weekRangeLabel(sFrom.trim(), sTo.trim())}</Sub>
+            ) : null}
+          </View>
           <Btn title="›" kind="ghost" small onPress={() => shiftSWeek(1)} />
         </View>
         <View style={{ flexDirection: 'row', gap: S.sm }}>
