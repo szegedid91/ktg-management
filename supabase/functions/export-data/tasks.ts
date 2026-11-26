@@ -6,7 +6,6 @@
 
 import * as XLSX from 'npm:xlsx@0.18.5';
 import JSZip from 'npm:jszip@3.10.1';
-import { buildWorksheets } from './worksheet.ts';
 
 const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : '');
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -24,6 +23,9 @@ export interface TaskFilter {
   code?: string | null;
   /** kimenő (ügyfélnek számlázott) órabér és kiszállási díj — a tömbök „Árak/Díjak” oszlopa */
   billHourly?: number; billCallout?: number;
+  /** igaz: ZIP helyett a fájlok listája (út + base64) és hetenként a feladatok azonosítói — az app ebből és a külön
+   *  kérésekkel lekért munkalap-PDF-ekből maga állítja össze a ZIP-et (a szerver CPU-kerete nem bírja egyben) */
+  asFiles?: boolean;
 }
 /** időbélyeg → magyar naptári nap (ÉÉÉÉ-HH-NN) */
 const budDay = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Budapest' });
@@ -479,16 +481,9 @@ async function settlementWorkbook(supabase: any, rowsAll: any[], f: TaskFilter, 
     return { ...w, range, name: `${w.week}. hét`, folder: stem, filename: `elszamolas_${stem}.xlsx`, base64: book(sheet.ws, `${w.week}. hét`), grand: sheet.grand, count: sheet.count, taskIds: w.groups.map((rs) => rs[0].taskId as string) };
   });
   if (files.length === 0) return json({ missing, filename: `elszamolas_${f.from}_${f.to}.xlsx`, mime: XLSX_MIME, base64: book(settlementSheet([], hourly, callout, resaleOf).ws, 'Elszámolás') });
-  // ZIP: hetenként egy mappa — benne a hét elszámolás-Excelje és a hét feladatainak karbantartási munkalapjai (egy PDF,
-  // feladatonként egy oldal); több hétnél a gyökérben egy összesítő is
-  const docs = await buildWorksheets(supabase, files.map((w) => ({ key: w.folder, taskIds: w.taskIds })), f.workerId ?? null);
-  const docOf = new Map(docs.map((d) => [d.key, d]));
-  const zip = new JSZip();
-  for (const w of files) {
-    const dir = zip.folder(w.folder)!;
-    dir.file(w.filename, w.base64, { base64: true });
-    const d = docOf.get(w.folder); if (d) dir.file(`munkalapok_${w.folder}.pdf`, d.bytes);
-  }
+  // összesítő (több hétnél): hét, időszak, munkák száma, végösszeg, mappa
+  const groups = files.map((w) => ({ key: w.folder, taskIds: w.taskIds, codes: w.groups.map((rs) => String(rs[0].code ?? '')) }));
+  let summary: string | null = null;
   if (files.length > 1) {
     const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen', 'Mappa']];
     for (const w of files) aoa.push([w.name, `${hd2(w.range.from)} – ${hd2(w.range.to)}`, w.count, { t: 'n', v: w.grand, z: '#,##0' }, w.folder]);
@@ -497,13 +492,18 @@ async function settlementWorkbook(supabase: any, rowsAll: any[], f: TaskFilter, 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
     ws['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 40 }];
-    zip.file('osszesito.xlsx', book(ws, 'Összesítő'), { base64: true });
+    summary = book(ws, 'Összesítő');
   }
-  return json({
-    missing, weeks: files.length, worksheets: docs.reduce((a, d) => a + d.count, 0),
-    filename: `elszamolas_${f.from}_${f.to}_hetenkent.zip`,
-    mime: 'application/zip',
-    // STORE: a PDF és az xlsx már tömörített, a DEFLATE csak CPU-t vinne
-    base64: await zip.generateAsync({ type: 'base64', compression: 'STORE' }),
-  });
+  const zipName = `elszamolas_${f.from}_${f.to}_hetenkent.zip`;
+  if (f.asFiles) {
+    // az app állítja össze a ZIP-et: hetenként mappa — a hét Excelje + a külön lekért munkalap-PDF-ek
+    const out = files.map((w) => ({ path: `${w.folder}/${w.filename}`, base64: w.base64 }));
+    if (summary) out.push({ path: 'osszesito.xlsx', base64: summary });
+    return json({ missing, weeks: files.length, filename: zipName, files: out, groups });
+  }
+  // régebbi app: ZIP munkalapok nélkül (az xlsx már tömörített, STORE)
+  const zip = new JSZip();
+  for (const w of files) zip.folder(w.folder)!.file(w.filename, w.base64, { base64: true });
+  if (summary) zip.file('osszesito.xlsx', summary, { base64: true });
+  return json({ missing, weeks: files.length, filename: zipName, mime: 'application/zip', base64: await zip.generateAsync({ type: 'base64', compression: 'STORE' }) });
 }

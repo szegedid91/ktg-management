@@ -35,9 +35,28 @@ async function fontBytes(which: 'regular' | 'bold'): Promise<Uint8Array | null> 
   } catch (e) { console.warn('worksheet font', which, e); return null; }
 }
 
-export interface WorksheetFilter { taskId: string | null; siteId: string | null; from: string; to: string; status: TaskStatusFilter; workerId: string | null; code: string | null }
+export interface WorksheetFilter {
+  taskId: string | null; siteId: string | null; from: string; to: string; status: TaskStatusFilter; workerId: string | null; code: string | null;
+  /** megadott feladatok (legfeljebb 20) — feladatonként egy PDF, fájllistaként; az app ezt hívja darabonként */
+  items?: { task_id: string; hours?: number | null; callouts?: number | null; mats?: SheetOverride['mats'] }[] | null;
+  /** igaz: csak a terv (hetenként a feladatok azonosítói), PDF nélkül */
+  planOnly?: boolean;
+}
+
+/** Munkalapok a megadott feladatokhoz: feladatonként külön PDF (Daniel kérése), legfeljebb 20 egy kérésben —
+ *  a betűkészlet-szűkítés PDF-enként fut, ezért a nagy listát az app több kérésre bontja (a szerver CPU-kerete). */
+async function worksheetFiles(supabase: any, items: NonNullable<WorksheetFilter['items']>, json: (b: unknown, s?: number) => Response) {
+  const list = items.slice(0, 20).filter((it) => typeof it?.task_id === 'string');
+  const overrides = new Map<string, SheetOverride>();
+  for (const it of list) if (it.hours != null || it.callouts != null || it.mats) overrides.set(it.task_id, { hours: it.hours ?? null, callouts: it.callouts ?? null, mats: it.mats ?? null });
+  const docs = await buildWorksheets(supabase, list.map((it) => ({ key: it.task_id, taskIds: [it.task_id] })), null, overrides);
+  return json({ files: docs.map((d) => ({ task_id: d.key, name: `munkalap_${(d.codes[0] || 'feladat').replace(/[^\w-]+/g, '_')}.pdf`, base64: toB64(d.bytes) })) });
+}
+
+const weekKey = (iso: string) => { const d = new Date(budDay(iso) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 4 - ((d.getUTCDay() + 6) % 7 + 1)); const y = d.getUTCFullYear(); const w = Math.ceil(((d.getTime() - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7); const jan4 = new Date(Date.UTC(y, 0, 4)); const mon = new Date(jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86400000 + (w - 1) * 7 * 86400000); const f = (x: Date) => x.toISOString().slice(0, 10); return `${y}_${String(w).padStart(2, '0')}_het_${f(mon)}_${f(new Date(mon.getTime() + 6 * 86400000))}`; };
 
 export async function exportWorksheets(supabase: any, f: WorksheetFilter, json: (b: unknown, s?: number) => Response) {
+  if (f.items && f.items.length) return await worksheetFiles(supabase, f.items, json);
   const codes = parseCodes(f.code).map((k) => k.toLowerCase());
   const q = () => {
     let tq = supabase.from('worker_tasks').select('id, code, title, details, status, priority, site_id, created_at, done_at, closed_at, fail_reason').is('deleted_at', null);
@@ -56,14 +75,33 @@ export async function exportWorksheets(supabase: any, f: WorksheetFilter, json: 
     const d = budDay((byDone && (t.closed_at ?? t.done_at)) || t.created_at);
     return d >= f.from && d <= f.to;
   }).sort((a: any, b: any) => String(a.code ?? '').localeCompare(String(b.code ?? ''), 'hu') || String(a.created_at).localeCompare(String(b.created_at)));
-  // ha csak egy munkavállaló munkalapjai kellenek: a feladatai, ahol ő ki van osztva / dolgozott rajta — ezt a
-  // buildWorksheets a betöltött adatokból szűri
-  // egy PDF, feladatonként egy oldal (a betűtípus egyszer ágyazódik be — a szerver CPU-kerete így is kitart)
-  const docs = await buildWorksheets(supabase, [{ key: 'all', taskIds: tasks.map((t: any) => t.id) }], f.workerId);
-  const doc = docs[0];
-  if (!doc || doc.count === 0) return json({ error: 'Nincs a szűrésnek megfelelő feladat.' }, 404);
-  const name = doc.count === 1 ? `munkalap_${doc.codes[0].replace(/[^\w-]+/g, '_') || 'feladat'}.pdf` : `munkalapok_${f.from}_${f.to}.pdf`;
-  return json({ count: doc.count, filename: name, mime: 'application/pdf', base64: toB64(doc.bytes) });
+  if (f.planOnly) {
+    // terv az appnak: hetenként (a készre jelentés / kiadás napja szerint) a feladatok; egy munkavállalónál csak az övéi
+    let list = tasks as any[];
+    if (f.workerId) {
+      const ids = list.map((t) => t.id); const mine = new Set<string>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const c = ids.slice(i, i + 200);
+        for (const a of await fetchAll(() => supabase.from('task_assignees').select('id, task_id').eq('worker_id', f.workerId).is('deleted_at', null).in('task_id', c))) mine.add(a.task_id);
+        for (const x of await fetchAll(() => supabase.from('work_sessions').select('id, task_id').eq('worker_id', f.workerId).is('deleted_at', null).in('task_id', c))) mine.add(x.task_id);
+      }
+      list = list.filter((t) => mine.has(t.id));
+    }
+    const groups = new Map<string, { key: string; taskIds: string[]; codes: string[] }>();
+    for (const t of list) {
+      const key = weekKey((byDone && (t.closed_at ?? t.done_at)) || t.created_at);
+      const g = groups.get(key) ?? { key, taskIds: [], codes: [] };
+      g.taskIds.push(t.id); g.codes.push(String(t.code ?? '')); groups.set(key, g);
+    }
+    return json({ groups: [...groups.values()].sort((a, b) => a.key.localeCompare(b.key)), filename: `munkalapok_${f.from}_${f.to}.zip` });
+  }
+  // egy feladat (a feladat oldaláról): közvetlenül a PDF
+  const docs = await buildWorksheets(supabase, tasks.slice(0, 20).map((t: any) => ({ key: t.id, taskIds: [t.id] })), f.workerId);
+  if (docs.length === 0) return json({ error: 'Nincs a szűrésnek megfelelő feladat.' }, 404);
+  if (docs.length === 1) return json({ count: 1, filename: `munkalap_${(docs[0].codes[0] || 'feladat').replace(/[^\w-]+/g, '_')}.pdf`, mime: 'application/pdf', base64: toB64(docs[0].bytes) });
+  const zip = new JSZip();
+  for (const d of docs) zip.file(`munkalap_${(d.codes[0] || d.key.slice(0, 8)).replace(/[^\w-]+/g, '_')}.pdf`, d.bytes);
+  return json({ count: docs.length, filename: `munkalapok_${f.from}_${f.to}.zip`, mime: 'application/zip', base64: await zip.generateAsync({ type: 'base64', compression: 'STORE' }) });
 }
 
 const toB64 = (b: Uint8Array) => { let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(s); };
@@ -202,7 +240,7 @@ export function parseSettlementXlsx(base64: string): { sheet: string; code: stri
 
 /** Munkalapok a visszatöltött (javított) elszámolás-Excelből: a munkaóra, a kiszállás és az anyagok az Excelből, a dátum,
  *  a munkavégző, a helyszín, a kezdés és a megjegyzések az appból. Több lapnál (hetenként) a ZIP-ben lapónként mappa. */
-export async function exportWorksheetsFromXlsx(supabase: any, base64: string, filename: string, json: (b: unknown, s?: number) => Response) {
+export async function exportWorksheetsFromXlsx(supabase: any, base64: string, filename: string, json: (b: unknown, s?: number) => Response, planOnly = false) {
   let blocks: ReturnType<typeof parseSettlementXlsx>;
   try { blocks = parseSettlementXlsx(base64); } catch (e) { console.warn('worksheet xlsx', e); return json({ error: 'Az Excel nem olvasható. Az elszámolás-exportból letöltött (és javított) fájlt töltsd fel.' }, 400); }
   if (!blocks.length) return json({ error: 'Az Excelben nincs „Munka sorszáma:” tömb — az elszámolás-exportból letöltött (és javított) fájlt töltsd fel.' }, 400);
@@ -219,20 +257,20 @@ export async function exportWorksheetsFromXlsx(supabase: any, base64: string, fi
     if (!t) { missing.push(b.code); continue; }
     used.add(t.id); overrides.set(t.id, { hours: b.hours, callouts: b.callouts, mats: b.mats }); plan.push({ sheet: b.sheet, taskId: t.id });
   }
-  // lapónként (hetenként) egy PDF, feladatonként egy oldal
-  const sheets = [...new Set(plan.map((p) => p.sheet))];
-  const docs = await buildWorksheets(supabase, sheets.map((sh) => ({ key: sh, taskIds: plan.filter((p) => p.sheet === sh).map((p) => p.taskId) })), null, overrides);
-  const total = docs.reduce((a, d) => a + d.count, 0);
-  if (total === 0) return json({ error: `Az Excel sorszámaihoz nincs feladat az appban: ${missing.join(', ')}` }, 404);
   const stem = filename.replace(/\.xlsx$/i, '').replace(/[^\w-]+/g, '_') || 'elszamolas';
-  const safe = (x: string) => x.replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').replace(/\.+$/, '');
-  if (docs.length === 1) {
-    const d = docs[0];
-    return json({ missing, count: d.count, filename: d.count === 1 ? `munkalap_${safe(d.codes[0])}.pdf` : `munkalapok_${stem}.pdf`, mime: 'application/pdf', base64: toB64(d.bytes) });
+  const safe = (x: string) => x.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').replace(/\.+$/, '');
+  const sheets = [...new Set(plan.map((p) => p.sheet))];
+  if (plan.length === 0) return json({ error: `Az Excel sorszámaihoz nincs feladat az appban: ${missing.join(', ')}` }, 404);
+  if (planOnly) {
+    // terv az appnak: lapónként (hetenként) a feladatok és az Excelből jövő felülírások — a PDF-eket az app darabonként kéri
+    return json({ missing, filename: `munkalapok_${stem}.zip`, groups: sheets.map((sh) => ({ key: safe(sh), items: plan.filter((p) => p.sheet === sh).map((p) => ({ task_id: p.taskId, ...overrides.get(p.taskId) })) })) });
   }
+  // régebbi app: feladatonként PDF, lapónként mappa (legfeljebb 20 feladat — a szerver CPU-kerete)
+  const docs = await buildWorksheets(supabase, plan.slice(0, 20).map((p) => ({ key: p.taskId, taskIds: [p.taskId] })), null, overrides);
+  if (docs.length === 1) return json({ missing, count: 1, filename: `munkalap_${safe(docs[0].codes[0] || 'feladat')}.pdf`, mime: 'application/pdf', base64: toB64(docs[0].bytes) });
   const zip = new JSZip();
-  for (const d of docs) zip.file(`munkalapok_${safe(d.key)}.pdf`, d.bytes);
-  return json({ missing, count: total, filename: `munkalapok_${stem}.zip`, mime: 'application/zip', base64: await zip.generateAsync({ type: 'base64', compression: 'STORE' }) });
+  for (const d of docs) { const sh = plan.find((p) => p.taskId === d.key)!.sheet; (sheets.length > 1 ? zip.folder(safe(sh))! : zip).file(`munkalap_${safe(d.codes[0] || d.key.slice(0, 8))}.pdf`, d.bytes); }
+  return json({ missing, count: docs.length, filename: `munkalapok_${stem}.zip`, mime: 'application/zip', base64: await zip.generateAsync({ type: 'base64', compression: 'STORE' }) });
 }
 
 /** a papír-minta rajzolása: fejléc, kód-sáv, 4 szakasz (alapadatok, munkálatok, anyagok, megjegyzések) */

@@ -3,7 +3,8 @@ import { View, Text } from 'react-native';
 import { Screen, Card, H2, Sub, Btn, Input, Picker, Segmented, Empty } from '../ui/kit';
 import { C, S } from '../ui/theme';
 import { useTable, useIsWorker } from '../lib/hooks';
-import { downloadExport } from '../lib/exportfile';
+import { downloadExport, callExport, saveDownload, fetchWorksheetPdfs } from '../lib/exportfile';
+import { makeZip, base64ToBytes, ZipEntry } from '../lib/zip';
 import { todayISO, ft, weekRangeLabel } from '../lib/format';
 import { Site, Worker, AppSettings } from '../lib/types';
 import { notify } from '../lib/dialogs';
@@ -15,6 +16,7 @@ function ExportScreenInner() {
   const [to, setTo] = useState(todayISO());
   const [site, setSite] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [progress, setProgress] = useState('');
   // havi bérkimutatás
   const workers = useTable<Worker>('workers');
   const [month, setMonth] = useState(todayISO().slice(0, 7));
@@ -63,14 +65,83 @@ function ExportScreenInner() {
   const worksheetsFromXlsx = async () => {
     const file = await pickFile('.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     if (!file) return;
-    setBusy('worksheet-xlsx');
+    setBusy('worksheet-xlsx'); setProgress('');
     try {
-      const res = await downloadExport({ mode: 'worksheet_xlsx', xlsx_base64: file.base64, filename: file.name });
-      if (res.missing.length > 0) notify('Nem minden sorszámhoz készült munkalap', `${res.missing.length} sorszámhoz nincs feladat az appban:\n${res.missing.join(', ')}`);
+      // 1. terv a szervertől (lapónként a feladatok + az Excel felülírásai), 2. PDF-ek darabonként, 3. ZIP itt
+      const plan = await callExport({ mode: 'worksheet_xlsx', xlsx_base64: file.base64, filename: file.name, plan_only: true });
+      const groups: { key: string; items: any[] }[] = plan.groups ?? [];
+      const entries: ZipEntry[] = [];
+      for (const g of groups) {
+        const pdfs = await fetchWorksheetPdfs(g.items, (d, t) => setProgress(`${g.key}: ${d}/${t}`));
+        for (const p of pdfs) entries.push({ path: groups.length > 1 ? `${g.key}/${p.name}` : p.name, bytes: p.bytes });
+      }
+      if (entries.length === 1) await saveDownload(entries[0].path.split('/').pop()!, 'application/pdf', entries[0].bytes);
+      else await saveDownload(String(plan.filename ?? 'munkalapok.zip'), 'application/zip', makeZip(entries));
+      const missing: string[] = Array.isArray(plan.missing) ? plan.missing.map(String) : [];
+      if (missing.length > 0) notify('Nem minden sorszámhoz készült munkalap', `${missing.length} sorszámhoz nincs feladat az appban:\n${missing.join(', ')}`);
     } catch (e: any) {
       notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
     } finally {
-      setBusy(null);
+      setBusy(null); setProgress('');
+    }
+  };
+
+  // elszámolás az ügyfél felé: a szerver a heti Exceleket adja (fájllista), a munkalap-PDF-eket darabonként kérjük,
+  // és a ZIP-et (hetenként mappa: Excel + feladatonként egy munkalap) itt rakjuk össze — egyben a szerver CPU-kerete nem bírta
+  const settlementDownload = async () => {
+    if (outHourly <= 0) {
+      notify('Hiányzik az órabér', 'Add meg az ügyfél felé számlázott órabért a Beállítások › Díjak részben — elég egyszer, utána az elszámolás mindig azzal számol.');
+      return;
+    }
+    setBusy('settlement-xlsx'); setProgress('');
+    try {
+      const body = { mode: 'tasks', layout: 'settlement', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
+        site_id: sSite, worker_id: sWorker, code: sCodes.join(',') || undefined, as_files: true };
+      const data = await callExport(body);
+      const missing: string[] = Array.isArray(data.missing) ? data.missing.map(String) : [];
+      if (!Array.isArray(data.files)) {
+        // egy feladat / sorszám-lista: egyetlen Excel
+        await saveDownload(data.filename, data.mime, base64ToBytes(data.base64));
+      } else {
+        const entries: ZipEntry[] = data.files.map((f: any) => ({ path: String(f.path), bytes: base64ToBytes(String(f.base64)) }));
+        const groups: { key: string; taskIds: string[] }[] = data.groups ?? [];
+        const total = groups.reduce((a, g) => a + g.taskIds.length, 0); let done = 0;
+        for (const g of groups) {
+          const pdfs = await fetchWorksheetPdfs(g.taskIds.map((id) => ({ task_id: id })), (d) => setProgress(`munkalapok: ${done + d}/${total}`));
+          done += g.taskIds.length;
+          for (const p of pdfs) entries.push({ path: `${g.key}/${p.name}`, bytes: p.bytes });
+        }
+        await saveDownload(String(data.filename), 'application/zip', makeZip(entries));
+      }
+      if (missing.length > 0) notify('Nem minden sorszám került bele', `${missing.length} megadott sorszámhoz nincs találat (elírás, vagy más az állapota / területe / embere):\n${missing.join(', ')}`);
+    } catch (e: any) {
+      notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
+    } finally {
+      setBusy(null); setProgress('');
+    }
+  };
+
+  // munkalapok az app adataiból a szűrőkkel: terv (hetenként a feladatok), PDF-ek darabonként, ZIP itt
+  const worksheetsDownload = async () => {
+    setBusy('worksheet-pdf'); setProgress('');
+    try {
+      const plan = await callExport({ mode: 'worksheet', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
+        site_id: sSite, worker_id: sWorker, code: sCodes.join(',') || undefined, plan_only: true });
+      const groups: { key: string; taskIds: string[] }[] = plan.groups ?? [];
+      const total = groups.reduce((a, g) => a + g.taskIds.length, 0); let done = 0;
+      if (total === 0) { notify('Nincs feladat', 'A szűrésnek megfelelő feladat nincs.'); return; }
+      const entries: ZipEntry[] = [];
+      for (const g of groups) {
+        const pdfs = await fetchWorksheetPdfs(g.taskIds.map((id) => ({ task_id: id })), (d) => setProgress(`munkalapok: ${done + d}/${total}`));
+        done += g.taskIds.length;
+        for (const p of pdfs) entries.push({ path: groups.length > 1 ? `${g.key}/${p.name}` : p.name, bytes: p.bytes });
+      }
+      if (entries.length === 1) await saveDownload(entries[0].path.split('/').pop()!, 'application/pdf', entries[0].bytes);
+      else await saveDownload(String(plan.filename ?? 'munkalapok.zip'), 'application/zip', makeZip(entries));
+    } catch (e: any) {
+      notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
+    } finally {
+      setBusy(null); setProgress('');
     }
   };
 
@@ -186,7 +257,7 @@ function ExportScreenInner() {
 
       <Card>
         <H2>Elszámolás az ügyfél felé</H2>
-        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható. A letöltés ZIP: hetenként egy mappa (a készre jelentés napja szerint), benne a hét elszámolás-Excelje és a hét feladatainak karbantartási munkalapjai (PDF); több hétnél egy összesítő is.</Sub>
+        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható. A letöltés ZIP: hetenként egy mappa (a készre jelentés napja szerint), benne a hét elszámolás-Excelje és feladatonként egy karbantartási munkalap (PDF); több hétnél egy összesítő is. Sok feladatnál a munkalapok darabonként készülnek, ez eltarthat egy-két percig.</Sub>
         <Segmented label="Melyik feladatok" value={sStatus} onChange={setSStatus}
           options={[{ value: 'done', label: 'Kész' }, { value: 'open', label: 'Folyamatban' }, { value: 'all', label: 'Minden' }]} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
@@ -227,11 +298,11 @@ function ExportScreenInner() {
             <Sub style={{ color: C.warning, fontWeight: '700' }}>Még nincs megadva, milyen órabéren számolsz el az ügyfél felé. Add meg egyszer a Beállítások › Díjak részben.</Sub>
           )}
         </View>
-        <Btn title={busy === 'settlement-xlsx' ? 'Készül…' : '🧾 Elszámolás Excelbe'} onPress={() => void doExport('xlsx', 'settlement')} disabled={!!busy} />
+        <Btn title={busy === 'settlement-xlsx' ? `Készül… ${progress}` : '🧾 Elszámolás Excelbe'} onPress={() => void settlementDownload()} disabled={!!busy} />
         <Sub>Karbantartási munkalap: feladatonként egy A4-es PDF a munkavállalók által rögzített adatokból (kód, dátum, munkavégző, munkaidő, elvégzett munkálatok, felhasznált anyagok, megjegyzések) — ugyanezekkel a szűrőkkel; több feladatnál ZIP-ben.</Sub>
-        <Btn title={busy === 'worksheet-pdf' ? 'Készül…' : '📋 Munkalapok PDF-ben (az app adataiból)'} kind="secondary" onPress={() => void doExport('pdf', 'worksheet')} disabled={!!busy} />
+        <Btn title={busy === 'worksheet-pdf' ? `Készül… ${progress}` : '📋 Munkalapok PDF-ben (az app adataiból)'} kind="secondary" onPress={() => void worksheetsDownload()} disabled={!!busy} />
         <Sub>Ha a letöltött elszámolás-Excelt javítottad (óra, anyag), töltsd vissza, és a munkalapok abból készülnek: a munkaóra, a kiszállás és az anyagok az Excelből, a dátum, a munkavégző, a helyszín, a kezdés és a megjegyzések az appból. Egy heti fájl vagy az egész elszámolás Excelje is feltölthető.</Sub>
-        <Btn title={busy === 'worksheet-xlsx' ? 'Készül…' : '📤 Munkalapok a javított Excelből (feltöltés)'} kind="secondary" onPress={() => void worksheetsFromXlsx()} disabled={!!busy} />
+        <Btn title={busy === 'worksheet-xlsx' ? `Készül… ${progress}` : '📤 Munkalapok a javított Excelből (feltöltés)'} kind="secondary" onPress={() => void worksheetsFromXlsx()} disabled={!!busy} />
       </Card>
     </Screen>
   );

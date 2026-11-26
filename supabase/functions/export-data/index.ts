@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     if (body.mode === 'worksheet_xlsx') {
       const b64 = typeof body.xlsx_base64 === 'string' ? body.xlsx_base64 : '';
       if (!b64 || b64.length > 12_000_000) return json({ error: 'Hiányzó vagy túl nagy Excel-fájl (max. kb. 8 MB).' }, 400);
-      return await exportWorksheetsFromXlsx(supabase, b64, String(body.filename ?? '').slice(0, 120), json);
+      return await exportWorksheetsFromXlsx(supabase, b64, String(body.filename ?? '').slice(0, 120), json, body.plan_only === true);
     }
     // karbantartási munkalap (PDF) feladatonként — egy feladatra PDF, többre ZIP
     if (body.mode === 'worksheet') {
@@ -63,7 +63,14 @@ Deno.serve(async (req) => {
       const status = (['all', 'open', 'done', 'failed'] as const).find((x) => x === body.status) ?? 'done';
       const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
       const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().slice(0, 8000) : null;
-      return await exportWorksheets(supabase, { taskId, siteId: site_id, from, to, status, workerId, code }, json);
+      // darabonkénti kérés: megadott feladatok (azonosító + az Excelből jövő felülírás), feladatonként egy PDF
+      const items = Array.isArray(body.items) ? body.items.slice(0, 20).filter((it: any) => it && UUID.test(String(it.task_id ?? ''))).map((it: any) => ({
+        task_id: String(it.task_id),
+        hours: typeof it.hours === 'number' && isFinite(it.hours) ? it.hours : null,
+        callouts: typeof it.callouts === 'number' && isFinite(it.callouts) ? it.callouts : null,
+        mats: Array.isArray(it.mats) ? it.mats.slice(0, 50).map((m: any) => ({ name: String(m?.name ?? '').slice(0, 200), qty: String(m?.qty ?? '').slice(0, 20), unit: String(m?.unit ?? '').slice(0, 20), price: String(m?.price ?? '').slice(0, 30) })) : null,
+      })) : null;
+      return await exportWorksheets(supabase, { taskId, siteId: site_id, from, to, status, workerId, code, items, planOnly: body.plan_only === true }, json);
     }
     // feladat-összesítő (helyszín, kódok, munkaóra, kiszállás, anyagköltség) — csak Excel
     if (body.mode === 'tasks') {
@@ -81,7 +88,7 @@ Deno.serve(async (req) => {
           billHourly ??= Number(st?.out_hourly_rate ?? 0);
           billCallout ??= Number(st?.out_callout_fee ?? 0);
         }
-        return await exportTasks(supabase, { taskId, siteId: site_id, from, to, status, layout: 'settlement', workerId, code, billHourly, billCallout }, json);
+        return await exportTasks(supabase, { taskId, siteId: site_id, from, to, status, layout: 'settlement', workerId, code, billHourly, billCallout, asFiles: body.as_files === true }, json);
       }
       return await exportTasks(supabase, { taskId, siteId: site_id, from, to, status }, json);
     }
