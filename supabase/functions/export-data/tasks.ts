@@ -479,15 +479,15 @@ async function settlementWorkbook(supabase: any, rowsAll: any[], f: TaskFilter, 
     return { ...w, range, name: `${w.week}. hét`, folder: stem, filename: `elszamolas_${stem}.xlsx`, base64: book(sheet.ws, `${w.week}. hét`), grand: sheet.grand, count: sheet.count, taskIds: w.groups.map((rs) => rs[0].taskId as string) };
   });
   if (files.length === 0) return json({ missing, filename: `elszamolas_${f.from}_${f.to}.xlsx`, mime: XLSX_MIME, base64: book(settlementSheet([], hourly, callout, resaleOf).ws, 'Elszámolás') });
-  // ZIP: hetenként egy mappa — benne a hét elszámolás-Excelje és a hét feladatainak karbantartási munkalapjai (PDF);
-  // több hétnél a gyökérben egy összesítő is
-  const sheets = await buildWorksheets(supabase, files.flatMap((w) => w.taskIds), f.workerId ?? null);
-  const pdfOf = new Map(sheets.map((p) => [p.taskId, p]));
+  // ZIP: hetenként egy mappa — benne a hét elszámolás-Excelje és a hét feladatainak karbantartási munkalapjai (egy PDF,
+  // feladatonként egy oldal); több hétnél a gyökérben egy összesítő is
+  const docs = await buildWorksheets(supabase, files.map((w) => ({ key: w.folder, taskIds: w.taskIds })), f.workerId ?? null);
+  const docOf = new Map(docs.map((d) => [d.key, d]));
   const zip = new JSZip();
   for (const w of files) {
     const dir = zip.folder(w.folder)!;
     dir.file(w.filename, w.base64, { base64: true });
-    for (const id of w.taskIds) { const p = pdfOf.get(id); if (p) dir.file(p.name, p.bytes); }
+    const d = docOf.get(w.folder); if (d) dir.file(`munkalapok_${w.folder}.pdf`, d.bytes);
   }
   if (files.length > 1) {
     const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen', 'Mappa']];
@@ -500,9 +500,10 @@ async function settlementWorkbook(supabase: any, rowsAll: any[], f: TaskFilter, 
     zip.file('osszesito.xlsx', book(ws, 'Összesítő'), { base64: true });
   }
   return json({
-    missing, weeks: files.length, worksheets: sheets.length,
+    missing, weeks: files.length, worksheets: docs.reduce((a, d) => a + d.count, 0),
     filename: `elszamolas_${f.from}_${f.to}_hetenkent.zip`,
     mime: 'application/zip',
-    base64: await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' }),
+    // STORE: a PDF és az xlsx már tömörített, a DEFLATE csak CPU-t vinne
+    base64: await zip.generateAsync({ type: 'base64', compression: 'STORE' }),
   });
 }
