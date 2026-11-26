@@ -57,7 +57,7 @@ function ExportScreenInner() {
   const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
   const shiftSWeek = (n: number) => { const m = addDays(mondayOf(sFrom.trim() || todayISO()), 7 * n); setSFrom(m); setSTo(addDays(m, 6)); };
 
-  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'settlement' = 'books') => {
+  const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'settlement' | 'worksheet' = 'books') => {
     if (mode === 'settlement' && outHourly <= 0) {
       notify('Hiányzik az órabér', 'Add meg az ügyfél felé számlázott órabért a Beállítások › Díjak részben — elég egyszer, utána az elszámolás mindig azzal számol.');
       return;
@@ -68,6 +68,8 @@ function ExportScreenInner() {
         mode === 'wages' ? { mode, month, worker_id: workerId, format }
           : mode === 'tasks' ? { mode, status: tStatus, from: wFrom.trim() || undefined, to: wTo.trim() || undefined, site_id: wSite }
           : mode === 'settlement' ? { mode: 'tasks', layout: 'settlement', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
+              site_id: sSite, worker_id: sWorker, code: sCodes.join(',') || undefined }
+          : mode === 'worksheet' ? { mode: 'worksheet', status: sStatus, from: sFrom.trim() || undefined, to: sTo.trim() || undefined,
               site_id: sSite, worker_id: sWorker, code: sCodes.join(',') || undefined }
           : { from, to, site_id: site, format },
       );
@@ -167,7 +169,7 @@ function ExportScreenInner() {
 
       <Card>
         <H2>Elszámolás az ügyfél felé</H2>
-        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható. Minden hét külön Excel-fájlba kerül (a készre jelentés napja szerint); több hétnél a fájlok egy ZIP-ben jönnek, egy összesítővel együtt.</Sub>
+        <Sub>Feladatonként egy tömb: munka sorszáma és megnevezése, majd Munkaóra (óra × kimenő órabér), Kiszállás (alkalom × kimenő díj), a rögzített anyagok a továbbszámlázott áron (ha nincs beárazva, a bekerülési összegen), Összesen — a lap alján Mindösszesen. Az összegek képletek: a mennyiség vagy az ár Excelben átírható. A letöltés ZIP: hetenként egy mappa (a készre jelentés napja szerint), benne a hét elszámolás-Excelje és a hét feladatainak karbantartási munkalapjai (PDF); több hétnél egy összesítő is.</Sub>
         <Segmented label="Melyik feladatok" value={sStatus} onChange={setSStatus}
           options={[{ value: 'done', label: 'Kész' }, { value: 'open', label: 'Folyamatban' }, { value: 'all', label: 'Minden' }]} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.md }}>
@@ -209,6 +211,8 @@ function ExportScreenInner() {
           )}
         </View>
         <Btn title={busy === 'settlement-xlsx' ? 'Készül…' : '🧾 Elszámolás Excelbe'} onPress={() => void doExport('xlsx', 'settlement')} disabled={!!busy} />
+        <Sub>Karbantartási munkalap: feladatonként egy A4-es PDF a munkavállalók által rögzített adatokból (kód, dátum, munkavégző, munkaidő, elvégzett munkálatok, felhasznált anyagok, megjegyzések) — ugyanezekkel a szűrőkkel; több feladatnál ZIP-ben.</Sub>
+        <Btn title={busy === 'worksheet-pdf' ? 'Készül…' : '📋 Munkalapok PDF-ben'} kind="secondary" onPress={() => void doExport('pdf', 'worksheet')} disabled={!!busy} />
       </Card>
     </Screen>
   );

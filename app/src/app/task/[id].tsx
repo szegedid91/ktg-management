@@ -681,6 +681,14 @@ Biztosan leveszed?`, 'Levétel', true);
     }
   };
 
+  // karbantartási munkalap PDF a munkavállalók által rögzített adatokból (kód, dátum, munkaidő, munkálatok, anyagok, megjegyzések)
+  const exportWorksheet = async () => {
+    setXlsBusy(true);
+    try { await downloadExport({ mode: 'worksheet', task_id: task.id }); }
+    catch (e: any) { notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e)); }
+    finally { setXlsBusy(false); }
+  };
+
   const deleteTask = async () => {
     if (!await confirmDialog('Feladat törlése', 'A feladat és minden hozzá tartozó fotó (kiadott, nem sikerült, anyagköltség) törlődik. Ez nem vonható vissza.', 'Törlés', true)) return;
     const paths = [
@@ -1532,6 +1540,7 @@ Biztosan leveszed?`, 'Levétel', true);
         <Section title="⋯ További műveletek" defaultOpen={vs('more', false).open} viewKey={vs('more', false).viewKey} summary={readOnly ? 'export' : active ? 'export · visszavonás · törlés' : 'export · törlés'}>
           <Btn title={xlsBusy ? 'Készül…' : '📊 Összefoglaló Excelbe'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary()} />
           <Btn title={xlsBusy ? 'Készül…' : '🧾 Elszámolás az ügyfél felé (Excel)'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportSummary('settlement')} />
+          <Btn title={xlsBusy ? 'Készül…' : '📋 Karbantartási munkalap (PDF)'} kind="secondary" small disabled={xlsBusy} onPress={() => void exportWorksheet()} />
           {canAct ? <Btn title="Feladat visszavonása" kind="ghost" small onPress={() => void cancelTask()} /> : null}
           {readOnly ? null : <Btn title="🗑️ Feladat törlése" kind="ghost" small onPress={() => void deleteTask()} />}
         </Section>

@@ -6,6 +6,7 @@
 
 import * as XLSX from 'npm:xlsx@0.18.5';
 import JSZip from 'npm:jszip@3.10.1';
+import { buildWorksheets } from './worksheet.ts';
 
 const hd = (d: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') + '.' : '');
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -285,7 +286,7 @@ export async function exportTasks(supabase: any, f: TaskFilter, json: (b: unknow
     return out;
   }).sort((a, b) => a.site.localeCompare(b.site, 'hu') || a.code.localeCompare(b.code, 'hu') || a.taskId.localeCompare(b.taskId) || (a.first ? -1 : b.first ? 1 : 0));
 
-  if (f.layout === 'settlement') return await settlementWorkbook(rows, f, resaleOf, json);
+  if (f.layout === 'settlement') return await settlementWorkbook(supabase, rows, f, resaleOf, json);
 
   const taskSheet = rows.map((r) => ({
     'Feladat kód': r.code, 'Helyszín': r.site, 'Cikktörzs': r.item, 'Feladat': r.title, 'Állapot': r.status, 'Munkavállaló': r.worker,
@@ -437,7 +438,7 @@ function settlementSheet(groups: any[][], hourly: number, callout: number, resal
  *  („elszamolas_2026_47_het_….xlsx” — a feladat a készre jelentés / kiadás napjának ISO-hete szerint); több hétnél a
  *  fájlok egy ZIP-ben jönnek, benne egy „osszesito.xlsx” is (hetenként az időszak, a munkák száma, a végösszeg). Egy hétnél
  *  a heti Excel jön közvetlenül. Egy feladatra vagy megadott sorszám-listára egyetlen „Elszámolás” lap készül, mint eddig. */
-async function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
+async function settlementWorkbook(supabase: any, rowsAll: any[], f: TaskFilter, resaleOf: Map<string, number>, json: (b: unknown, s?: number) => Response) {
   const rows = f.workerId ? rowsAll.filter((r) => r.wid === f.workerId) : rowsAll;
   const codes = parseCodes(f.code);
   const has = (r: any, k: string) => String(r.code ?? '').toLowerCase().includes(k.toLowerCase());
@@ -474,23 +475,32 @@ async function settlementWorkbook(rowsAll: any[], f: TaskFilter, resaleOf: Map<s
   const files = list.map((w) => {
     const range = isoWeekRange(w.year, w.week);
     const sheet = settlementSheet(w.groups, hourly, callout, resaleOf);
-    return { ...w, range, name: `${w.week}. hét`, filename: `elszamolas_${w.year}_${String(w.week).padStart(2, '0')}_het_${range.from}_${range.to}.xlsx`, base64: book(sheet.ws, `${w.week}. hét`), grand: sheet.grand, count: sheet.count };
+    const stem = `${w.year}_${String(w.week).padStart(2, '0')}_het_${range.from}_${range.to}`;
+    return { ...w, range, name: `${w.week}. hét`, folder: stem, filename: `elszamolas_${stem}.xlsx`, base64: book(sheet.ws, `${w.week}. hét`), grand: sheet.grand, count: sheet.count, taskIds: w.groups.map((rs) => rs[0].taskId as string) };
   });
   if (files.length === 0) return json({ missing, filename: `elszamolas_${f.from}_${f.to}.xlsx`, mime: XLSX_MIME, base64: book(settlementSheet([], hourly, callout, resaleOf).ws, 'Elszámolás') });
-  if (files.length === 1) return json({ missing, filename: files[0].filename, mime: XLSX_MIME, base64: files[0].base64 });
-  // több hét: ZIP — hetenként egy Excel + összesítő
-  const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen', 'Fájl']];
-  for (const w of files) aoa.push([w.name, `${hd2(w.range.from)} – ${hd2(w.range.to)}`, w.count, { t: 'n', v: w.grand, z: '#,##0' }, w.filename]);
-  const n = aoa.length + 1;
-  aoa.push(['Mindösszesen:', null, { t: 'n', f: `SUM(C4:C${n - 1})`, v: files.reduce((a, w) => a + w.count, 0), z: '#,##0' }, { t: 'n', f: `SUM(D4:D${n - 1})`, v: files.reduce((a, w) => a + w.grand, 0), z: '#,##0' }]);
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
-  ws['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 52 }];
+  // ZIP: hetenként egy mappa — benne a hét elszámolás-Excelje és a hét feladatainak karbantartási munkalapjai (PDF);
+  // több hétnél a gyökérben egy összesítő is
+  const sheets = await buildWorksheets(supabase, files.flatMap((w) => w.taskIds), f.workerId ?? null);
+  const pdfOf = new Map(sheets.map((p) => [p.taskId, p]));
   const zip = new JSZip();
-  zip.file('osszesito.xlsx', book(ws, 'Összesítő'), { base64: true });
-  for (const w of files) zip.file(w.filename, w.base64, { base64: true });
+  for (const w of files) {
+    const dir = zip.folder(w.folder)!;
+    dir.file(w.filename, w.base64, { base64: true });
+    for (const id of w.taskIds) { const p = pdfOf.get(id); if (p) dir.file(p.name, p.bytes); }
+  }
+  if (files.length > 1) {
+    const aoa: any[][] = [[`Elszámolás ${hd2(f.from)} – ${hd2(f.to)}`], [], ['Hét', 'Időszak', 'Munkák (db)', 'Összesen', 'Mappa']];
+    for (const w of files) aoa.push([w.name, `${hd2(w.range.from)} – ${hd2(w.range.to)}`, w.count, { t: 'n', v: w.grand, z: '#,##0' }, w.folder]);
+    const n = aoa.length + 1;
+    aoa.push(['Mindösszesen:', null, { t: 'n', f: `SUM(C4:C${n - 1})`, v: files.reduce((a, w) => a + w.count, 0), z: '#,##0' }, { t: 'n', f: `SUM(D4:D${n - 1})`, v: files.reduce((a, w) => a + w.grand, 0), z: '#,##0' }]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 40 }];
+    zip.file('osszesito.xlsx', book(ws, 'Összesítő'), { base64: true });
+  }
   return json({
-    missing, weeks: files.length,
+    missing, weeks: files.length, worksheets: sheets.length,
     filename: `elszamolas_${f.from}_${f.to}_hetenkent.zip`,
     mime: 'application/zip',
     base64: await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' }),

@@ -10,6 +10,7 @@ import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
 import { identifyCaller } from './caller.ts';
 import { exportWages } from './wages.ts';
 import { exportTasks, fetchAll } from './tasks.ts';
+import { exportWorksheets } from './worksheet.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +50,14 @@ Deno.serve(async (req) => {
       const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(body.month ?? '') ? body.month : new Date().toISOString().slice(0, 7);
       const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
       return await exportWages(supabase, month, workerId, format, json);
+    }
+    // karbantartási munkalap (PDF) feladatonként — egy feladatra PDF, többre ZIP
+    if (body.mode === 'worksheet') {
+      const taskId = UUID.test(body.task_id ?? '') ? body.task_id : null;
+      const status = (['all', 'open', 'done', 'failed'] as const).find((x) => x === body.status) ?? 'done';
+      const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
+      const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim().slice(0, 8000) : null;
+      return await exportWorksheets(supabase, { taskId, siteId: site_id, from, to, status, workerId, code }, json);
     }
     // feladat-összesítő (helyszín, kódok, munkaóra, kiszállás, anyagköltség) — csak Excel
     if (body.mode === 'tasks') {
