@@ -7,6 +7,7 @@ import { downloadExport } from '../lib/exportfile';
 import { todayISO, ft, weekRangeLabel } from '../lib/format';
 import { Site, Worker, AppSettings } from '../lib/types';
 import { notify } from '../lib/dialogs';
+import { pickFile } from '../lib/pickfile';
 
 function ExportScreenInner() {
   const sites = useTable<Site>('sites');
@@ -56,6 +57,22 @@ function ExportScreenInner() {
   };
   const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
   const shiftSWeek = (n: number) => { const m = addDays(mondayOf(sFrom.trim() || todayISO()), 7 * n); setSFrom(m); setSTo(addDays(m, 6)); };
+
+  // munkalapok a javított elszámolás-Excelből: a letöltött Excel javítva visszatöltve → a munkaóra, kiszállás, anyagok
+  // onnan, a dátum / munkavégző / helyszín / idők / megjegyzések az appból
+  const worksheetsFromXlsx = async () => {
+    const file = await pickFile('.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    if (!file) return;
+    setBusy('worksheet-xlsx');
+    try {
+      const res = await downloadExport({ mode: 'worksheet_xlsx', xlsx_base64: file.base64, filename: file.name });
+      if (res.missing.length > 0) notify('Nem minden sorszámhoz készült munkalap', `${res.missing.length} sorszámhoz nincs feladat az appban:\n${res.missing.join(', ')}`);
+    } catch (e: any) {
+      notify('Export hiba', 'Az exporthoz internetkapcsolat kell.\n' + String(e?.message ?? e));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const doExport = async (format: 'xlsx' | 'pdf', mode: 'books' | 'wages' | 'tasks' | 'settlement' | 'worksheet' = 'books') => {
     if (mode === 'settlement' && outHourly <= 0) {
@@ -212,7 +229,9 @@ function ExportScreenInner() {
         </View>
         <Btn title={busy === 'settlement-xlsx' ? 'Készül…' : '🧾 Elszámolás Excelbe'} onPress={() => void doExport('xlsx', 'settlement')} disabled={!!busy} />
         <Sub>Karbantartási munkalap: feladatonként egy A4-es PDF a munkavállalók által rögzített adatokból (kód, dátum, munkavégző, munkaidő, elvégzett munkálatok, felhasznált anyagok, megjegyzések) — ugyanezekkel a szűrőkkel; több feladatnál ZIP-ben.</Sub>
-        <Btn title={busy === 'worksheet-pdf' ? 'Készül…' : '📋 Munkalapok PDF-ben'} kind="secondary" onPress={() => void doExport('pdf', 'worksheet')} disabled={!!busy} />
+        <Btn title={busy === 'worksheet-pdf' ? 'Készül…' : '📋 Munkalapok PDF-ben (az app adataiból)'} kind="secondary" onPress={() => void doExport('pdf', 'worksheet')} disabled={!!busy} />
+        <Sub>Ha a letöltött elszámolás-Excelt javítottad (óra, anyag), töltsd vissza, és a munkalapok abból készülnek: a munkaóra, a kiszállás és az anyagok az Excelből, a dátum, a munkavégző, a helyszín, a kezdés és a megjegyzések az appból. Egy heti fájl vagy az egész elszámolás Excelje is feltölthető.</Sub>
+        <Btn title={busy === 'worksheet-xlsx' ? 'Készül…' : '📤 Munkalapok a javított Excelből (feltöltés)'} kind="secondary" onPress={() => void worksheetsFromXlsx()} disabled={!!busy} />
       </Card>
     </Screen>
   );

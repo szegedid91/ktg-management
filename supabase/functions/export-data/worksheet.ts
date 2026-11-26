@@ -9,6 +9,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from 'npm:pdf-lib@1.17.1';
 import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
 import JSZip from 'npm:jszip@3.10.1';
+import * as XLSX from 'npm:xlsx@0.18.5';
 import { fetchAll, TaskStatusFilter, parseCodes } from './tasks.ts';
 
 /** a munkalap fejlécében a cég neve (a papír-mintán is ez áll) */
@@ -68,7 +69,10 @@ export async function exportWorksheets(supabase: any, f: WorksheetFilter, json: 
 
 /** Feladat-azonosítókhoz a munkalap-PDF-ek (feladatonként egy). workerId: csak azok a feladatok, ahol ő ki van
  *  osztva vagy dolgozott rajta. Az elszámolás-export is ezt hívja (hetenként mappába a munkalapokkal). */
-export async function buildWorksheets(supabase: any, ids: string[], workerId: string | null = null): Promise<{ taskId: string; code: string; name: string; bytes: Uint8Array }[]> {
+/** a javított elszámolás-Excelből jövő adatok, amelyek az app adatait felülírják a munkalapon */
+export interface SheetOverride { hours: number | null; callouts: number | null; mats: { name: string; qty: string; unit: string; price: string }[] | null }
+
+export async function buildWorksheets(supabase: any, ids: string[], workerId: string | null = null, overrides: Map<string, SheetOverride> = new Map()): Promise<{ taskId: string; code: string; name: string; bytes: Uint8Array }[]> {
   if (!ids.length) return [];
   const inChunks = async (build: (c: string[]) => any) => {
     const out: any[] = [];
@@ -115,6 +119,15 @@ export async function buildWorksheets(supabase: any, ids: string[], workerId: st
     const state = t.status === 'done' ? 'KÉSZ' : t.status === 'failed' ? 'NEM SIKERÜLT' : t.status === 'cancelled' ? 'VISSZAVONVA' : 'FOLYAMATBAN';
     const works: string[] = [String(t.title ?? '').replace(/\s+/g, ' ').trim(), ...items, ...doneNotes.filter((d: string) => !items.includes(d))].filter((x, i, arr) => x && arr.indexOf(x) === i);
     const mats = (matBy.get(t.id) ?? []).sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
+    const ov = overrides.get(t.id);
+    // elszámolt munkaóra: az Excelből, különben a készre jelentéskor megadott, különben a mért idő naponként felfelé kerekítve
+    const declared = ass.map((a: any) => (a.bill_hours != null ? Number(a.bill_hours) : null)).filter((x: number | null): x is number => x != null);
+    const perDayH = days.map((d) => ses.filter((s: any) => budDay(s.started_at) === d).reduce((a: number, s: any) => a + (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 3600000, 0));
+    const hours = ov?.hours ?? (declared.length ? declared.reduce((a: number, b: number) => a + b, 0) : perDayH.reduce((a, h) => a + (h > 0 ? Math.ceil(Math.round(h * 1e4) / 1e4) : 0), 0));
+    const callouts = ov?.callouts ?? ass.map((a: any) => (a.bill_callouts != null ? Number(a.bill_callouts) : null)).filter((x: number | null): x is number => x != null).reduce((a: number, b: number) => a + b, 0);
+    // munka vége: ha az Excel órája az irányadó és egy napos a munka, a kezdés + elszámolt óra (mint az Opteamus-munkalapokon)
+    const start = ses.length ? ses[0].started_at : null;
+    const endIso = ses.length ? (ov?.hours != null && days.length === 1 && hours > 0 ? new Date(new Date(start!).getTime() + hours * 3600000).toISOString() : ses[ses.length - 1].ended_at) : null;
     const remarks: string[] = [];
     if (t.status === 'failed' && t.fail_reason) remarks.push(`Nem sikerült: ${String(t.fail_reason).trim()}`);
     for (const n of (noteBy.get(t.id) ?? []).filter((n: any) => n.visible_to_workers !== false && workerUser.has(n.created_by)).sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)))) {
@@ -125,10 +138,11 @@ export async function buildWorksheets(supabase: any, ids: string[], workerId: st
       date: days.length ? days.map(hd).join(', ') : hd(t.done_at ? budDay(t.done_at) : budDay(t.created_at)),
       worker: whoIds.map((id) => nameOf.get(id) ?? '?').join(', '),
       site: site ? `${site.name}${site.address ? ` — ${site.address}` : ''}` : '',
-      start: ses.length ? hm(ses[0].started_at) : '', end: ses.length ? hm(ses[ses.length - 1].ended_at) : '',
+      start: start ? hm(start) : '', end: endIso ? hm(endIso) : '',
+      hours: hours > 0 ? `${String(Math.round(hours * 100) / 100).replace('.', ',')} óra` : '', callouts: callouts > 0 ? `${callouts} alkalom` : '',
       perDay: days.length > 1 ? days.map((d) => { const ds = ses.filter((s: any) => budDay(s.started_at) === d); return `${hd(d)} ${hm(ds[0].started_at)}–${hm(ds[ds.length - 1].ended_at)}`; }).join('; ') : '',
       works, state,
-      mats: mats.map((m: any) => {
+      mats: ov?.mats ?? mats.map((m: any) => {
         const qty = m.quantity != null && Number(m.quantity) > 0 ? Number(m.quantity) : 1;
         const price = resaleOf.get(m.id) ?? Number(m.amount);
         return { name: String(m.note || 'Anyag').replace(/\s+/g, ' ').trim(), qty: String(qty).replace('.', ','), unit: m.unit || 'db', price: ft(price) };
@@ -140,7 +154,69 @@ export async function buildWorksheets(supabase: any, ids: string[], workerId: st
   return pdfs;
 }
 
-interface SheetData { code: string; date: string; worker: string; site: string; start: string; end: string; perDay: string; works: string[]; state: string; mats: { name: string; qty: string; unit: string; price: string }[]; remarks: string[] }
+interface SheetData { code: string; date: string; worker: string; site: string; start: string; end: string; hours: string; callouts: string; perDay: string; works: string[]; state: string; mats: { name: string; qty: string; unit: string; price: string }[]; remarks: string[] }
+
+/** A (javított) elszámolás-Excel tömbjeinek kiolvasása: lapónként a munka sorszáma, a Munkaóra és Kiszállás mennyisége,
+ *  a Kiszállás alatti anyag-sorok (megnevezés, mennyiség, egység, ár). A lap neve („47. hét”) a hét. */
+export function parseSettlementXlsx(base64: string): { sheet: string; code: string; hours: number | null; callouts: number | null; mats: { name: string; qty: string; unit: string; price: string }[] }[] {
+  const wb = XLSX.read(base64, { type: 'base64' });
+  const out: ReturnType<typeof parseSettlementXlsx> = [];
+  for (const name of wb.SheetNames) {
+    const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+    let cur: (typeof out)[number] | null = null; let inLines = false;
+    for (const r of rows) {
+      const a = String(r?.[0] ?? '').trim();
+      const m = a.match(/^Munka sorszáma:\s*(.+)$/);
+      if (m) { cur = { sheet: name, code: m[1].trim(), hours: null, callouts: null, mats: [] }; out.push(cur); inLines = false; continue; }
+      if (!cur) continue;
+      if (a === 'Megnevezés') { inLines = true; continue; }
+      if (/^(Összesen|Mindösszesen)/.test(a)) { cur = null; inLines = false; continue; }
+      if (!inLines || !a) continue;
+      const num = (v: any) => (v == null || v === '' ? null : Number(String(v).replace(/\s/g, '').replace(',', '.')));
+      if (a === 'Munkaóra') { cur.hours = num(r[1]); continue; }
+      if (a === 'Kiszállás') { cur.callouts = num(r[1]); continue; }
+      if (a.startsWith('–') || a.startsWith('-')) continue; // tételes bontás tájékoztató sora
+      const qty = num(r[1]), price = num(r[3]);
+      cur.mats.push({ name: a, qty: qty == null ? '' : String(qty).replace('.', ','), unit: String(r[2] ?? '').trim(), price: price == null ? '' : ft(price) });
+    }
+  }
+  return out;
+}
+
+/** Munkalapok a visszatöltött (javított) elszámolás-Excelből: a munkaóra, a kiszállás és az anyagok az Excelből, a dátum,
+ *  a munkavégző, a helyszín, a kezdés és a megjegyzések az appból. Több lapnál (hetenként) a ZIP-ben lapónként mappa. */
+export async function exportWorksheetsFromXlsx(supabase: any, base64: string, filename: string, json: (b: unknown, s?: number) => Response) {
+  let blocks: ReturnType<typeof parseSettlementXlsx>;
+  try { blocks = parseSettlementXlsx(base64); } catch (e) { console.warn('worksheet xlsx', e); return json({ error: 'Az Excel nem olvasható. Az elszámolás-exportból letöltött (és javított) fájlt töltsd fel.' }, 400); }
+  if (!blocks.length) return json({ error: 'Az Excelben nincs „Munka sorszáma:” tömb — az elszámolás-exportból letöltött (és javított) fájlt töltsd fel.' }, 400);
+  const codes = [...new Set(blocks.map((b) => b.code.toLowerCase()))];
+  const tasksAll: any[] = [];
+  for (let i = 0; i < codes.length; i += 100) tasksAll.push(...await fetchAll(() => supabase.from('worker_tasks').select('id, code, status, done_at, closed_at, created_at').is('deleted_at', null).in('code', codes.slice(i, i + 100).map((c) => blocks.find((b) => b.code.toLowerCase() === c)!.code))));
+  const weekOf = (iso: string | null) => { if (!iso) return null; const d = new Date(budDay(iso) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 4 - ((d.getUTCDay() + 6) % 7 + 1)); return Math.ceil(((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7); };
+  const used = new Set<string>(); const overrides = new Map<string, SheetOverride>(); const plan: { sheet: string; taskId: string }[] = []; const missing: string[] = [];
+  for (const b of blocks) {
+    const cands = tasksAll.filter((t) => String(t.code ?? '').toLowerCase() === b.code.toLowerCase() && !used.has(t.id));
+    const wk = Number((b.sheet.match(/^(\d+)\./) ?? [])[1]);
+    const done = cands.filter((t) => t.status === 'done');
+    const t = (wk ? done.find((t) => weekOf(t.closed_at ?? t.done_at) === wk) : null) ?? done[0] ?? cands[0];
+    if (!t) { missing.push(b.code); continue; }
+    used.add(t.id); overrides.set(t.id, { hours: b.hours, callouts: b.callouts, mats: b.mats }); plan.push({ sheet: b.sheet, taskId: t.id });
+  }
+  const pdfs = await buildWorksheets(supabase, plan.map((p) => p.taskId), null, overrides);
+  const pdfOf = new Map(pdfs.map((p) => [p.taskId, p]));
+  const toB64 = (b: Uint8Array) => { let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(s); };
+  if (pdfs.length === 0) return json({ error: `Az Excel sorszámaihoz nincs feladat az appban: ${missing.join(', ')}` }, 404);
+  const stem = filename.replace(/\.xlsx$/i, '').replace(/[^\w-]+/g, '_') || 'elszamolas';
+  if (pdfs.length === 1) return json({ missing, filename: pdfs[0].name, mime: 'application/pdf', base64: toB64(pdfs[0].bytes) });
+  const zip = new JSZip();
+  const sheets = [...new Set(plan.map((p) => p.sheet))];
+  for (const p of plan) {
+    const pdf = pdfOf.get(p.taskId); if (!pdf) continue;
+    const dir = sheets.length > 1 ? zip.folder(p.sheet.replace(/[^\w.\- ]+/g, '_'))! : zip;
+    dir.file(pdf.name, pdf.bytes);
+  }
+  return json({ missing, count: pdfs.length, filename: `munkalapok_${stem}.zip`, mime: 'application/zip', base64: await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' }) });
+}
 
 /** a papír-minta rajzolása: fejléc, kód-sáv, 4 szakasz (alapadatok, munkálatok, anyagok, megjegyzések) */
 function drawSheet(page: PDFPage, font: PDFFont, bold: PDFFont, d: SheetData) {
@@ -184,6 +260,7 @@ function drawSheet(page: PDFPage, font: PDFFont, bold: PDFFont, d: SheetData) {
   y -= 16; field('Dátum:', d.date, L, 255, y); field('Munkavégző neve:', d.worker, L + 275, R - L - 275, y);
   y -= 22; field('Munkaterület / Cím:', d.site, L, R - L, y);
   y -= 22; field('Munka kezdése:', d.start, L, 255, y); field('Munka befejezése:', d.end, L + 275, R - L - 275, y);
+  y -= 22; field('Elszámolt munkaóra:', d.hours, L, 255, y); field('Kiszállás:', d.callouts, L + 275, R - L - 275, y);
   if (d.perDay) { y -= 14; text(fit('Naponként: ' + d.perDay, R - L, 8), L, y, 8, font, rgb(0.35, 0.35, 0.35)); }
   // 2. munkálatok
   section('2. ELVÉGZETT KARBANTARTÁSI MUNKÁLATOK');

@@ -10,7 +10,7 @@ import fontkit from 'npm:@pdf-lib/fontkit@1.1.1';
 import { identifyCaller } from './caller.ts';
 import { exportWages } from './wages.ts';
 import { exportTasks, fetchAll } from './tasks.ts';
-import { exportWorksheets } from './worksheet.ts';
+import { exportWorksheets, exportWorksheetsFromXlsx } from './worksheet.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,6 +50,12 @@ Deno.serve(async (req) => {
       const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(body.month ?? '') ? body.month : new Date().toISOString().slice(0, 7);
       const workerId = UUID.test(body.worker_id ?? '') ? body.worker_id : null;
       return await exportWages(supabase, month, workerId, format, json);
+    }
+    // munkalapok a visszatöltött (javított) elszámolás-Excelből
+    if (body.mode === 'worksheet_xlsx') {
+      const b64 = typeof body.xlsx_base64 === 'string' ? body.xlsx_base64 : '';
+      if (!b64 || b64.length > 12_000_000) return json({ error: 'Hiányzó vagy túl nagy Excel-fájl (max. kb. 8 MB).' }, 400);
+      return await exportWorksheetsFromXlsx(supabase, b64, String(body.filename ?? '').slice(0, 120), json);
     }
     // karbantartási munkalap (PDF) feladatonként — egy feladatra PDF, többre ZIP
     if (body.mode === 'worksheet') {
